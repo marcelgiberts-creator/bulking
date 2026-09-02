@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Bulking OS</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --bg-color: #0b0d10;
+    --accent: #f59e0b;
+    --accent-glow: rgba(245, 158, 11, 0.4);
+    --green: #10b981;
+    --red: #ef4444;
+    --pro-color: #3b82f6;
+    --car-color: #f59e0b;
+    --fat-color: #ef4444;
+    --text: #f8fafc;
+    --text-dim: #94a3b8;
+    --glass-bg: rgba(255, 255, 255, 0.04);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+  body {
+    background-color: var(--bg-color);
+    background-image:
+      radial-gradient(circle at 15% 50%, rgba(245, 158, 11, 0.08), transparent 25%),
+      radial-gradient(circle at 85% 30%, rgba(59, 130, 246, 0.08), transparent 25%);
+    background-attachment: fixed;
+    color: var(--text);
+    -webkit-tap-highlight-color: transparent;
+    padding-bottom: 90px;
+  }
+  .app-container { max-width: 500px; margin: 0 auto; padding: 20px 16px; }
+  .glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px; padding: 24px; margin-bottom: 20px;
+    box-shadow: var(--glass-shadow);
+  }
+  h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: flex-end; letter-spacing: -0.5px;}
+  h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 16px; border-bottom: 1px solid var(--glass-border); padding-bottom: 8px;}
+  .subtitle { font-size: 0.9rem; color: var(--accent); font-weight: 600; }
+  input, select, textarea {
+    width: 100%; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border);
+    color: var(--text); border-radius: 12px; padding: 14px; font-size: 0.95rem; margin-bottom: 12px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+  button.primary {
+    width: 100%; background: var(--accent); color: #000; font-weight: 800;
+    border: none; border-radius: 12px; padding: 14px; font-size: 1rem; cursor: pointer;
+    box-shadow: 0 4px 15px var(--accent-glow);
+  }
+  button.primary:active { transform: scale(0.97); }
+  button.primary:disabled { opacity: 0.5; }
+  button.secondary {
+    background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--glass-border);
+    padding: 12px 16px; border-radius: 12px; cursor: pointer; font-weight: 600;
+  }
+  button.tiny {
+    background: rgba(255,255,255,0.05); color: var(--text); border: 1px solid var(--glass-border);
+    padding: 8px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 0.8rem;
+  }
+  .kcal-main { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; }
+  .kcal-number { font-size: 3.5rem; font-weight: 800; line-height: 1; letter-spacing: -2px; }
+  .kcal-target { color: var(--text-dim); font-size: 0.95rem; font-weight: 600; }
+  .main-progress { height: 16px; background: rgba(0,0,0,0.4); border-radius: 10px; overflow: hidden; margin-bottom: 24px; border: 1px solid var(--glass-border);}
+  .main-progress-fill { height: 100%; background: var(--accent); border-radius: 10px; transition: width 0.8s cubic-bezier(0.2, 1, 0.2, 1); }
+  .surplus { background: var(--green) !important; }
+  .macro-row { margin-bottom: 12px; }
+  .macro-header { display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
+  .macro-bar-bg { height: 8px; background: rgba(0,0,0,0.4); border-radius: 4px; overflow: hidden; border: 1px solid var(--glass-border);}
+  .macro-bar-fill { height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+  .pro-fill { background: var(--pro-color); }
+  .car-fill { background: var(--car-color); }
+  .fat-fill { background: var(--fat-color); }
+  .over-limit { background: var(--red) !important; }
+  .mic-container { text-align: center; padding: 30px 10px; }
+  .mic-btn {
+    width: 90px; height: 90px; border-radius: 50%; border: none;
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    color: #fff; font-size: 2.2rem; cursor: pointer;
+    box-shadow: 0 10px 30px var(--accent-glow);
+    display: inline-flex; justify-content: center; align-items: center;
+  }
+  .mic-btn:active { transform: scale(0.9); }
+  .mic-btn.listening { background: var(--red); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 70% { box-shadow: 0 0 0 25px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+  .ai-status { font-size: 0.95rem; color: var(--accent); margin-top: 20px; font-weight: 600; min-height: 24px;}
+  .log-item { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--glass-border); align-items: center; }
+  .log-item:last-child { border-bottom: none; }
+  .log-title { font-weight: 600; font-size: 1rem; }
+  .log-macros { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px;}
+  .log-kcal { font-weight: 800; color: var(--accent); font-size: 1.1rem; }
+  .del-btn { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--red); border-radius: 8px; width: 36px; height: 36px; cursor: pointer; font-weight: bold; margin-left: 12px; flex-shrink:0;}
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .stat-box { background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); padding: 16px; border-radius: 16px; text-align: center; }
+  .stat-val { font-size: 1.8rem; font-weight: 800; margin-bottom: 4px; }
+  .stat-title { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;}
+  .form-row { display: flex; gap: 12px; }
+  .form-group { flex: 1; }
+  .form-group label { display: block; font-size: 0.8rem; color: var(--text-dim); margin-bottom: 6px; margin-left: 4px; font-weight: 600;}
+  .bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(11, 13, 16, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--glass-border);
+    display: flex; justify-content: space-around; padding: 16px 0 24px; z-index: 100;
+  }
+  .nav-item { color: var(--text-dim); text-align: center; font-size: 0.75rem; cursor: pointer; flex: 1; font-weight: 600; }
+  .nav-item.active { color: var(--accent); }
+  .nav-icon { font-size: 1.6rem; margin-bottom: 6px; display: block; filter: grayscale(100%); opacity: 0.7;}
+  .nav-item.active .nav-icon { filter: grayscale(0%); opacity: 1;}
+  .section { display: none; }
+  .section.active { display: block; }
+  .alert { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); padding: 14px; border-radius: 12px; font-size: 0.9rem; margin-bottom: 16px; color: #fcd34d; line-height: 1.5; }
+  .alert.warn { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+  .plan-content { font-size: 0.95rem; line-height: 1.6; color: #cbd5e1; }
+  .plan-content h3 { color: var(--accent); margin-top: 20px; border:none; padding:0; }
+  .chart-container { position: relative; height: 200px; width: 100%; margin-top: 10px;}
+  .insight-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--glass-border); font-size:0.88rem;}
+  .insight-row:last-child{border-bottom:none;}
+  .insight-row b{color:var(--text);}
+  .plan-table{ width:100%; border-collapse:collapse; margin-top:10px; }
+  .plan-table th{ color:var(--accent); font-size:0.85rem; text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,0.15); }
+  .plan-table td{ padding:10px; font-size:0.82rem; vertical-align:top; border-bottom:1px solid rgba(255,255,255,0.08); }
+  .day-card{ margin-top:20px; padding:18px; border-radius:16px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); }
+  .day-card:first-child{ margin-top:0; }
+  .day-total{ margin-top:15px; padding:15px; border-radius:12px; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.3); line-height:1.8; font-size:0.9rem; }
+  .day-total b{ color:var(--accent); }
+  .fav-banner{ background: rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.35); padding:14px; border-radius:12px; margin-bottom:16px; font-size:0.88rem; color:#a7f3d0; }
+  .fav-banner .fav-actions{ display:flex; gap:10px; margin-top:10px; }
+  .fav-banner button{ flex:1; padding:8px; border-radius:8px; border:none; font-weight:700; cursor:pointer; font-size:0.82rem; }
+  .fav-banner .yes{ background: var(--green); color:#000; }
+  .fav-banner .no{ background: rgba(255,255,255,0.08); color: var(--text); }
+  .fav-chip{ display:flex; justify-content:space-between; align-items:center; padding:12px 0; border-bottom:1px solid var(--glass-border); }
+  .fav-chip:last-child{ border-bottom:none; }
+  .fav-chip-name{ font-weight:600; font-size:0.92rem; }
+  .fav-chip-macros{ font-size:0.72rem; color:var(--text-dim); margin-top:2px; }
+  .fav-chip-actions{ display:flex; gap:8px; align-items:center; }
+  .fav-add-btn{ background: rgba(245,158,11,0.15); border:1px solid rgba(245,158,11,0.4); color: var(--accent); border-radius:10px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.85rem; }
+  .fav-del-btn{ background: transparent; border:none; color: var(--text-dim); cursor:pointer; font-size:1rem; padding:4px 6px; }
+  .toggle-row{ display:flex; justify-content:space-between; align-items:center; padding:10px 0; }
+  .toggle-row-label{ font-size:0.88rem; }
+  .toggle-row-label small{ display:block; color:var(--text-dim); font-size:0.72rem; margin-top:2px; }
+  .switch{ position:relative; width:46px; height:26px; flex-shrink:0; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .slider{ position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,0.15); border-radius:26px; transition:0.2s; }
+  .slider:before{ position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px; background:white; border-radius:50%; transition:0.2s; }
+  input:checked + .slider{ background: var(--accent); }
+  input:checked + .slider:before{ transform: translateX(20px); }
+  .file-label{ display:block; text-align:center; padding:12px; border-radius:12px; border:1px dashed var(--glass-border); color:var(--text-dim); font-size:0.85rem; cursor:pointer; margin-top:10px; }
+  .badge{ display:inline-block; padding:2px 8px; border-radius:20px; font-size:0.68rem; font-weight:700; margin-left:6px; }
+  .badge-batch{ background: rgba(59,130,246,0.15); color: var(--pro-color); }
+  .badge-fresh{ background: rgba(16,185,129,0.15); color: var(--green); }
+</style>
+</head>
+<body>
+<div class="app-container">
+
+  <div id="api-key-banner" class="glass-card" style="display: none; border-color: var(--accent);">
+    <h3 style="color: var(--accent); border: none;">🔑 Configura tu IA</h3>
+    <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 12px;">Pega tu API key de Google AI Studio para poder registrar comidas y generar el menú.</p>
+    <input type="password" id="api-key-input" placeholder="Pega tu API Key (AIzaSy...)">
+    <button class="primary" onclick="saveApiKey()">Guardar y activar IA</button>
+    <p style="font-size: 0.72rem; color: var(--text-dim); margin-top: 10px; line-height: 1.5;">
+      ⚠️ Esta key se guarda solo en este navegador y se usa directamente desde el cliente. Vale para uso personal, pero si algún día compartes esta app con otras personas, cualquiera podría verla en las herramientas de desarrollador — habría que mover las llamadas a un backend.
+    </p>
+  </div>
+
+  <div id="tab-dash" class="section active">
+    <h2>Resumen <span class="subtitle" id="date-display"></span></h2>
+    <div id="adjust-alert" class="alert" style="display:none;"></div>
+    <div id="fav-suggest-banner" class="fav-banner" style="display:none;"></div>
+
+    <div class="glass-card">
+      <div class="kcal-main">
+        <div>
+          <div class="kcal-number" id="ui-kcal-consumed">0</div>
+          <div class="kcal-target">Kcal ingeridas hoy</div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 0.8rem; color: var(--text-dim); font-weight: 600;" id="ui-kcal-status">OBJETIVO</div>
+          <div style="font-size: 1.6rem; font-weight: 800; color: var(--accent);" id="ui-kcal-target">--</div>
+        </div>
+      </div>
+      <div class="main-progress"><div class="main-progress-fill" id="ui-progress"></div></div>
+      <div class="macro-row">
+        <div class="macro-header"><span style="color: var(--pro-color);">Proteínas</span><span id="txt-pro">0g / 0g</span></div>
+        <div class="macro-bar-bg"><div class="macro-bar-fill pro-fill" id="bar-pro"></div></div>
+      </div>
+      <div class="macro-row">
+        <div class="macro-header"><span style="color: var(--car-color);">Carbohidratos</span><span id="txt-car">0g / 0g</span></div>
+        <div class="macro-bar-bg"><div class="macro-bar-fill car-fill" id="bar-car"></div></div>
+      </div>
+      <div class="macro-row" style="margin-bottom: 0;">
+        <div class="macro-header"><span style="color: var(--fat-color);">Grasas</span><span id="txt-fat">0g / 0g</span></div>
+        <div class="macro-bar-bg"><div class="macro-bar-fill fat-fill" id="bar-fat"></div></div>
+      </div>
+    </div>
+
+    <div class="glass-card mic-container">
+      <button class="mic-btn" id="btn-mic">🎙️</button>
+      <div class="ai-status" id="ai-status">Toca para dictar qué has comido</div>
+      <div style="display:flex; gap:10px; margin-top:24px;">
+        <input type="text" id="manual-text" placeholder="o escríbelo aquí..." style="margin-bottom:0;">
+        <button class="secondary" id="btn-send-text" onclick="processText()">Enviar</button>
+      </div>
+    </div>
+
+    <h3 style="border:none; padding:0; margin-bottom:12px;">⭐ Favoritos <span style="font-weight:400; color:var(--text-dim); font-size:0.8rem;">(1 toque, sin IA)</span></h3>
+    <div class="glass-card" id="favorites-list" style="padding: 6px 24px;"></div>
+
+    <h3 style="border:none; padding:0; margin-bottom:12px;">Historial de hoy</h3>
+    <div class="glass-card" id="log-list" style="padding: 10px 24px;"></div>
+
+    <h3 style="border:none; padding:0; margin-bottom:12px;">Estado semanal</h3>
+    <div class="glass-card" id="insights-card"></div>
+  </div>
+
+  <div id="tab-plan" class="section">
+    <h2>Menú semanal <span class="subtitle">IA Generativa</span></h2>
+    <div class="glass-card">
+      <p style="font-size: 0.9rem; color: var(--text-dim); margin-bottom: 16px;">
+        Genera un menú de <b>7 días</b> ajustado a tu objetivo actual: mezcla de comidas <span class="badge badge-batch">🍱 batch</span> (cocinadas el domingo) y <span class="badge badge-fresh">⚡ fresh</span> (se montan al momento en minutos). Ingredientes simples de supermercado, cantidades exactas en gramos, sin alternativas abiertas.
+      </p>
+      <div class="form-group">
+        <label>Comidas al día</label>
+        <select id="plan-meals-per-day">
+          <option value="4">4 comidas</option>
+          <option value="5" selected>5 comidas</option>
+        </select>
+      </div>
+      <button class="primary" id="btn-generate-plan" onclick="generatePlan()">Generar plan semanal</button>
+      <div id="plan-loading" style="display:none; text-align:center; padding:20px; color:var(--accent); font-weight: 600;">
+        🧠 Generando menú, lista de la compra e instrucciones...
+      </div>
+    </div>
+    <div class="glass-card" style="display:none; margin-top: 20px;" id="plan-container">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <span style="font-size:0.75rem; color:var(--text-dim);" id="plan-date"></span>
+        <button class="secondary" onclick="generatePlan()" style="padding:6px 12px; font-size:0.8rem;">Regenerar</button>
+      </div>
+      <div class="plan-content" id="plan-output"></div>
+    </div>
+  </div>
+
+  <div id="tab-body" class="section">
+    <h2>Análisis Físico <span class="subtitle">Metabolismo</span></h2>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-title">IMC actual</div>
+        <div class="stat-val" id="ui-bmi">--</div>
+        <div style="font-size:0.75rem; color:var(--accent);" id="ui-bmi-label">--</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-title">TDEE estimado</div>
+        <div class="stat-val" id="ui-tdee" style="color:var(--pro-color);">--</div>
+        <div style="font-size:0.75rem; color:var(--text-dim);">kcal / día</div>
+      </div>
+    </div>
+
+    <div class="glass-card">
+      <h3>Evolución de peso</h3>
+      <div class="form-row" style="margin-bottom: 6px;">
+        <input type="number" step="0.1" id="input-weight" placeholder="Registrar peso ahora (kg)" style="margin-bottom:0;">
+        <button class="secondary" onclick="addWeight()" style="width: auto;">Guardar</button>
+      </div>
+      <div style="font-size:0.75rem; color:var(--text-dim); margin-bottom:12px;" id="weight-today-info"></div>
+      <div class="chart-container"><canvas id="weightChart"></canvas></div>
+    </div>
+
+    <div class="glass-card" id="insights-card-2"></div>
+
+    <div class="glass-card">
+      <h3>Perfil físico</h3>
+      <div class="form-row">
+        <div class="form-group"><label>Edad</label><input type="number" id="prof-age" placeholder="Ej: 24"></div>
+        <div class="form-group"><label>Altura (cm)</label><input type="number" id="prof-height" placeholder="Ej: 173"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Peso base (kg)</label><input type="number" id="prof-weight" placeholder="Ej: 55" step="0.1"></div>
+        <div class="form-group"><label>Sexo (para TDEE)</label>
+          <select id="prof-sex"><option value="m">Hombre</option><option value="f">Mujer</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Actividad diaria</label>
+          <select id="prof-activity">
+            <option value="1.2">Sedentario</option>
+            <option value="1.375">Ligero (1-3 días/sem)</option>
+            <option value="1.55">Moderado (3-5 días/sem)</option>
+            <option value="1.725">Activo (6-7 días/sem)</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Superávit</label>
+          <select id="prof-goal">
+            <option value="500">Volumen (+500 kcal)</option>
+            <option value="300">Volumen limpio (+300 kcal)</option>
+            <option value="0">Mantenimiento</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>Objetivo de ganancia semanal (kg)</label><input type="number" step="0.05" id="prof-weekly-goal" placeholder="Ej: 0.3"></div>
+
+      <div class="toggle-row">
+        <div class="toggle-row-label">Pausar ajuste automático
+          <small>Vacaciones, lesión, enfermedad... el objetivo de kcal no se tocará hasta que reactives esto.</small>
+        </div>
+        <label class="switch"><input type="checkbox" id="prof-pause"><span class="slider"></span></label>
+      </div>
+
+      <button class="secondary" onclick="saveProfile()" style="width:100%; margin-bottom:10px; margin-top:10px;">Guardar perfil y recalcular TDEE</button>
+      <button class="primary" onclick="applyFormulaTarget()">Usar TDEE + superávit como objetivo actual</button>
+      <p style="font-size:0.75rem; color:var(--text-dim); margin-top:10px; line-height:1.5;">
+        El botón de arriba recalcula tu TDEE. Este otro fija tu objetivo de kcal a ese cálculo — útil al empezar o si quieres reiniciar. A partir de ahí, el sistema ajusta el objetivo cada semana mirando la <b>tendencia de las últimas 2 semanas</b> de tu peso real (más estable que fijarse solo en la última semana).
+      </p>
+    </div>
+
+    <div class="glass-card">
+      <h3>Copia de seguridad</h3>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:12px; line-height:1.5;">
+        Todos tus datos viven solo en este navegador. Si cambias de móvil, actualizas el navegador o borras la caché, los pierdes. Exporta un archivo de vez en cuando como red de seguridad.
+      </p>
+      <div class="form-row">
+        <button class="secondary" onclick="exportData()" style="width:100%;">⬇️ Exportar datos</button>
+      </div>
+      <label class="file-label" for="import-file-input">⬆️ Importar datos desde archivo .json</label>
+      <input type="file" id="import-file-input" accept="application/json" style="display:none;">
+    </div>
+
+    <div class="glass-card">
+      <h3>Ajustes de IA</h3>
+      <input type="password" id="settings-api-key" placeholder="API Key de Gemini">
+      <input type="text" id="settings-model" placeholder="Modelo (ej: gemini-2.5-flash)">
+      <p style="font-size:0.72rem; color:var(--text-dim); margin-bottom:12px;">
+        Si un día la IA da error de "modelo no encontrado", Google habrá renombrado el modelo — mira la lista vigente en
+        ai.google.dev/gemini-api/docs/models y pega aquí el nombre nuevo, sin tocar el resto de la app.
+      </p>
+      <button class="secondary" onclick="saveAiSettings()" style="width:100%;">Guardar ajustes de IA</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="bottom-nav">
+  <div class="nav-item active" data-tab="dash" onclick="nav('dash')"><span class="nav-icon">📊</span>Hoy</div>
+  <div class="nav-item" data-tab="plan" onclick="nav('plan')"><span class="nav-icon">🛒</span>Menú IA</div>
+  <div class="nav-item" data-tab="body" onclick="nav('body')"><span class="nav-icon">🧬</span>Cuerpo</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function todayStr(){ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); }
+function dayLabel(d){ return new Date(d+'T12:00:00').toLocaleDateString('es-ES',{weekday:'short'}); }
+
+async function safeGet(key){
+  try {
+    const r = localStorage.getItem(key);
+    return r ? JSON.parse(r) : null;
+  }
+  catch(e){ return null; }
+}
+async function safeSet(key,val){
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  }
+  catch(e){ console.error('storage error', e); }
+}
+
+let profile = null;
+let weightChartInstance = null;
+
+async function loadProfile(){
+  let p = await safeGet('profile');
+  if(!p){
+    p = {
+      age: 24, height: 175, weight: 60, sex: 'm', activity: 1.2, goalOffset: 500,
+      weeklyGainGoalKg: 0.3,
+      targetKcal: null, targetProtein: null, targetCarbs: null, targetFat: null,
+      lastAdjustmentWeek: null,
+      adjustmentPaused: false,
+      geminiModel: 'gemini-2.5-flash'
+    };
+    await safeSet('profile', p);
+  }
+  if(!p.geminiModel) p.geminiModel = 'gemini-2.5-flash';
+  if(p.adjustmentPaused === undefined) p.adjustmentPaused = false;
+  return p;
+}
+
+async function getApiKey(){ const r = await safeGet('gemini_api_key'); return r; }
+async function setApiKey(k){ await safeSet('gemini_api_key', k); }
+
+/* ============ TDEE / macros ============ */
+function calcTDEE(p, weight){
+  const bmr = p.sex==='f'
+    ? (10*weight)+(6.25*p.height)-(5*p.age)-161
+    : (10*weight)+(6.25*p.height)-(5*p.age)+5;
+  return bmr * p.activity;
+}
+function recomputeMacrosFromKcal(p){
+  const w = p.weight;
+  p.targetProtein = w*2.2;
+  p.targetFat = w*1.0;
+  p.targetCarbs = Math.max(0, (p.targetKcal - p.targetProtein*4 - p.targetFat*9)/4);
+}
+
+async function latestWeight(){
+  const series = await fetchWeightSeries(20);
+  return series.length ? series[series.length-1].kg : profile.weight;
+}
+
+/* ============ Log storage ============ */
+async function getLog(date){ const l = await safeGet('log:'+date); return l || []; }
+async function setLog(date, entries){ await safeSet('log:'+date, entries); }
+function sumEntries(entries){
+  return entries.reduce((a,e)=>({kcal:a.kcal+(e.kcal||0),p:a.p+(e.p||0),c:a.c+(e.c||0),f:a.f+(e.f||0)}),{kcal:0,p:0,c:0,f:0});
+}
+function normalizeLabel(s){ return (s||'').trim().toLowerCase(); }
+
+/* ============ Favoritos ============ */
+async function getFavorites(){ return (await safeGet('favorites')) || []; }
+async function saveFavorites(f){ await safeSet('favorites', f); }
+
+async function checkFavoriteSuggestion(newEntry){
+  const favorites = await getFavorites();
+  if(favorites.some(f=>normalizeLabel(f.label)===normalizeLabel(newEntry.label))) return;
+  let count = 0;
+  for(let i=0;i<14;i++){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    const entries = await getLog(key);
+    entries.forEach(e=>{ if(normalizeLabel(e.label)===normalizeLabel(newEntry.label)) count++; });
+  }
+  if(count>=3){
+    showFavoriteSuggestion(newEntry);
+  }
+}
+
+function showFavoriteSuggestion(entry){
+  const banner = $('fav-suggest-banner');
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    💡 Has registrado "<b>${entry.label}</b>" varias veces esta semana. ¿La guardo como favorita para añadirla en 1 toque?
+    <div class="fav-actions">
+      <button class="yes" id="fav-yes">⭐ Guardar</button>
+      <button class="no" id="fav-no">Ahora no</button>
+    </div>
+  `;
+  $('fav-yes').onclick = async ()=>{
+    const favs = await getFavorites();
+    favs.push({ id: Date.now()+'-'+Math.random().toString(36).slice(2,7), label: entry.label, kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f });
+    await saveFavorites(favs);
+    banner.style.display='none';
+    await renderFavorites();
+  };
+  $('fav-no').onclick = ()=>{ banner.style.display='none'; };
+}
+
+async function renderFavorites(){
+  const favs = await getFavorites();
+  const el = $('favorites-list');
+  if(favs.length===0){
+    el.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding: 16px 0; font-size:0.85rem;">Aún no tienes favoritos. Se sugieren solos cuando repites una comida 3 veces.</div>';
+    return;
+  }
+  el.innerHTML = favs.map(f=>`
+    <div class="fav-chip">
+      <div>
+        <div class="fav-chip-name">${f.label}</div>
+        <div class="fav-chip-macros">${Math.round(f.kcal)} kcal · P:${Math.round(f.p)}g C:${Math.round(f.c)}g G:${Math.round(f.f)}g</div>
+      </div>
+      <div class="fav-chip-actions">
+        <button class="fav-add-btn" data-id="${f.id}" data-action="add">+ Añadir</button>
+        <button class="fav-del-btn" data-id="${f.id}" data-action="del">✕</button>
+      </div>
+    </div>
+  `).join('');
+  el.querySelectorAll('[data-action="add"]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const f = favs.find(x=>x.id===btn.getAttribute('data-id'));
+      await quickAddFavorite(f);
+    });
+  });
+  el.querySelectorAll('[data-action="del"]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const remaining = favs.filter(x=>x.id!==btn.getAttribute('data-id'));
+      await saveFavorites(remaining);
+      await renderFavorites();
+    });
+  });
+}
+
+async function quickAddFavorite(fav){
+  const entries = await getLog(todayStr());
+  entries.push({
+    id: Date.now()+'-'+Math.random().toString(36).slice(2,7),
+    time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}),
+    label: fav.label, kcal: fav.kcal, p: fav.p, c: fav.c, f: fav.f
+  });
+  await setLog(todayStr(), entries);
+  await updateDashboardUI();
+  await renderWeekInsights();
+  $('ai-status').innerText = `"${fav.label}" añadida (favorito, sin IA).`;
+}
+
+/* ============ Dashboard render ============ */
+async function updateDashboardUI(){
+  const t = todayStr();
+  const logs = await getLog(t);
+  const sums = sumEntries(logs);
+  const tgt = { kcal: profile.targetKcal||3000, p: profile.targetProtein||150, c: profile.targetCarbs||375, f: profile.targetFat||70 };
+
+  $('ui-kcal-consumed').innerText = Math.round(sums.kcal);
+  $('ui-kcal-target').innerText = Math.round(tgt.kcal);
+  let kcalPct = (sums.kcal/tgt.kcal)*100;
+  const progFill = $('ui-progress');
+  progFill.style.width = Math.min(100,kcalPct)+'%';
+  if(kcalPct>=100){ progFill.classList.add('surplus'); $('ui-kcal-status').innerText="¡OBJETIVO CUMPLIDO!"; $('ui-kcal-status').style.color="var(--green)"; }
+  else { progFill.classList.remove('surplus'); $('ui-kcal-status').innerText="OBJETIVO"; $('ui-kcal-status').style.color="var(--text-dim)"; }
+
+  const bar = (cur,target,barId,txtId)=>{
+    let pct=(cur/target)*100;
+    const b=$(barId); b.style.width=Math.min(100,pct)+'%';
+    $(txtId).innerText = `${Math.round(cur)}g / ${Math.round(target)}g`;
+    if(pct>115) b.classList.add('over-limit'); else b.classList.remove('over-limit');
+  };
+  bar(sums.p, tgt.p, 'bar-pro','txt-pro');
+  bar(sums.c, tgt.c, 'bar-car','txt-car');
+  bar(sums.f, tgt.f, 'bar-fat','txt-fat');
+
+  const list = $('log-list');
+  if(logs.length===0){
+    list.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding: 20px 0;">Aún no has registrado nada hoy.</div>';
+  } else {
+    list.innerHTML = logs.slice().reverse().map((log)=>`
+      <div class="log-item">
+        <div>
+          <div class="log-title">${log.label}</div>
+          <div class="log-macros">${log.time||''} · P: ${Math.round(log.p)}g · C: ${Math.round(log.c)}g · G: ${Math.round(log.f)}g</div>
+        </div>
+        <div style="display:flex; align-items:center;">
+          <div class="log-kcal">${Math.round(log.kcal)}</div><span style="font-size:0.75rem; color:var(--text-dim); margin-left:4px;">kcal</span>
+          <button class="del-btn" data-id="${log.id}">✕</button>
+        </div>
+      </div>
+    `).join('');
+    list.querySelectorAll('.del-btn').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const id = btn.getAttribute('data-id');
+        const cur = await getLog(t);
+        await setLog(t, cur.filter(e=>e.id!==id));
+        updateDashboardUI(); renderWeekInsights();
+      });
+    });
+  }
+}
+
+/* ============ Weight series (soporta varios pesajes/día, promedia) ============ */
+async function fetchWeightSeries(daysBack){
+  const series = [];
+  for(let i=daysBack;i>=0;i--){
+    const d = new Date(); d.setDate(d.getDate()-i);
+    const key = d.toISOString().slice(0,10);
+    const raw = await safeGet('weight:'+key);
+    if(!raw) continue;
+    let arr;
+    if(Array.isArray(raw)) arr = raw;
+    else if(raw.kg!==undefined) arr = [{kg:raw.kg, time:'—'}]; // formato antiguo
+    else continue;
+    if(arr.length){
+      const avg = arr.reduce((a,e)=>a+e.kg,0)/arr.length;
+      series.push({date:key, kg:avg, count:arr.length});
+    }
+  }
+  return series;
+}
+function computeEMA(series, alpha=0.25){
+  if(series.length===0) return [];
+  const out=[]; let prev=series[0].kg;
+  for(let i=0;i<series.length;i++){
+    const kg=series[i].kg;
+    const ema = i===0? kg : alpha*kg+(1-alpha)*prev;
+    out.push({date:series[i].date, ema}); prev=ema;
+  }
+  return out;
+}
+function emaNearOrBefore(emaSeries, targetDate){
+  let best=null; for(const p of emaSeries){ if(p.date<=targetDate) best=p; } return best;
+}
+async function fetchLogSummaryLastNDays(n){
+  const days=[];
+  for(let i=n-1;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); days.push(d.toISOString().slice(0,10)); }
+  let loggedDays=0, totalKcal=0;
+  for(const d of days){ const e=await getLog(d); if(e.length){ loggedDays++; totalKcal+=sumEntries(e).kcal; } }
+  return { days:n, loggedDays, avgKcalOnLoggedDays: loggedDays? totalKcal/loggedDays : null };
+}
+
+/* ============ Weekly automatic adjustment (tendencia 2 semanas) ============ */
+function getIsoWeekKey(d){
+  const date=new Date(d.getTime()); date.setHours(0,0,0,0);
+  date.setDate(date.getDate()+3-((date.getDay()+6)%7));
+  const week1=new Date(date.getFullYear(),0,4);
+  const weekNo=1+Math.round(((date-week1)/86400000-3+((week1.getDay()+6)%7))/7);
+  return date.getFullYear()+'-W'+weekNo;
+}
+async function maybeAdjustTarget(){
+  if(!profile.targetKcal) return;
+  if(profile.adjustmentPaused){
+    $('adjust-alert').style.display='block';
+    $('adjust-alert').innerText = '⏸️ Ajuste automático en pausa. Reactívalo en la pestaña Cuerpo cuando quieras retomarlo.';
+    return;
+  }
+  const isoWeek = getIsoWeekKey(new Date());
+  if(profile.lastAdjustmentWeek === isoWeek) return;
+
+  const adherence = await fetchLogSummaryLastNDays(7);
+  if(adherence.loggedDays < 4){
+    $('adjust-alert').style.display='block';
+    $('adjust-alert').innerText = `Solo has registrado ${adherence.loggedDays}/7 días esta semana — necesito al menos 4 para ajustar bien tu objetivo. De momento lo dejo en ${Math.round(profile.targetKcal)} kcal.`;
+    return;
+  }
+  const series = await fetchWeightSeries(21);
+  if(series.length<2) return;
+  const emaSeries = computeEMA(series);
+  const emaNow = emaSeries[emaSeries.length-1];
+  const oneWeekAgoKey = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+  const twoWeeksAgoKey = new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+  const emaW1 = emaNearOrBefore(emaSeries, oneWeekAgoKey);
+  const emaW2 = emaNearOrBefore(emaSeries, twoWeeksAgoKey);
+
+  let weeklyRate, trendWindowTxt;
+  if(emaW2 && emaW2.date !== emaNow.date){
+    weeklyRate = (emaNow.ema - emaW2.ema) / 2;
+    trendWindowTxt = 'últimas 2 semanas (promedio)';
+  } else if(emaW1 && emaW1.date !== emaNow.date){
+    weeklyRate = emaNow.ema - emaW1.ema;
+    trendWindowTxt = 'última semana';
+  } else {
+    return;
+  }
+
+  const goal = profile.weeklyGainGoalKg || 0.3;
+  let note;
+  if(weeklyRate < goal*0.5){
+    profile.targetKcal += 150;
+    note = `Tendencia de peso (${trendWindowTxt}): +${weeklyRate.toFixed(2)}kg/sem, objetivo ${goal}kg/sem. Subo tu objetivo a ${Math.round(profile.targetKcal)} kcal/día.`;
+  } else if(weeklyRate > goal*1.8){
+    profile.targetKcal -= 150;
+    note = `Tendencia de peso (${trendWindowTxt}): +${weeklyRate.toFixed(2)}kg/sem, más rápido de lo previsto. Bajo tu objetivo a ${Math.round(profile.targetKcal)} kcal/día.`;
+  } else {
+    note = `Tendencia de peso (${trendWindowTxt}) en línea con tu objetivo (+${weeklyRate.toFixed(2)}kg/sem). Mantengo ${Math.round(profile.targetKcal)} kcal/día.`;
+  }
+  if(adherence.avgKcalOnLoggedDays){
+    const pct = adherence.avgKcalOnLoggedDays/profile.targetKcal*100;
+    if(pct<85 && weeklyRate>=goal*0.5) note += ` Registras de media ${Math.round(adherence.avgKcalOnLoggedDays)} kcal (por debajo del objetivo) pero el peso sube — puede que comas cosas sin registrar, o tu gasto real sea menor.`;
+    else if(pct>=100 && weeklyRate<goal*0.3) note += ` Registras el objetivo pero el peso apenas sube — revisa si las raciones dictadas por voz se quedan cortas.`;
+  }
+  recomputeMacrosFromKcal(profile);
+  profile.lastAdjustmentWeek = isoWeek;
+  await safeSet('profile', profile);
+  $('adjust-alert').style.display='block';
+  $('adjust-alert').innerText = note;
+}
+
+async function renderWeekInsights(){
+  const adherence = await fetchLogSummaryLastNDays(7);
+  const series = await fetchWeightSeries(20);
+  let trendText = 'Sin suficientes datos de peso todavía.';
+  if(series.length>=2){
+    const emaSeries = computeEMA(series);
+    const weekAgoKey = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    const emaNow = emaSeries[emaSeries.length-1];
+    const emaWeekAgo = emaNearOrBefore(emaSeries, weekAgoKey);
+    if(emaNow && emaWeekAgo && emaNow.date!==emaWeekAgo.date){
+      const diff = emaNow.ema-emaWeekAgo.ema;
+      trendText = `${diff>=0?'+':''}${diff.toFixed(2)} kg (suavizado) en 7 días`;
+    }
+  }
+  const html = `
+    <div class="insight-row"><span>Días registrados</span><b>${adherence.loggedDays}/7</b></div>
+    <div class="insight-row"><span>Media kcal en días registrados</span><b>${adherence.avgKcalOnLoggedDays? Math.round(adherence.avgKcalOnLoggedDays):'—'}</b></div>
+    <div class="insight-row"><span>Tendencia de peso</span><b>${trendText}</b></div>
+    <div class="insight-row"><span>Ajuste automático</span><b>${profile.adjustmentPaused ? '⏸️ Pausado' : '✅ Activo'}</b></div>
+  `;
+  $('insights-card').innerHTML = html;
+  $('insights-card-2').innerHTML = '<h3>Estado semanal</h3>'+html;
+}
+
+/* ============ Body tab (TDEE/BMI/weight) ============ */
+function updateBodyStats(currentWeight){
+  const tdee = calcTDEE(profile, currentWeight);
+  $('ui-tdee').innerText = Math.round(tdee);
+  const h = profile.height/100;
+  const bmi = currentWeight/(h*h);
+  $('ui-bmi').innerText = bmi.toFixed(1);
+  let label='Peso bajo', color='var(--accent)';
+  if(bmi>=18.5 && bmi<25){ label='Normopeso'; color='var(--green)'; }
+  else if(bmi>=25){ label='Sobrepeso'; color='var(--red)'; }
+  $('ui-bmi-label').innerText=label; $('ui-bmi-label').style.color=color;
+  return tdee;
+}
+
+async function saveProfile(){
+  profile.age = Number($('prof-age').value)||profile.age;
+  profile.height = Number($('prof-height').value)||profile.height;
+  profile.weight = Number($('prof-weight').value)||profile.weight;
+  profile.sex = $('prof-sex').value;
+  profile.activity = Number($('prof-activity').value)||profile.activity;
+  profile.goalOffset = Number($('prof-goal').value);
+  profile.weeklyGainGoalKg = Number($('prof-weekly-goal').value)||0.3;
+  profile.adjustmentPaused = $('prof-pause').checked;
+  await safeSet('profile', profile);
+  const w = await latestWeight();
+  updateBodyStats(w);
+  if(!profile.targetKcal){ await applyFormulaTarget(); }
+  await renderWeekInsights();
+  alert('Perfil guardado y TDEE recalculado.');
+}
+
+async function applyFormulaTarget(){
+  const w = await latestWeight();
+  const tdee = calcTDEE(profile, w);
+  profile.targetKcal = tdee + profile.goalOffset;
+  recomputeMacrosFromKcal(profile);
+  await safeSet('profile', profile);
+  updateDashboardUI();
+  updateBodyStats(w);
+  alert(`Objetivo fijado en ${Math.round(profile.targetKcal)} kcal/día (TDEE + superávit).`);
+}
+
+async function addWeight(){
+  const w = parseFloat($('input-weight').value);
+  if(!w) return;
+  const key = 'weight:'+todayStr();
+  const existing = await safeGet(key);
+  let arr;
+  if(!existing) arr = [];
+  else if(Array.isArray(existing)) arr = existing;
+  else if(existing.kg !== undefined) arr = [{kg:existing.kg, time:'—'}];
+  else arr = [];
+  arr.push({ kg: w, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) });
+  await safeSet(key, arr);
+  $('input-weight').value='';
+  const avg = arr.reduce((a,e)=>a+e.kg,0)/arr.length;
+  $('weight-today-info').innerText = `Hoy: ${arr.length} pesaje(s) · media ${avg.toFixed(1)} kg`;
+  await renderWeightChart();
+  updateBodyStats(avg);
+  await maybeAdjustTarget();
+  await updateDashboardUI();
+  await renderWeekInsights();
+}
+
+async function renderWeightChart(){
+  const series = await fetchWeightSeries(20);
+  const ctx = $('weightChart').getContext('2d');
+  const labels = series.map(w=>new Date(w.date+'T12:00:00').toLocaleDateString('es-ES',{month:'short',day:'numeric'}));
+  const values = series.map(w=>w.kg);
+  if(weightChartInstance) weightChartInstance.destroy();
+  weightChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [{ label:'Peso (kg)', data: values, borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', borderWidth:3, fill:true, tension:0.4, pointBackgroundColor:'#f59e0b', pointBorderColor:'#0b0d10', pointRadius:5 }] },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+      scales:{ y:{ticks:{color:'#94a3b8'},grid:{color:'rgba(255,255,255,0.05)'}}, x:{ticks:{color:'#94a3b8'},grid:{display:false}} } }
+  });
+  const today = await safeGet('weight:'+todayStr());
+  if(today && Array.isArray(today) && today.length){
+    const avg = today.reduce((a,e)=>a+e.kg,0)/today.length;
+    $('weight-today-info').innerText = `Hoy: ${today.length} pesaje(s) · media ${avg.toFixed(1)} kg`;
+  } else {
+    $('weight-today-info').innerText = '';
+  }
+}
+
+/* ============ Nav ============ */
+function nav(tab){
+  document.querySelectorAll('.section').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
+  $('tab-'+tab).classList.add('active');
+  document.querySelector(`.nav-item[data-tab="${tab}"]`).classList.add('active');
+  if(tab==='body') renderWeightChart();
+}
+
+/* ============ Gemini ============ */
+async function saveApiKey(){
+  const k = $('api-key-input').value.trim();
+  if(k){ await setApiKey(k); $('api-key-banner').style.display='none'; }
+}
+async function saveAiSettings(){
+  const k = $('settings-api-key').value.trim();
+  const m = $('settings-model').value.trim();
+  if(k) await setApiKey(k);
+  if(m){ profile.geminiModel = m; await safeSet('profile', profile); }
+  alert('Ajustes de IA guardados.');
+}
+
+async function callGemini(prompt, isJson){
+  const apiKey = await getApiKey();
+  if(!apiKey){ alert('⚠️ Configura tu API Key primero (pestaña Cuerpo → Ajustes de IA).'); return null; }
+  const model = profile.geminiModel || 'gemini-2.5-flash';
+  try{
+    const payload = { contents: [{parts:[{text:prompt}]}] };
+    if(isJson) payload.generationConfig = { responseMimeType: 'application/json' };
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(!res.ok){
+      const msg = data.error ? data.error.message : 'Error desconocido';
+      if(res.status===404){
+        throw new Error(`Modelo "${model}" no disponible. Ve a Cuerpo → Ajustes de IA y prueba con otro nombre de modelo vigente (ai.google.dev/gemini-api/docs/models).`);
+      }
+      throw new Error(msg);
+    }
+    let text = data.candidates[0].content.parts[0].text;
+    if(isJson){
+      const start=text.indexOf('{'); const end=text.lastIndexOf('}');
+      return JSON.parse(text.substring(start,end+1));
+    }
+    return text;
+  } catch(e){
+    console.error(e);
+    alert('Error IA: '+e.message);
+    return null;
+  }
+}
+
+async function processText(voiceText){
+  const inputEl = $('manual-text');
+  const btnEl = $('btn-send-text');
+  const input = voiceText || inputEl.value;
+  if(!input || !input.trim()) return;
+  inputEl.value='';
+  btnEl.disabled = true; $('btn-mic').disabled = true;
+  const status = $('ai-status');
+  status.innerText = 'Analizando macros con IA...';
+
+  const prompt = `Eres un nutricionista analizando este input de un usuario: "${input}".
+Estima con la mayor precisión posible las calorías (kcal) y macronutrientes en gramos (p: proteína, c: carbohidratos, f: grasas), usando raciones y densidades típicas de cocina casera española. Si el input no describe comida, pon 0 en todo.
+Devuelve ÚNICAMENTE un JSON con esta estructura exacta:
+{"label":"nombre corto","kcal":numero,"p":numero,"c":numero,"f":numero,"reply":"mensaje muy corto (1 línea)"}`;
+
+  const res = await callGemini(prompt, true);
+  if(res && res.kcal>0){
+    const entries = await getLog(todayStr());
+    const newEntry = { id: Date.now()+'-'+Math.random().toString(36).slice(2,7), time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), label: res.label, kcal: res.kcal, p: res.p, c: res.c, f: res.f };
+    entries.push(newEntry);
+    await setLog(todayStr(), entries);
+    await updateDashboardUI();
+    await renderWeekInsights();
+    await checkFavoriteSuggestion(newEntry);
+    status.innerText = res.reply || 'Añadido.';
+  } else {
+    status.innerText = res ? 'No detecté comida válida, prueba de nuevo.' : 'No se pudo procesar.';
+  }
+  btnEl.disabled=false; $('btn-mic').disabled=false;
+}
+
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition;
+if(SpeechRec){
+  recognition = new SpeechRec();
+  recognition.lang='es-ES'; recognition.interimResults=false;
+  recognition.onstart=()=>{ $('btn-mic').classList.add('listening'); $('ai-status').innerText='Te escucho... habla ahora.'; };
+  recognition.onend=()=>{ $('btn-mic').classList.remove('listening'); };
+  recognition.onresult=(e)=>processText(e.results[0][0].transcript);
+}
+$('btn-mic').onclick = ()=>{
+  if(!recognition){ alert('Tu navegador no soporta dictado por voz. Usa el campo de texto.'); return; }
+  recognition.start();
+};
+
+/* ============ Plan semanal (JSON estructurado, 7 días, batch + fresh) ============ */
+function renderPlanObject(plan){
+  let html = '';
+  plan.days.forEach(day=>{
+    html += `<div class="day-card"><h3 style="margin-top:0;color:var(--accent);border:none;padding:0;">${day.day}</h3>`;
+    html += `<table class="plan-table"><thead><tr><th>Comida</th><th>Alimentos (g)</th><th>Kcal</th></tr></thead><tbody>`;
+    day.meals.forEach(meal=>{
+      const itemsTxt = meal.items.map(it=>`${it.food} ${it.grams}g`).join(', ');
+      const badgeClass = meal.type==='batch' ? 'badge-batch' : 'badge-fresh';
+      const badgeTxt = meal.type==='batch' ? '🍱 batch' : '⚡ fresh';
+      html += `<tr><td><b>${meal.name}</b><br><span class="badge ${badgeClass}">${badgeTxt}</span></td><td>${itemsTxt}</td><td>${Math.round(meal.kcal)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    html += `<div class="day-total">Total día: <b>${Math.round(day.totals.kcal)} kcal</b> · P: <b>${Math.round(day.totals.p)}g</b> · C: <b>${Math.round(day.totals.c)}g</b> · G: <b>${Math.round(day.totals.f)}g</b></div>`;
+    html += `</div>`;
+  });
+  html += `<div class="day-card"><h3 style="margin-top:0;color:var(--accent);border:none;padding:0;">🛒 Lista de la compra</h3><table class="plan-table"><tbody>`;
+  plan.shoppingList.forEach(it=>{ html += `<tr><td>${it.item}</td><td style="text-align:right;">${it.qty}</td></tr>`; });
+  html += `</tbody></table></div>`;
+  html += `<div class="day-card"><h3 style="margin-top:0;color:var(--accent);border:none;padding:0;">👨‍🍳 Batch cooking (domingo)</h3><ol style="padding-left:20px; line-height:1.8;">`;
+  plan.batchInstructions.forEach(step=>{ html += `<li>${step}</li>`; });
+  html += `</ol></div>`;
+  return html;
+}
+
+async function generatePlan(){
+  $('btn-generate-plan').style.display='none';
+  $('plan-loading').style.display='block';
+  $('plan-container').style.display='none';
+
+  const t = { kcal: profile.targetKcal||3000, p: profile.targetProtein||150, c: profile.targetCarbs||375, f: profile.targetFat||70 };
+  const mealsPerDay = Number($('plan-meals-per-day').value) || 5;
+  const mealNames5 = ["Desayuno","Media mañana","Comida","Merienda","Cena"];
+  const mealNames4 = ["Desayuno","Comida","Merienda","Cena"];
+  const mealNames = mealsPerDay===5 ? mealNames5 : mealNames4;
+
+  const prompt = `Eres un nutricionista práctico especializado en volumen muscular con comida simple. Genera un menú semanal de 7 días (lunes a domingo) con estas reglas ESTRICTAS:
+
+- Objetivo diario: ${Math.round(t.kcal)} kcal, ${Math.round(t.p)}g proteína, ${Math.round(t.c)}g carbohidratos, ${Math.round(t.f)}g grasas (±5% por día es aceptable).
+- Exactamente ${mealsPerDay} comidas al día, con estos nombres en este orden: ${mealNames.join(', ')}.
+- Ingredientes MUY simples y comunes de cualquier supermercado (pollo, huevos, arroz, avena, atún en lata, pasta, patata, plátano, yogur natural, leche, pan, aceite de oliva, verdura congelada, legumbre en bote, queso fresco...). Nada de ingredientes raros, de tienda especializada ni de difícil acceso.
+- Cada comida tiene un "type": "batch" (se cocina el domingo en cantidad y se guarda en tuppers, ej: arroz con pollo y verdura) o "fresh" (se monta al momento en menos de 10 minutos sin apenas cocinar, ej: yogur con avena y plátano, tostadas con atún, huevos revueltos). Reparte un equilibrio razonable entre ambos tipos a lo largo de la semana.
+- PROHIBIDO usar alternativas abiertas tipo "arroz o pasta" o "pollo o pescado". Cada comida debe ser un plato concreto, único y ejecutable.
+- Cantidades SIEMPRE en gramos exactos (peso en crudo salvo que indiques "cocido" en el nombre del alimento).
+- Puedes repetir la misma base de "batch" varias veces en la semana (de eso se trata el batch cooking), pero varía algo las comidas "fresh" para no comer literalmente lo mismo los 7 días.
+- Nada de recetas complejas, guisos largos ni técnicas elaboradas: todo debe ser rápido y accesible.
+
+Devuelve ÚNICAMENTE este JSON, sin texto fuera del JSON y sin markdown de bloque de código:
+{
+ "days":[
+   {"day":"Lunes","meals":[
+      {"name":"Desayuno","type":"fresh","items":[{"food":"Avena","grams":80},{"food":"Plátano","grams":120}],"kcal":450,"p":20,"c":70,"f":8}
+   ],"totals":{"kcal":0,"p":0,"c":0,"f":0}}
+ ],
+ "shoppingList":[{"item":"Pechuga de pollo","qty":"1.4 kg"}],
+ "batchInstructions":["Paso 1: ...","Paso 2: ..."]
+}
+El array "days" debe tener 7 elementos (Lunes a Domingo) y cada uno ${mealsPerDay} comidas. Los "totals" de cada día deben ser la suma real de las comidas de ese día.`;
+
+  const res = await callGemini(prompt, true);
+  $('plan-loading').style.display='none';
+  $('btn-generate-plan').style.display='block';
+  if(res && res.days){
+    await safeSet('lastPlan', { plan: res, generatedAt: new Date().toISOString() });
+    $('plan-container').style.display='block';
+    $('plan-output').innerHTML = renderPlanObject(res);
+    $('plan-date').innerText = 'Generado: '+new Date().toLocaleString('es-ES');
+  } else if(res){
+    alert('La IA devolvió un formato inesperado. Prueba a regenerar.');
+  }
+}
+
+/* ============ Export / Import de datos ============ */
+async function exportData(){
+  const data = {};
+  for(let i=0;i<localStorage.length;i++){
+    const key = localStorage.key(i);
+    if(key === 'gemini_api_key') continue; // nunca exportamos la key
+    data[key] = localStorage.getItem(key);
+  }
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `bulking-backup-${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function importDataFromFile(file){
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(!confirm('Esto sobrescribirá tus datos actuales con los del archivo. ¿Continuar?')) return;
+    for(const [k,v] of Object.entries(data)){
+      localStorage.setItem(k, v);
+    }
+    alert('Datos importados correctamente. La app se va a recargar.');
+    location.reload();
+  } catch(e){
+    alert('El archivo no parece un backup válido de Bulking OS.');
+  }
+}
+$('import-file-input').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(file) importDataFromFile(file);
+});
+
+/* ============ Init ============ */
+async function initApp(){
+  profile = await loadProfile();
+  const apiKey = await getApiKey();
+  if(!apiKey) $('api-key-banner').style.display='block';
+  else { $('settings-api-key').placeholder = '•••••••• (guardada)'; }
+  $('settings-model').value = profile.geminiModel;
+
+  const dateStr = new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short'});
+  $('date-display').innerText = dateStr.charAt(0).toUpperCase()+dateStr.slice(1);
+
+  $('prof-age').value = profile.age;
+  $('prof-height').value = profile.height;
+  $('prof-weight').value = profile.weight;
+  $('prof-sex').value = profile.sex;
+  $('prof-activity').value = profile.activity;
+  $('prof-goal').value = profile.goalOffset;
+  $('prof-weekly-goal').value = profile.weeklyGainGoalKg;
+  $('prof-pause').checked = !!profile.adjustmentPaused;
+
+  const lastPlan = await safeGet('lastPlan');
+  if(lastPlan && lastPlan.plan){
+    $('plan-container').style.display='block';
+    $('plan-output').innerHTML = renderPlanObject(lastPlan.plan);
+    $('plan-date').innerText = 'Generado: '+new Date(lastPlan.generatedAt).toLocaleString('es-ES');
+  }
+
+  const w = await latestWeight();
+  updateBodyStats(w);
+  await maybeAdjustTarget();
+  await updateDashboardUI();
+  await renderWeekInsights();
+  await renderFavorites();
+  await renderWeightChart();
+}
+initApp();
+</script>
+</body>
+</html>
