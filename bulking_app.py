@@ -1,4 +1,59 @@
-<!DOCTYPE html>
+"""
+bulking_app.py
+================
+Archivo ÚNICO y autocontenido para Bulking OS.
+
+Qué hace:
+  1. Contiene TODO el código de la app (HTML + CSS + JS) dentro de la
+     variable APP_HTML, más abajo en este mismo archivo.
+  2. Al ejecutarlo, sirve la app en tu navegador en http://localhost:8000
+     para que la pruebes en local.
+  3. Vigila este mismo archivo (bulking_app.py). En cuanto lo guardes con
+     cambios, regenera index.html automáticamente y hace:
+         git add / git commit / git push
+     sin que tengas que teclear nada.
+
+CÓMO USARLO:
+  1. Coloca este archivo dentro de tu carpeta del repositorio ya
+     inicializada con git (la misma donde ya hiciste git init y
+     configuraste el remote SSH), sustituyendo la necesidad de tocar
+     index.html a mano.
+  2. Abre PowerShell en esa carpeta y ejecuta:
+         python bulking_app.py
+  3. Se abrirá tu navegador con la app funcionando en local, y este
+     archivo quedará vigilado. Cierra esa ventana o Ctrl+C para parar.
+  4. Para modificar la app: edita el contenido de APP_HTML aquí abajo,
+     guarda el archivo, y espera unos segundos — verás en la terminal
+     "Commit hecho" y "Push completado". GitHub Pages tarda 1-2 min
+     más en reflejarlo online, eso no se puede evitar.
+
+NOTA: la API key de Gemini se sigue configurando desde dentro de la
+propia app (pestaña Cuerpo → Ajustes de IA), nunca se guarda en este
+archivo ni se sube a GitHub.
+"""
+
+import os
+import sys
+import time
+import hashlib
+import subprocess
+import threading
+import webbrowser
+from datetime import datetime
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+THIS_FILE = os.path.abspath(__file__)
+PROJECT_DIR = os.path.dirname(THIS_FILE)
+INDEX_FILE = os.path.join(PROJECT_DIR, "index.html")
+PORT = 8000
+CHECK_INTERVAL = 2   # segundos entre comprobaciones de cambio
+DEBOUNCE = 4         # segundos de espera tras un cambio antes de subir
+
+# ============================================================================
+# EDITA AQUÍ DEBAJO el HTML / CSS / JS completo de la app.
+# Al guardar este archivo, se regenerará index.html y se subirá solo.
+# ============================================================================
+APP_HTML = r"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1019,3 +1074,116 @@ initApp();
 </script>
 </body>
 </html>
+"""
+# --- FIN_APP_HTML ---
+
+
+def write_index():
+    with open(INDEX_FILE, "w", encoding="utf-8") as f:
+        f.write(APP_HTML)
+
+
+# Si nos llaman con --export-only, solo escribimos index.html y salimos.
+# Esto se usa internamente para regenerar el archivo de forma fiable
+# tras cada guardado, sin depender de parsear el archivo a mano.
+if "--export-only" in sys.argv:
+    write_index()
+    sys.exit(0)
+
+
+def log(msg):
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+
+def run_git(cmd):
+    r = subprocess.run(cmd, shell=True, cwd=PROJECT_DIR, capture_output=True, text=True)
+    return r.returncode == 0, (r.stdout + r.stderr).strip()
+
+
+def has_changes():
+    ok, out = run_git("git status --porcelain")
+    return ok and out.strip() != ""
+
+
+def commit_and_push():
+    msg = f"Auto-update {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    ok, out = run_git(f'git add "index.html" "{os.path.basename(THIS_FILE)}"')
+    if not ok:
+        log(f"⚠️  git add falló: {out}")
+        return
+    if not has_changes():
+        log("Sin cambios reales que subir.")
+        return
+    ok, out = run_git(f'git commit -m "{msg}"')
+    if not ok:
+        log(f"⚠️  git commit falló: {out}")
+        return
+    log(f"✅ Commit: {msg}")
+    ok, out = run_git("git push")
+    if not ok:
+        log(f"❌ git push falló: {out}")
+        return
+    log("🚀 Push completado. GitHub Pages tardará 1-2 min en reflejarlo.")
+
+
+def regenerate_index_via_subprocess():
+    """Vuelve a ejecutar este mismo script en un proceso nuevo, en modo
+    --export-only, para que lea el archivo TAL Y COMO está guardado en
+    disco ahora mismo y regenere index.html de forma fiable."""
+    subprocess.run(f'"{sys.executable}" "{THIS_FILE}" --export-only', shell=True, cwd=PROJECT_DIR)
+
+
+def watcher_loop():
+    last_hash = hashlib.sha256(open(THIS_FILE, "rb").read()).hexdigest()
+    pending_since = None
+    while True:
+        time.sleep(CHECK_INTERVAL)
+        try:
+            current_hash = hashlib.sha256(open(THIS_FILE, "rb").read()).hexdigest()
+        except FileNotFoundError:
+            continue
+        if current_hash != last_hash:
+            last_hash = current_hash
+            pending_since = time.time()
+            log("📝 Cambio detectado en bulking_app.py, esperando por si sigues editando...")
+        if pending_since and (time.time() - pending_since) >= DEBOUNCE:
+            pending_since = None
+            regenerate_index_via_subprocess()
+            log("🔄 index.html regenerado.")
+            commit_and_push()
+
+
+class QuietHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # silenciamos el log de peticiones HTTP para no ensuciar la terminal
+
+
+def serve_local():
+    os.chdir(PROJECT_DIR)
+    httpd = HTTPServer(("localhost", PORT), QuietHandler)
+    log(f"🌐 Sirviendo en http://localhost:{PORT}")
+    httpd.serve_forever()
+
+
+def main():
+    ok, _ = run_git("git rev-parse --is-inside-work-tree")
+    if not ok:
+        log("❌ Esta carpeta no es un repositorio git. Coloca este archivo dentro de tu carpeta del proyecto ya inicializada (BulkingApp).")
+        sys.exit(1)
+
+    write_index()
+    commit_and_push()  # sube el estado inicial si hay diferencias
+
+    t = threading.Thread(target=watcher_loop, daemon=True)
+    t.start()
+
+    threading.Timer(1.0, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
+
+    try:
+        serve_local()
+    except KeyboardInterrupt:
+        log("Detenido por el usuario. Hasta luego.")
+
+
+if __name__ == "__main__":
+    main()
