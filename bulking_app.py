@@ -2496,7 +2496,7 @@ def run_git(cmd, timeout=30):
         )
 
 def has_changes():
-    ok, out = run_git("git status --porcelain")
+    ok, out = run_git(f'git status --porcelain -- "index.html" "{os.path.basename(THIS_FILE)}"')
     return ok and out.strip() != ""
 
 def current_branch():
@@ -2544,16 +2544,14 @@ def commit_and_push():
         log(f"❌ git add falló (revisa que estos archivos existan en la raíz del repo): {out}")
         return
 
-    if not has_changes():
-        log("ℹ️ Sin cambios reales que subir a git.")
-        return
-
-    ok, out = run_git(f'git commit -m "{msg}"')
-    if not ok:
+    if has_changes():
+      ok, out = run_git(f'git commit -m "{msg}"')
+      if not ok:
         log(f"⚠️ git commit falló: {out}")
         return
-
-    log(f"✅ Commit exitoso: {msg}")
+      log(f"✅ Commit exitoso: {msg}")
+    else:
+      log("ℹ️ Sin cambios nuevos en index.html/bulking_app.py; compruebo si hay commits sin subir de antes.")
 
     # Aplasta commits locales sin subir de intentos anteriores (pueden arrastrar
     # la key en texto plano de versiones previas al cambio a base64).
@@ -2561,7 +2559,7 @@ def commit_and_push():
 
     # IMPORTANTE: sincronizamos con el remoto DESPUÉS de comitear, nunca antes.
     # Si hiciéramos "pull --rebase" antes de comitear, con el index.html recién
-    # regenerado (siempre hay un cambio sin commitear en este punto), el rebase
+    # regenerado (siempre hay un cambio sin commitear en este point), el rebase
     # fallaría prácticamente cada vez ("unstaged changes") y quedaría como un
     # aviso ignorado. Eso dejaba la rama local desincronizada del remoto, y en
     # cuanto el remoto tuviera aunque fuese un commit de más, el "git push" de
