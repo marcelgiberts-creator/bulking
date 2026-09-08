@@ -18,18 +18,33 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 # ============================================================================
 # ⚙️ CONFIGURACIÓN GENERAL (EDITA AQUÍ)
 # ============================================================================
-# La key se guarda en Base64, NO en texto plano. Esto no es "seguridad" real
-# (decodificar base64 es trivial) — es únicamente para que el escáner de
-# secretos de GitHub (Push Protection) deje de reconocer el patrón de clave
-# de Google y de bloquear cada push. Se decodifica en el navegador con
-# atob() al cargar la página (ver __API_KEY_B64__ más abajo en el HTML).
-# Para cambiar la key, sustituye el valor de abajo por el resultado de:
+# Key en Base64 (no es seguridad real, solo evita que GitHub Push Protection
+# bloquee el push al detectar el patrón de clave de Google). Se decodifica en
+# el navegador con atob(). Para cambiarla:
 #   python -c "import base64; print(base64.b64encode(b'TU_KEY_AQUI').decode())"
 GEMINI_API_KEY_B64 = "QVEuQWI4Uk42S2szdjJuZS1ONE9qZWVwR0FtNmVOOHZnRGgxUENFOXBTZ1VRQng5TkJ0ZXc="
 # Modelo rápido/barato para tareas cortas (loguear comidas, chat, sustituciones).
 GEMINI_MODEL = "gemini-3.5-flash-lite"
 # Modelo más capaz para la generación del plan semanal completo (tarea larga y compleja).
 GEMINI_MODEL_PLAN = "gemini-3.5-flash-lite"
+
+# 🔗 SINCRONIZACIÓN EN LA NUBE (Firebase Realtime Database)
+# Permite que tus datos (comidas, pesos, perfil...) viajen contigo entre PC,
+# móvil y navegadores distintos usando solo un link con un identificador.
+# Pasos para activarlo (~5 min, gratis, sin tarjeta):
+#   1. Ve a https://console.firebase.google.com → "Añadir proyecto".
+#   2. Dentro del proyecto: menú lateral → "Realtime Database" → "Crear base de datos".
+#      Elige "Empezar en modo de prueba" (o configura reglas propias después).
+#   3. Copia la URL que aparece arriba de los datos (tipo
+#      "https://TU-PROYECTO-default-rtdb.europe-west1.firebasedatabase.app")
+#      y pégala abajo, SIN barra final.
+# Si lo dejas vacío (""), la app sigue funcionando en local (localStorage)
+# exactamente como hasta ahora, sin sincronización entre dispositivos.
+# ⚠️ Nota de seguridad: en modo de prueba, cualquiera con tu link de
+# sincronización (el "?uid=...") puede leer/escribir tus datos, igual que
+# con un Google Doc compartido por link. Suficiente para uso personal, pero
+# no subas ese link a ningún sitio público.
+FIREBASE_DB_URL = ""
 
 # 🍔 Alimentos de relleno (Alta densidad calórica, baja saciedad)
 FILLER_FOODS = "Maltodextrina en polvo, clear/hydro protein de limon, crema de arroz, harina de arroz, aceite de oliva virgen extra, miel, crema de cacahute, whey protein de chocolate"
@@ -291,12 +306,12 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .assistant-title { text-align:center; font-family:'Space Grotesk', sans-serif; font-size:1.1rem; font-weight:700; color:#fff; margin-bottom:12px; line-height:1.3; }
   .assistant-body { font-size:.92rem; line-height:1.65; color:#cfeee1; }
   .food-review { margin-top:16px; padding:16px; border:1px solid rgba(246,183,60,.35); border-radius:var(--radius-md); background:rgba(246,183,60,.08); text-align:left; }
-  .food-review-grid { display:grid; grid-template-columns:2fr repeat(4, minmax(58px, 1fr)); gap:8px; margin:12px 0; }
+  .food-review-grid { display:grid; grid-template-columns:2fr repeat(5, minmax(52px, 1fr)); gap:8px; margin:12px 0; }
   .food-review-grid input { margin-bottom:0; padding:10px 6px; font-size:0.86rem; text-align:center; }
   .food-review-grid input:first-child { text-align:left; }
   .ingredient-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .ingredient-row button { padding:4px 8px; font-size:.68rem; }
-  @media (max-width: 760px) { .food-review-grid { grid-template-columns:1fr 1fr; } .food-review-grid input:first-child { grid-column:1 / -1; } }
+  @media (max-width: 760px) { .food-review-grid { grid-template-columns:1fr 1fr 1fr; } .food-review-grid input:first-child { grid-column:1 / -1; } }
 
   /* Toasts (Notificaciones) */
   #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 400px; pointer-events: none; }
@@ -495,6 +510,14 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       </div>
     </div>
 
+    <!-- RESUMEN CLÍNICO IA -->
+    <div class="glass-card">
+      <h3>🧠 Resumen con IA</h3>
+      <p style="font-size:0.82rem; color:var(--text-dim); margin-bottom:14px;">Análisis directo de tu composición corporal: fortalezas, mejoras y recomendaciones basadas en evidencia, como en una consulta.</p>
+      <button class="primary" id="btn-ai-summary" onclick="generateBodySummary()">Generar resumen</button>
+      <div id="ai-body-summary-output" style="display:none; margin-top:18px;"></div>
+    </div>
+
     <!-- COMPOSICIÓN CORPORAL -->
     <div class="glass-card">
       <h3>📐 Composición corporal</h3>
@@ -533,7 +556,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <!-- MEDIDAS CORPORALES (OPCIONAL) -->
     <div class="glass-card">
       <h3>📏 Medidas corporales <span style="font-weight:400; color:var(--text-dim); font-size:0.8rem;">(opcional)</span></h3>
-      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:14px;">Cintura → ratio cintura/altura. Cuello + cintura (y cadera si eres mujer) → % de grasa real (US Navy).</p>
+      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:14px;">Cuello + cintura (+ cadera en mujeres) desbloquean el % de grasa medido.</p>
       <div class="form-row" style="margin-bottom: 12px;">
         <div class="form-group"><label>Fecha</label><input type="date" id="input-measure-date" style="margin-bottom:0;"></div>
       </div>
@@ -612,6 +635,10 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div id="tab-data" class="section">
     <h2>Datos <span class="subtitle">Copia de seguridad</span></h2>
     <div class="glass-card">
+      <h3>🔗 Sincronización</h3>
+      <div id="sync-status-content"></div>
+    </div>
+    <div class="glass-card">
       <h3>Backup local</h3>
       <p style="font-size:0.85rem; color:var(--text-dim); margin-bottom:16px;">Todo se guarda solo en este navegador. Exporta de vez en cuando para no perder tu historial.</p>
       <button class="secondary" onclick="exportData()" style="width:100%; margin-bottom:12px;">⬇️ Exportar JSON</button>
@@ -642,6 +669,7 @@ const GEMINI_API_KEY = atob("__API_KEY_B64__");
 const GEMINI_MODEL = "__MODEL__";
 const GEMINI_MODEL_PLAN = "__MODEL_PLAN__";
 const FILLER_FOODS = "__FILLER__";
+const FIREBASE_DB_URL = "__FIREBASE_DB_URL__";
 
 // UTILIDADES DOM Y FECHAS
 const $ = id => document.getElementById(id);
@@ -686,7 +714,104 @@ function showToast(msg, isError=false){
 
 // STORAGE
 async function safeGet(key){ try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch(e){ return null; } }
-async function safeSet(key,val){ try { localStorage.setItem(key, JSON.stringify(val)); } catch(e){ console.error('storage error', e); } }
+async function safeSet(key,val){
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch(e){ console.error('storage error', e); }
+  scheduleCloudPush();
+}
+
+// =========================================
+// 🔗 SINCRONIZACIÓN EN LA NUBE (Firebase Realtime Database, vía REST)
+// =========================================
+// Todo tu localStorage se refleja como un único JSON en la nube bajo un id
+// (uid) que vive en la URL (?uid=...) y en localStorage. Abrir la MISMA url
+// en otro dispositivo/navegador descarga esos mismos datos. Sin backend,
+// sin SDK: solo peticiones REST a Firebase.
+const cloudSyncEnabled = !!(FIREBASE_DB_URL && FIREBASE_DB_URL.trim());
+let syncUid = null;
+let cloudPushTimer = null;
+let cloudSynced = false;
+
+function getOrCreateSyncUid(){
+  const url = new URL(window.location.href);
+  let uid = url.searchParams.get('uid') || localStorage.getItem('syncUid');
+  if(!uid){
+    uid = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, '');
+  }
+  localStorage.setItem('syncUid', uid);
+  if(url.searchParams.get('uid') !== uid){
+    url.searchParams.set('uid', uid);
+    window.history.replaceState({}, '', url.toString());
+  }
+  return uid;
+}
+
+function dumpLocalStorage(){
+  const data = {};
+  for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); data[k] = localStorage.getItem(k); }
+  return data;
+}
+
+async function pullFromCloud(){
+  if(!cloudSyncEnabled) return;
+  try {
+    const res = await fetch(`${FIREBASE_DB_URL}/users/${syncUid}/data.json`);
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const remote = await res.json();
+    if(remote && typeof remote === 'object'){
+      for(const [k, v] of Object.entries(remote)) localStorage.setItem(k, v);
+      cloudSynced = true;
+    } else {
+      // No hay nada en la nube todavía para este uid: si ya tenemos datos
+      // locales (primera vez que activas sync en un dispositivo con
+      // histórico), los subimos para que la nube deje de estar vacía.
+      if(localStorage.length > 0) await pushToCloudNow();
+      cloudSynced = true;
+    }
+  } catch(e){
+    console.error('Fallo al sincronizar desde la nube:', e);
+    showToast('No se pudo sincronizar con la nube (revisa tu conexión). Usando datos locales.', true);
+  }
+}
+
+async function pushToCloudNow(){
+  if(!cloudSyncEnabled || !syncUid) return;
+  try {
+    await fetch(`${FIREBASE_DB_URL}/users/${syncUid}/data.json`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(dumpLocalStorage())
+    });
+  } catch(e){ console.error('Fallo al subir a la nube:', e); }
+}
+
+function scheduleCloudPush(){
+  if(!cloudSyncEnabled || !cloudSynced) return; // no subir hasta haber hecho la primera sincronización
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(pushToCloudNow, 1500);
+}
+
+function getSyncLink(){
+  return window.location.href;
+}
+
+function renderSyncStatus(){
+  const el = $('sync-status-content');
+  if(!el) return;
+  if(!cloudSyncEnabled){
+    el.innerHTML = `<div style="color:var(--text-dim); font-size:0.85rem; line-height:1.6;">Sincronización en la nube no configurada. Tus datos viven solo en este navegador (usa el backup manual de abajo entre dispositivos). Para activarla, configura <b>FIREBASE_DB_URL</b> en <code>bulking_app.py</code>.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div style="font-size:0.85rem; color:var(--green); font-weight:600; margin-bottom:10px;">✅ Sincronización activa</div>
+    <div style="font-size:0.82rem; color:var(--text-dim); margin-bottom:10px; line-height:1.5;">Abre este mismo link en cualquier dispositivo o navegador para ver y seguir registrando sobre los mismos datos.</div>
+    <div style="display:flex; gap:8px;">
+      <input readonly value="${getSyncLink()}" style="margin-bottom:0; font-size:0.75rem;" onclick="this.select()">
+      <button class="secondary" onclick="copySyncLink()" style="flex-shrink:0;">Copiar</button>
+    </div>
+    <div style="font-size:0.72rem; color:var(--text-dim); margin-top:10px;">⚠️ Cualquiera con este link puede ver y modificar tus datos. No lo compartas.</div>`;
+}
+
+window.copySyncLink = () => {
+  navigator.clipboard.writeText(getSyncLink()).then(()=>showToast('Link copiado')).catch(()=>showToast('No se pudo copiar', true));
+};
 
 // ESTADO GLOBAL
 let profile = null;
@@ -1272,7 +1397,7 @@ async function updateDashboardUI(){
     else { rem.innerText = `+${Math.round(Math.abs(diff))}g`; rem.style.color = 'var(--green)'; }
     if(pct>115) b.classList.add('over-limit'); else b.classList.remove('over-limit');
   };
-  bar(sums.p, tgt.p, 'bar-pro','txt-pro','rem-pro'); bar(sums.c, tgt.c, 'bar-car','txt-car','rem-car'); bar(sums.f, tgt.f, 'bar-fat','txt-fat','rem-fat');
+  bar(sums.p, tgt.p, 'bar-pro','txt-pro','rem-pro'); bar(sums.c, tgt.c, 'bar-car','txt-car','rem-car'); bar(sums.f, tgt.f, 'bar-fat','txt-fat','rem-fat'); bar(sums.s, tgt.s, 'bar-sugar','txt-sugar','rem-sugar');
   await renderDailyAssistant(sums, tgt, logs.length, t, logs);
 
   const list = $('log-list');
@@ -1282,7 +1407,7 @@ async function updateDashboardUI(){
       <div class="log-item">
         <div>
           <div class="log-title">${log.label}</div>
-          <div class="log-macros">${log.time||''} · P:${Math.round(log.p)} C:${Math.round(log.c)} G:${Math.round(log.f)}</div>
+          <div class="log-macros">${log.time||''} · P:${Math.round(log.p)} C:${Math.round(log.c)} G:${Math.round(log.f)} Az:${Math.round(log.s||0)}</div>
         </div>
         <div class="log-item-actions">
           <div class="log-kcal-wrap">
@@ -1369,7 +1494,7 @@ async function callGemini(prompt, isJson=false, model=GEMINI_MODEL, maxRetries=2
 // =========================================
 function validateFoodEntry(entry){
   if(!entry || typeof entry.label !== 'string' || !entry.label.trim()) return false;
-  return ['kcal','p','c','f'].every(key => Number.isFinite(Number(entry[key])) && Number(entry[key]) >= 0);
+  return ['kcal','p','c','f','s'].every(key => Number.isFinite(Number(entry[key])) && Number(entry[key]) >= 0);
 }
 
 function showFoodReview(entry, isEdit=false){
@@ -1384,6 +1509,7 @@ function showFoodReview(entry, isEdit=false){
       <input id="review-p" type="number" min="0" step="0.1" value="${entry.p}" aria-label="Proteína">
       <input id="review-c" type="number" min="0" step="0.1" value="${entry.c}" aria-label="Carbohidratos">
       <input id="review-f" type="number" min="0" step="0.1" value="${entry.f}" aria-label="Grasas">
+      <input id="review-sugar" type="number" min="0" step="0.1" value="${entry.s || 0}" aria-label="Azúcar">
     </div>
     <div style="display:flex;gap:8px;"><button class="primary" style="flex:1;padding:11px;" onclick="confirmFoodReview()">${isEdit ? 'Guardar cambios' : 'Confirmar y registrar'}</button><button class="secondary" onclick="cancelFoodReview()">${isEdit ? 'Cancelar' : 'Descartar'}</button></div>`;
 }
@@ -1421,6 +1547,7 @@ function showFoodReviewComparison(oldEntry, newEntry){
       <input id="review-p" type="number" min="0" step="0.1" value="${newEntry.p}" aria-label="Proteína">
       <input id="review-c" type="number" min="0" step="0.1" value="${newEntry.c}" aria-label="Carbohidratos">
       <input id="review-f" type="number" min="0" step="0.1" value="${newEntry.f}" aria-label="Grasas">
+      <input id="review-sugar" type="number" min="0" step="0.1" value="${newEntry.s || 0}" aria-label="Azúcar">
     </div>
     <div style="display:flex;gap:8px;">
       <button class="primary" style="flex:1;padding:11px;" onclick="confirmFoodReview()">Usar esta estimación</button>
@@ -1439,8 +1566,8 @@ window.reestimateLog = async (id) => {
   }
   showToast('Re-estimando con IA...');
   const prompt = `Actúa como Dietista Clínico. Extrae Kcal y Macros (g) de esta comida: "${entry.originalText}". 
-Aplica tablas de composición estándar españolas. Si el texto no es comida, pon todo a 0.
-Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"reply":"mensaje corto motivador"}`;
+Aplica tablas de composición estándar españolas. Incluye "s" (azúcares totales en g, estimación realista: 0 si es un alimento sin azúcar como pollo o brócoli, valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados). Si el texto no es comida, pon todo a 0.
+Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
   const res = await callGemini(prompt, true, GEMINI_MODEL);
   if(!validateFoodEntry(res) || res.kcal <= 0){
     showToast('No se pudo generar una nueva estimación ahora mismo.', true);
@@ -1456,7 +1583,8 @@ window.confirmFoodReview = async () => {
     ...pendingFoodEntry,
     label: $('review-label').value.trim(),
     kcal: Number($('review-kcal').value), p: Number($('review-p').value),
-    c: Number($('review-c').value), f: Number($('review-f').value)
+    c: Number($('review-c').value), f: Number($('review-f').value),
+    s: Number($('review-sugar').value) || 0
   };
   if(!validateFoodEntry(entry) || entry.kcal <= 0){ showToast('Revisa los valores de la comida.', true); return; }
 
@@ -1464,7 +1592,7 @@ window.confirmFoodReview = async () => {
   if(editingLogId){
     const idx = entries.findIndex(e=>e.id===editingLogId);
     if(idx === -1){ showToast('No se encontró el registro original.', true); cancelFoodReview(); return; }
-    entries[idx] = { ...entries[idx], label: entry.label, kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f };
+    entries[idx] = { ...entries[idx], label: entry.label, kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f, s: entry.s };
     await setLog(selectedLogDate, entries);
     showToast('Registro actualizado');
   } else {
@@ -1488,8 +1616,8 @@ async function processText(voiceText){
   $('ai-status').innerText = 'Analizando con IA Clínica...';
 
   const prompt = `Actúa como Dietista Clínico. Extrae Kcal y Macros (g) de esta comida: "${input}". 
-Aplica tablas de composición estándar españolas. Si el texto no es comida, pon todo a 0.
-Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"reply":"mensaje corto motivador"}`;
+Aplica tablas de composición estándar españolas. Incluye "s" (azúcares totales en g, estimación realista: 0 si es un alimento sin azúcar como pollo o brócoli, valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados). Si el texto no es comida, pon todo a 0.
+Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
 
   const res = await callGemini(prompt, true, GEMINI_MODEL);
   if(validateFoodEntry(res) && res.kcal > 0){
@@ -1998,6 +2126,60 @@ window.delBodyMeasureEntry = async (date, index) => {
 };
 
 // =========================================
+// 🧠 RESUMEN CLÍNICO CON IA (composición corporal)
+// =========================================
+async function generateBodySummary(){
+  const btn = $('btn-ai-summary');
+  const out = $('ai-body-summary-output');
+  btn.disabled = true; btn.innerText = 'Analizando...';
+
+  const bmiVal = bmiOf(profile.weight, profile.height);
+  const latest = await getLatestBodyMeasure();
+  let bfPct = deurenbergBodyFat(bmiVal, profile.age, profile.sex);
+  let bfMethod = 'fórmula estimada (peso/altura/edad)';
+  if(latest && latest.neck && latest.waist && (profile.sex === 'm' || latest.hip)){
+    const navyBF = navyBodyFat({ neck: latest.neck, waist: latest.waist, hip: latest.hip, heightCm: profile.height, sex: profile.sex });
+    if(navyBF !== null){ bfPct = navyBF; bfMethod = 'cinta métrica US Navy'; }
+  }
+  const fatMass = profile.weight * (bfPct / 100);
+  const leanMass = profile.weight - fatMass;
+  const { normalized: ffmiNorm } = ffmiOf(leanMass, profile.height);
+  const trend = await computeWeightProjection();
+  const dyn = await computeDynamicMaintenance();
+  const whtr = latest && latest.waist ? whtrOf(latest.waist, profile.height) : null;
+  const whr = latest && latest.waist && latest.hip ? whrOf(latest.waist, latest.hip) : null;
+
+  const prompt = `Actúa como médico especialista en nutrición deportiva y composición corporal. Sé totalmente transparente, directo y basado en evidencia científica, sin paños calientes, como en una consulta clínica real. Analiza estos datos de un usuario en fase de volumen (ganancia muscular):
+- Sexo: ${profile.sex === 'm' ? 'hombre' : 'mujer'}, edad: ${profile.age} años, altura: ${profile.height} cm, peso actual: ${profile.weight.toFixed(1)} kg.
+- IMC: ${bmiVal.toFixed(1)}.
+- % Grasa corporal estimado: ${bfPct.toFixed(1)}% (método: ${bfMethod}).
+- Masa grasa: ${fatMass.toFixed(1)} kg. Masa magra: ${leanMass.toFixed(1)} kg.
+- FFMI normalizado: ${ffmiNorm.toFixed(1)} (referencia: límite natural típico ~25, Kouri et al. 1995).
+${whtr ? `- Ratio cintura/altura: ${whtr.toFixed(2)}.` : ''}
+${whr ? `- Ratio cintura/cadera: ${whr.toFixed(2)}.` : ''}
+${trend.status === 'ok' ? `- Ritmo real de cambio de peso: ${trend.ratePerWeek >= 0 ? '+' : ''}${trend.ratePerWeek.toFixed(2)} kg/semana (${trend.dataPoints} pesajes en ${trend.elapsedDays} días).` : '- Sin histórico de peso suficiente todavía.'}
+${dyn ? `- Mantenimiento calórico real estimado: ${Math.round(dyn.estimatedMaintenance)} kcal/día.` : ''}
+- Objetivo de kcal actual: ${Math.round(profile.targetKcal || 0)} kcal/día. Entrenamientos/semana: ${profile.trainingDays || 0}.
+
+Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
+{"veredicto":"1 frase muy directa resumiendo su situación física (musculado/promedio/poco desarrollado, nivel de grasa alto/normal/bajo, comparado con población general y con referencias de fuerza)","analisis":"2-4 frases de análisis clínico basado en evidencia","fortalezas":["punto breve 1","punto breve 2"],"mejoras":["punto breve 1","punto breve 2"],"recomendaciones":["recomendación científica concreta 1","recomendación 2","recomendación 3"]}`;
+
+  const res = await callGemini(prompt, true, GEMINI_MODEL_PLAN);
+  btn.disabled = false; btn.innerText = 'Generar resumen';
+  if(!res || !res.veredicto){ showToast('No se pudo generar el resumen ahora mismo.', true); return; }
+
+  out.style.display = 'block';
+  const list = (title, color, items) => (Array.isArray(items) && items.length) ? `<div style="margin-bottom:12px;"><div style="font-size:.7rem; text-transform:uppercase; color:${color}; font-weight:700; margin-bottom:6px; letter-spacing:.03em;">${title}</div>${items.map(i=>`<div style="font-size:.86rem; padding:3px 0; line-height:1.4;">• ${i}</div>`).join('')}</div>` : '';
+  out.innerHTML = `
+    <div style="font-weight:800; font-size:1.05rem; margin-bottom:10px; color:var(--accent);">${res.veredicto}</div>
+    <div style="font-size:0.9rem; line-height:1.6; margin-bottom:14px; color:#e2edf0;">${res.analisis || ''}</div>
+    ${list('✅ Fortalezas', 'var(--green)', res.fortalezas)}
+    ${list('⚠️ Áreas de mejora', 'var(--accent)', res.mejoras)}
+    ${list('📋 Recomendaciones', 'var(--pro-color)', res.recomendaciones)}
+  `;
+}
+
+// =========================================
 // 📐 COMPOSICIÓN CORPORAL (output enriquecido a partir del mínimo input)
 // =========================================
 async function renderBodyComposition(){
@@ -2007,10 +2189,10 @@ async function renderBodyComposition(){
   const bmiVal = bmiOf(profile.weight, profile.height);
 
   let bfPct = deurenbergBodyFat(bmiVal, profile.age, profile.sex);
-  let bfMethod = 'Estimación por fórmula (peso/altura/edad) — orientativa';
+  let bfMethod = 'Fórmula orientativa';
   if(latest && latest.neck && latest.waist && (profile.sex === 'm' || latest.hip)){
     const navyBF = navyBodyFat({ neck: latest.neck, waist: latest.waist, hip: latest.hip, heightCm: profile.height, sex: profile.sex });
-    if(navyBF !== null){ bfPct = navyBF; bfMethod = 'Método cinta métrica (US Navy) — más preciso'; }
+    if(navyBF !== null){ bfPct = navyBF; bfMethod = 'Cinta métrica (precisa)'; }
   }
 
   const fatMass = profile.weight * (bfPct / 100);
@@ -2032,7 +2214,7 @@ async function renderBodyComposition(){
     </div>
     <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--glass-border);"><span style="color:var(--text-dim);">Masa grasa</span><b>${fatMass.toFixed(1)} kg</b></div>
     <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--glass-border);"><span style="color:var(--text-dim);">Masa magra (libre de grasa)</span><b>${leanMass.toFixed(1)} kg</b></div>
-    <div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="color:var(--text-dim);">IMC</span><b>${bmiVal.toFixed(1)} <span style="font-size:.7rem; color:var(--text-dim);">(no distingue músculo de grasa)</span></b></div>`;
+    <div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="color:var(--text-dim);">IMC</span><b>${bmiVal.toFixed(1)}</b></div>`;
 
   if(latest && latest.waist){
     const whtrVal = whtrOf(latest.waist, profile.height);
@@ -2050,7 +2232,7 @@ async function renderBodyComposition(){
       html += `<div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="color:var(--text-dim);">Cintura/Cadera (WHR)</span><b>${whrVal.toFixed(2)} <span style="font-size:.7rem; color:${overCutoff?'var(--red)':'var(--green)'};">(${overCutoff?'por encima del':'dentro del'} umbral OMS ${whrCutoff})</span></b></div>`;
     }
   } else {
-    html += `<div style="font-size:0.8rem; color:var(--text-dim); margin-top:10px;">Añade tu cintura (y cuello, y cadera si aplica) más arriba para desbloquear % de grasa medido y los ratios cintura/altura y cintura/cadera.</div>`;
+    html += `<div style="font-size:0.8rem; color:var(--text-dim); margin-top:10px;">Añade tus medidas arriba para desbloquear el % de grasa medido.</div>`;
   }
 
   el.innerHTML = html;
@@ -2226,7 +2408,7 @@ async function renderGoalProjection(){
   const trend = await computeWeightProjection();
 
   if(trend.status === 'cold'){
-    el.innerHTML = `<div style="color:var(--text-dim); font-size:0.88rem; line-height:1.6;">Todavía no hay pesajes suficientes para calcular una tendencia fiable (necesitas al menos ~1 semana registrando peso). En cuanto tengas más datos verás aquí tu ritmo real y, si defines un peso objetivo, una fecha estimada.</div>`;
+    el.innerHTML = `<div style="color:var(--text-dim); font-size:0.88rem; line-height:1.6;">Necesitas ~1 semana de pesajes para ver tu ritmo real y una fecha estimada.</div>`;
     return;
   }
 
@@ -2235,7 +2417,7 @@ async function renderGoalProjection(){
   <div style="display:flex; justify-content:space-between; padding-bottom:10px;"><span style="color:var(--text-dim);">Ritmo real reciente</span><b style="color:${trend.ratePerWeek>=0?'var(--green)':'var(--red)'};">${rateTxt}</b></div>`;
 
   if(trend.confidence !== 'alta'){
-    html += `<div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:12px;">⚠️ Estimación orientativa (solo ${trend.dataPoints} pesajes en ${trend.elapsedDays} días). Se afinará con más datos.</div>`;
+    html += `<div style="font-size:0.78rem; color:var(--text-dim); margin-bottom:12px;">⚠️ Orientativa (${trend.dataPoints} pesajes).</div>`;
   }
 
   const goal = Number(profile.goalWeightKg);
@@ -2268,10 +2450,10 @@ async function renderGoalProjection(){
   const lowGuide = profile.weight * 0.00125;
   const highGuide = profile.weight * 0.005;
   let paceVerdict, paceColor;
-  if(trend.ratePerWeek < lowGuide * 0.5){ paceVerdict = 'lento — puede que ni siquiera estés en superávit real'; paceColor = 'var(--text-dim)'; }
-  else if(trend.ratePerWeek <= highGuide){ paceVerdict = 'dentro del rango típico para un bulking limpio'; paceColor = 'var(--green)'; }
-  else { paceVerdict = 'por encima del rango típico — probablemente ganando más grasa de la necesaria'; paceColor = 'var(--accent)'; }
-  html += `<div style="font-size:0.8rem; color:var(--text-dim); margin-top:14px; padding-top:14px; border-top:1px solid var(--glass-border); line-height:1.5;">Guía orientativa de nutrición deportiva: ~${lowGuide.toFixed(2)}–${highGuide.toFixed(2)} kg/semana (0.125%-0.5% de tu peso) para minimizar grasa ganada. Tu ritmo actual está <span style="color:${paceColor}; font-weight:600;">${paceVerdict}</span>.</div>`;
+  if(trend.ratePerWeek < lowGuide * 0.5){ paceVerdict = 'Lento (puede que no haya superávit real)'; paceColor = 'var(--text-dim)'; }
+  else if(trend.ratePerWeek <= highGuide){ paceVerdict = 'En línea con un bulking limpio'; paceColor = 'var(--green)'; }
+  else { paceVerdict = 'Alto — probablemente ganando más grasa de la necesaria'; paceColor = 'var(--accent)'; }
+  html += `<div style="font-size:0.82rem; margin-top:14px; padding-top:14px; border-top:1px solid var(--glass-border);"><b style="color:${paceColor};">${paceVerdict}</b><div style="font-size:.7rem; color:var(--text-dim); margin-top:3px;">Rango recomendado: ${lowGuide.toFixed(2)}–${highGuide.toFixed(2)} kg/sem</div></div>`;
 
   el.innerHTML = html;
 }
@@ -2286,16 +2468,15 @@ async function renderDynamicModelStatus(){
   const formulaTdee = calcTDEE(profile, profile.weight);
 
   if(!dyn){
-    el.innerHTML = `<div style="color:var(--text-dim); font-size:0.88rem; line-height:1.6;">Ahora mismo tu objetivo (${Math.round(profile.targetKcal||0)} kcal) sale de la fórmula Mifflin-St Jeor + tu superávit configurado (o de un ajuste básico por tendencia de peso, si ya llevas ~2 semanas pesándote). Para activar el <b>modelo dinámico</b> (que calcula tu metabolismo real a partir de tus pesajes y tus kcal registradas) necesito más datos: al menos ~8-10 días con peso <b>y</b> ~8-10 días con comidas registradas dentro de las últimas 3 semanas. Sigue registrando y se activará solo.</div>`;
+    el.innerHTML = `<div style="color:var(--text-dim); font-size:0.86rem; line-height:1.5;">Objetivo actual (${Math.round(profile.targetKcal||0)} kcal) basado en fórmula. El modelo dinámico se activa solo con ~8-10 días de peso y comida registrados.</div>`;
     return;
   }
 
   const diff = dyn.estimatedMaintenance - formulaTdee;
   el.innerHTML = `
-    <div style="padding:14px; border-radius:var(--radius-sm); background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); margin-bottom:12px; font-size:0.85rem; color:#d1fae5;">✅ Modelo dinámico activo — basado en ${dyn.weightDays} pesajes y ${dyn.intakeDays} días de comida en los últimos ${dyn.elapsedDays} días.</div>
+    <div style="padding:12px; border-radius:var(--radius-sm); background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); margin-bottom:12px; font-size:0.82rem; color:#d1fae5;">✅ Modelo dinámico activo (${dyn.weightDays} pesajes, ${dyn.intakeDays} días de comida).</div>
     <div style="display:flex; justify-content:space-between; padding-bottom:10px; border-bottom:1px solid var(--glass-border); margin-bottom:10px;"><span style="color:var(--text-dim);">Mantenimiento real estimado</span><b>${Math.round(dyn.estimatedMaintenance)} kcal</b></div>
-    <div style="display:flex; justify-content:space-between; padding-bottom:10px;"><span style="color:var(--text-dim);">Fórmula (Mifflin-St Jeor)</span><b>${Math.round(formulaTdee)} kcal <span style="color:${diff>=0?'var(--green)':'var(--red)'}; font-size:.78rem;">(${diff>=0?'+':''}${Math.round(diff)})</span></b></div>
-    <div style="font-size:0.8rem; color:var(--text-dim);">Tu objetivo actual (${Math.round(profile.targetKcal||0)} kcal) ya incorpora esta estimación real más tu superávit deseado, y se recalcula una vez por semana.</div>
+    <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-dim);">Fórmula (Mifflin-St Jeor)</span><b>${Math.round(formulaTdee)} kcal <span style="color:${diff>=0?'var(--green)':'var(--red)'}; font-size:.78rem;">(${diff>=0?'+':''}${Math.round(diff)})</span></b></div>
   `;
 }
 
@@ -2410,12 +2591,16 @@ $('import-file-input').addEventListener('change', async (e)=>{
     const data = JSON.parse(await e.target.files[0].text());
     if(!confirm('¿Sobrescribir datos locales?')) return;
     for(const [k,v] of Object.entries(data)) localStorage.setItem(k, v);
+    if(cloudSyncEnabled){ syncUid = localStorage.getItem('syncUid') || syncUid; await pushToCloudNow(); }
     showToast('Datos restaurados. Recargando...'); setTimeout(()=>location.reload(), 1500);
   } catch(err){ showToast('Archivo JSON inválido', true); }
 });
 
 // INIT
 window.onload = async () => {
+  syncUid = getOrCreateSyncUid();
+  if(cloudSyncEnabled){ await pullFromCloud(); } else { cloudSynced = true; }
+
   profile = await loadProfile();
   
   // Inyectar datos form
@@ -2433,6 +2618,7 @@ window.onload = async () => {
   $('date-display').innerText = dStr.charAt(0).toUpperCase()+dStr.slice(1);
   
   const lp = await safeGet('lastPlan'); if(lp && lp.plan) renderPlanObject(lp.plan, new Date(lp.generatedAt).toLocaleString('es-ES'));
+  renderSyncStatus();
   
   await adjustWeeklyTarget(); updateBodyStats(); await updateDashboardUI(); await renderWeekInsights(); await renderWeightDayList();
   await checkBackupReminder();
@@ -2455,6 +2641,7 @@ def get_injected_html():
     html = html.replace("__MODEL__", GEMINI_MODEL)
     html = html.replace("__MODEL_PLAN__", GEMINI_MODEL_PLAN)
     html = html.replace("__FILLER__", FILLER_FOODS)
+    html = html.replace("__FIREBASE_DB_URL__", FIREBASE_DB_URL)
     return html
 
 def write_index():
@@ -2487,12 +2674,9 @@ def run_git(cmd, timeout=30):
         return r.returncode == 0, (r.stdout + r.stderr).strip()
     except subprocess.TimeoutExpired:
         return False, (
-            f"TIMEOUT: Git tardó > {timeout}s sin responder. Como GIT_TERMINAL_PROMPT=0, "
-            "si Git necesitaba pedirte usuario/contraseña o token no puede preguntarte y se "
-            "queda colgado en vez de fallar con un error claro. Prueba a ejecutar "
-            "'git push' manualmente en una terminal (fuera de este script) para ver el error "
-            "real: normalmente es un token caducado, falta de credential helper "
-            "(git config credential.helper) o el remoto en HTTPS pidiendo login."
+            f"TIMEOUT: Git tardó > {timeout}s sin responder. Con GIT_TERMINAL_PROMPT=0 no puede "
+            "pedir credenciales y se cuelga en vez de fallar con un error claro. Prueba 'git push' "
+            "manualmente en terminal: normalmente es un token caducado o falta credential.helper."
         )
 
 def has_changes():
@@ -2504,15 +2688,9 @@ def current_branch():
     return out.strip() if ok and out.strip() else "main"
 
 def squash_unpushed_commits(branch):
-    """Si hay varios commits locales sin subir (acumulados de intentos de push
-    anteriores que fallaron), los aplasta en uno solo antes de empujar. Como
-    esos commits NUNCA llegaron al remoto, reescribirlos es seguro, y esto
-    elimina cualquier rastro de la API key en texto plano que pudiera quedar
-    en versiones intermedias del historial local (de antes de pasarla a
-    base64): si no se hace esto, GitHub Push Protection seguiría bloqueando
-    el push por encontrarla en commits antiguos, aunque el commit actual ya
-    esté limpio.
-    """
+    """Aplasta commits locales sin subir en uno solo antes de empujar (son
+    seguros de reescribir porque nunca llegaron al remoto) para no arrastrar
+    la key en texto plano de versiones antiguas del historial local."""
     ok, _ = run_git("git fetch origin", timeout=30)
     if not ok:
         return
@@ -2522,8 +2700,7 @@ def squash_unpushed_commits(branch):
     ahead = int(out.strip())
     if ahead <= 1:
         return
-    log(f"🧹 Hay {ahead} commits locales sin subir de intentos anteriores; los aplasto en uno solo "
-        f"(nunca llegaron al remoto, así que es seguro) para no arrastrar secretos antiguos en la historia.")
+    log(f"🧹 Aplastando {ahead} commits locales sin subir en uno solo.")
     ok, out = run_git(f"git reset --soft origin/{branch}")
     if not ok:
         log(f"⚠️ No se pudo aplastar el historial local: {out}")
@@ -2557,14 +2734,9 @@ def commit_and_push():
     # la key en texto plano de versiones previas al cambio a base64).
     squash_unpushed_commits(branch)
 
-    # IMPORTANTE: sincronizamos con el remoto DESPUÉS de comitear, nunca antes.
-    # Si hiciéramos "pull --rebase" antes de comitear, con el index.html recién
-    # regenerado (siempre hay un cambio sin commitear en este point), el rebase
-    # fallaría prácticamente cada vez ("unstaged changes") y quedaría como un
-    # aviso ignorado. Eso dejaba la rama local desincronizada del remoto, y en
-    # cuanto el remoto tuviera aunque fuese un commit de más, el "git push" de
-    # después se rechazaba (non-fast-forward) y la web dejaba de actualizarse
-    # sin que se notara en ningún sitio salvo esta consola.
+    # Sincronizamos DESPUÉS de comitear, nunca antes: si hiciéramos pull --rebase
+    # con cambios sin commitear (index.html recién regenerado), el rebase fallaría
+    # casi siempre y la rama local se desincronizaría del remoto.
     ok, out = run_git(f"git pull --rebase origin {branch}")
     if not ok:
         log(f"⚠️ git pull --rebase falló (¿primer push o conflicto real?): {out}")
@@ -2583,16 +2755,10 @@ def commit_and_push():
         if not ok:
             if "GH013" in out or "Push cannot contain secrets" in out or "secret-scanning" in out:
                 log(
-                    "❌ Push bloqueado por GitHub Push Protection: detectó una clave/secreto en el commit "
-                    "(probablemente GEMINI_API_KEY, que está hardcodeada a propósito).\n"
-                    "   ⚠️ El enlace 'Allow secret' de más abajo es NUEVO cada vez (cambia con cada commit reescrito "
-                    "por el rebase), así que el de la vez anterior ya no sirve: usa el que aparece JUSTO AQUÍ ABAJO.\n"
-                    "   Soluciones:\n"
-                    "   1) Rápida (hay que repetirla en cada push mientras la key siga hardcodeada): copia la URL "
-                    "'.../security/secret-scanning/unblock-secret/...' del texto de abajo y pulsa 'Allow secret'.\n"
-                    "   2) Definitiva: en https://github.com/marcelgiberts-creator/bulking/settings/security_analysis "
-                    "busca 'Secret scanning' > 'Push protection' y desactívalo para este repo. Si no ves esa sección, "
-                    "activa primero 'Secret scanning' (arriba del todo) y luego aparecerá el sub-toggle de 'Push protection'.\n"
+                    "❌ Push bloqueado por GitHub Push Protection (detectó GEMINI_API_KEY hardcodeada).\n"
+                    "   El enlace 'Allow secret' de abajo es nuevo en cada push (cambia con el rebase); usa el que sale AHORA.\n"
+                    "   Fix definitivo: github.com/marcelgiberts-creator/bulking/settings/security_analysis → "
+                    "Secret scanning → desactiva Push protection.\n"
                     f"   --- Texto original de GitHub ---\n{out}"
                 )
             else:
