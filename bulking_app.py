@@ -27,9 +27,9 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 #   python -c "import base64; print(base64.b64encode(b'TU_KEY_AQUI').decode())"
 GEMINI_API_KEY_B64 = "QVEuQWI4Uk42S2szdjJuZS1ONE9qZWVwR0FtNmVOOHZnRGgxUENFOXBTZ1VRQng5TkJ0ZXc="
 # Modelo rápido/barato para tareas cortas (loguear comidas, chat, sustituciones).
-GEMINI_MODEL = "gemini-3.8"
+GEMINI_MODEL = "gemini-3.5-flash-lite"
 # Modelo más capaz para la generación del plan semanal completo (tarea larga y compleja).
-GEMINI_MODEL_PLAN = "gemini-3.8-flash"
+GEMINI_MODEL_PLAN = "gemini-3.5-flash-lite"
 
 # 🍔 Alimentos de relleno (Alta densidad calórica, baja saciedad)
 FILLER_FOODS = "Maltodextrina en polvo, clear/hydro protein de limon, crema de arroz, harina de arroz, aceite de oliva virgen extra, miel, crema de cacahute, whey protein de chocolate"
