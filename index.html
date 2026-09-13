@@ -619,8 +619,7 @@ const GEMINI_API_KEY = atob("QVEuQWI4Uk42S2szdjJuZS1ONE9qZWVwR0FtNmVOOHZnRGgxUEN
 const GEMINI_MODEL = "gemini-3.5-flash-lite";
 const GEMINI_MODEL_PLAN = "gemini-3.5-flash";
 const FILLER_FOODS = "Maltodextrina en polvo, clear/hydro protein de limon, crema de arroz, harina de arroz, aceite de oliva virgen extra, miel, crema de cacahute, whey protein de chocolate";
-const FIREBASE_DB_URL = "https://bulking-c9496-default-rtdb.europe-west1.firebasedatabase.app";
-const OFF_API_BASE = "https://world.openfoodfacts.org";
+const FIREBASE_DB_URL = "https://bulking-c9496-default-rtdb.europe-west1.firebasedatabase.app/";
 
 // UTILIDADES DOM Y FECHAS
 const $ = id => document.getElementById(id);
@@ -804,13 +803,14 @@ let bodyCompChartInstance = null;
 async function loadProfile(){
   let p = await safeGet('profile');
   if(!p){
-    p = { age: 23, height: 175, weight: 65, sex: 'm', activity: 1.2, goalOffset: 500, weeklyGainGoalKg: 0.3, mealsPerDay: 5, trainingDays: 4, preferences: '', targetKcal: null, targetProtein: null, targetCarbs: null, targetFat: null, lastAdjustmentWeek: null, adjustmentPaused: false, goalWeightKg: null };
+    p = { age: 23, height: 175, weight: 65, sex: 'm', activity: 1.2, goalOffset: 500, weeklyGainGoalKg: 0.3, mealsPerDay: 5, trainingDays: 4, preferences: '', targetKcal: null, targetProtein: null, targetCarbs: null, targetFat: null, lastAdjustmentWeek: null, adjustmentPaused: false, goalWeightKg: null, emaMaintenanceKcal: null };
     await safeSet('profile', p);
   }
   p.mealsPerDay = p.mealsPerDay || 5;
   p.trainingDays = Number.isFinite(p.trainingDays) ? p.trainingDays : 4;
   p.preferences = p.preferences || '';
   p.goalWeightKg = Number.isFinite(Number(p.goalWeightKg)) && Number(p.goalWeightKg) > 0 ? Number(p.goalWeightKg) : null;
+  p.emaMaintenanceKcal = Number.isFinite(Number(p.emaMaintenanceKcal)) ? Number(p.emaMaintenanceKcal) : null;
   return p;
 }
 
@@ -932,6 +932,23 @@ function computeEMASeries(series, alpha = 0.25){
   });
 }
 
+// Pendiente de regresión lineal simple (mínimos cuadrados) de un array de
+// puntos {x, y}. Se usa para estimar la tendencia de peso/mantenimiento
+// usando TODA la ventana de datos disponible en vez de solo los dos puntos
+// extremos (mucho más robusto frente a un pesaje puntual ruidoso al
+// principio o al final de la ventana). Devuelve null si no hay suficiente
+// variación en el eje X para que la pendiente sea estable.
+function linearRegressionSlope(points){
+  const n = points.length;
+  if(n < 2) return null;
+  const meanX = points.reduce((a,p)=>a+p.x,0) / n;
+  const meanY = points.reduce((a,p)=>a+p.y,0) / n;
+  let num = 0, den = 0;
+  for(const p of points){ num += (p.x-meanX)*(p.y-meanY); den += (p.x-meanX)*(p.x-meanX); }
+  if(den === 0) return null;
+  return num / den; // unidades de y por unidad de x (ej. kg/día)
+}
+
 async function countWeightDaysThisWeek(){
   let count = 0;
   for(let i = 0; i < 7; i++){
@@ -979,11 +996,26 @@ async function computeDynamicMaintenance(){
   if(intakeDays < 8) return null;
 
   const avgIntake = intakeTotal / intakeDays;
-  const weightChangeKg = last.ema - first.ema;
+
+  // Regresión ponderada sobre TODA la ventana de la EMA (no solo el primer y
+  // último punto): mucho más robusta frente a un pesaje puntual ruidoso justo
+  // al principio o al final de la ventana, que antes podía distorsionar todo
+  // el cálculo de mantenimiento por sí solo.
+  const baseDate = new Date(first.date + 'T00:00:00');
+  const regressionPoints = emaSeries.map(pt => ({ x: (new Date(pt.date + 'T00:00:00') - baseDate) / 86400000, y: pt.ema }));
+  const slopePerDay = linearRegressionSlope(regressionPoints);
+  const weightChangeKg = slopePerDay !== null ? slopePerDay * elapsedDays : (last.ema - first.ema);
+
   const impliedDailyBalance = (weightChangeKg * KCAL_PER_KG) / elapsedDays;
   const estimatedMaintenance = avgIntake - impliedDailyBalance;
 
-  return { estimatedMaintenance, avgIntake, weightChangeKg, elapsedDays, intakeDays, weightDays: dailyWeights.length };
+  // Confianza (0-1): combina cantidad de pesajes y de días de comida
+  // completos frente a un objetivo de ~14 de cada uno en la ventana de 21
+  // días. Se usa para decidir cuánto puede moverse el objetivo esta semana
+  // (más confianza → paso permitido más grande) y para mostrarlo en la UI.
+  const confidence = Math.min(1, (dailyWeights.length / 14) * 0.5 + (intakeDays / 14) * 0.5);
+
+  return { estimatedMaintenance, avgIntake, weightChangeKg, elapsedDays, intakeDays, weightDays: dailyWeights.length, confidence };
 }
 
 // Proyección de tendencia de peso (independiente del modelo de kcal, solo
@@ -996,8 +1028,13 @@ async function computeWeightProjection(){
   const last = emaSeries[emaSeries.length - 1];
   const elapsedDays = Math.round((new Date(last.date) - new Date(first.date)) / 86400000);
   if(elapsedDays < 6) return { status: 'cold' };
-  const changeKg = last.ema - first.ema;
-  const ratePerWeek = (changeKg / elapsedDays) * 7;
+  // Misma regresión ponderada que el modelo de mantenimiento: usa toda la
+  // ventana en vez de solo el primer y último punto, así un pesaje atípico
+  // en un extremo no dispara el ritmo estimado.
+  const baseDate = new Date(first.date + 'T00:00:00');
+  const regressionPoints = emaSeries.map(pt => ({ x: (new Date(pt.date + 'T00:00:00') - baseDate) / 86400000, y: pt.ema }));
+  const slopePerDay = linearRegressionSlope(regressionPoints);
+  const ratePerWeek = slopePerDay !== null ? slopePerDay * 7 : ((last.ema - first.ema) / elapsedDays) * 7;
   const confidence = (daily.length >= 12 && elapsedDays >= 12) ? 'alta' : 'orientativa';
   return { status: 'ok', currentEma: last.ema, ratePerWeek, elapsedDays, dataPoints: daily.length, confidence };
 }
@@ -1050,10 +1087,23 @@ async function adjustWeeklyTarget(){
   // NIVEL 2: modelo dinámico completo (peso real + kcal reales), si hay datos suficientes.
   const dynamic = await computeDynamicMaintenance();
   if(dynamic){
+    // Suavizado recursivo (EWMA) del propio mantenimiento estimado: en vez de
+    // fiarse por completo de la regresión de esta única semana (que sigue
+    // teniendo ruido normal semana a semana), se mezcla con la creencia
+    // acumulada de semanas anteriores. alpha=0.4 da más peso a lo nuevo que
+    // a lo viejo, pero sin saltos bruscos por una semana atípica.
+    const prevEmaMaintenance = Number.isFinite(Number(profile.emaMaintenanceKcal)) ? Number(profile.emaMaintenanceKcal) : dynamic.estimatedMaintenance;
+    const smoothingAlpha = 0.4;
+    const smoothedMaintenance = smoothingAlpha * dynamic.estimatedMaintenance + (1 - smoothingAlpha) * prevEmaMaintenance;
+    profile.emaMaintenanceKcal = smoothedMaintenance;
+
     const desiredDailySurplus = (goal * KCAL_PER_KG) / 7;
-    const rawTarget = dynamic.estimatedMaintenance + desiredDailySurplus;
+    const rawTarget = smoothedMaintenance + desiredDailySurplus;
     const prevTarget = profile.targetKcal;
-    const maxWeeklyStep = 200; // evita saltos bruscos aunque el cálculo puntual difiera mucho
+    // El paso máximo semanal permitido ya no es fijo: con más pesajes y más
+    // días de comida completos (mayor confianza), se permite moverse más;
+    // con datos escasos o irregulares, el objetivo se mueve con más cautela.
+    const maxWeeklyStep = Math.round(100 + dynamic.confidence * 150); // rango 100-250 kcal
     const cappedTarget = Math.max(prevTarget - maxWeeklyStep, Math.min(prevTarget + maxWeeklyStep, rawTarget));
     const finalTarget = Math.max(1600, Math.round(cappedTarget));
     profile.targetKcal = finalTarget;
@@ -1062,9 +1112,9 @@ async function adjustWeeklyTarget(){
     await safeSet('profile', profile);
     await recordTargetAdjustment({
       week: currentWeek, mode: 'dinamico', prevTarget, newTarget: finalTarget,
-      note: `Mantenimiento real estimado ~${Math.round(dynamic.estimatedMaintenance)} kcal/día (${dynamic.weightDays} pesajes, ${dynamic.intakeDays} días de comida en ${dynamic.elapsedDays} días).`
+      note: `Mantenimiento real estimado (regresión de esta semana) ~${Math.round(dynamic.estimatedMaintenance)} kcal/día, suavizado con semanas anteriores a ~${Math.round(smoothedMaintenance)} kcal/día (${dynamic.weightDays} pesajes, ${dynamic.intakeDays} días de comida en ${dynamic.elapsedDays} días, confianza ${(dynamic.confidence*100).toFixed(0)}%, paso máximo ±${maxWeeklyStep} kcal).`
     });
-    showAdjustAlert(`🧠 Modelo dinámico (${dynamic.weightDays} pesajes, ${dynamic.intakeDays} días de comida en ${dynamic.elapsedDays} días): mantenimiento real estimado ~${Math.round(dynamic.estimatedMaintenance)} kcal/día. Objetivo ajustado a ${finalTarget} kcal (antes ${Math.round(prevTarget)}).`);
+    showAdjustAlert(`🧠 Modelo dinámico (confianza ${(dynamic.confidence*100).toFixed(0)}%, ${dynamic.weightDays} pesajes, ${dynamic.intakeDays} días de comida): mantenimiento real estimado ~${Math.round(smoothedMaintenance)} kcal/día. Objetivo ajustado a ${finalTarget} kcal (antes ${Math.round(prevTarget)}).`);
     showToast(`Objetivo recalculado (modelo dinámico): ${finalTarget} kcal`);
     return;
   }
@@ -1254,7 +1304,13 @@ function assistantStateKey(sums, target, logsCount, override){
 // ingeridos y restantes, comidas ya registradas para no repetirlas, comidas que
 // faltan por horario, preferencias e histórico) y pide a la IA (modelo bueno,
 // el mismo que el plan semanal) que redacte la recomendación del asistente.
-async function requestDailyAssistantAI(sums, target, logs, date){
+// Bloque de contexto factual compartido: el estado real de un día concreto
+// (kcal/macros objetivo vs. ingeridos vs. restantes, comidas registradas,
+// hora del día y cuántas comidas quedan por delante, e histórico reciente).
+// Lo reutilizan tanto el asistente de la pestaña "Hoy" como el chat del
+// coach, para que AMBOS razonen sobre exactamente los mismos datos en vez
+// de que el chat solo vea el objetivo de kcal a secas.
+async function buildDailyStatusText(sums, target, logs, date){
   const mealsTarget = Number(profile.mealsPerDay) || 5;
   const mealsRemainingCount = Math.max(1, mealsTarget - logs.length);
   const { hour, effective: mealsRemaining } = estimateTimeAdjustedMealsRemaining(mealsTarget, mealsRemainingCount);
@@ -1269,9 +1325,7 @@ async function requestDailyAssistantAI(sums, target, logs, date){
   const loggedList = logs.length ? logs.map(l => `${l.time || ''} ${l.label} (${Math.round(l.kcal)} kcal)`).join('; ') : 'ninguna todavía';
   const history = await buildRecentHistorySummary(14);
 
-  const prompt = `Eres el asistente de la pestaña "Hoy" de Bulking OS, una app de nutrición para volumen (ganancia muscular). Responde SOLO este JSON, sin texto ni markdown fuera de él: {"title":"máximo 6 palabras, con un emoji delante","body":"2-3 frases directas, sin markdown"}.
-
-Estado de HOY (${formatDateLabel(date)}, hora actual ${hourLabel}):
+  return `Estado de ${formatDateLabel(date)} (hora actual ${hourLabel}):
 - Kcal: objetivo ${Math.round(target.kcal)}, ingeridas ${Math.round(sums.kcal)}, restantes ${Math.round(remKcal)}.
 - Proteína: objetivo ${Math.round(target.p)}g, ingerida ${Math.round(sums.p)}g, restante ${Math.round(remP)}g.
 - Carbohidratos: objetivo ${Math.round(target.c)}g, ingeridos ${Math.round(sums.c)}g, restantes ${Math.round(remC)}g.
@@ -1279,7 +1333,15 @@ Estado de HOY (${formatDateLabel(date)}, hora actual ${hourLabel}):
 - Azúcar: objetivo recomendado (OMS, <5% de las kcal) ${Math.round(target.s)}g, ingerido ${Math.round(sums.s)}g, restante ${Math.round(remS)}g.
 - Comidas registradas hoy (${logs.length}/${mealsTarget} previstas, quedan realistamente ${mealsRemaining} por la hora que es): ${loggedList}.
 - Preferencias y restricciones: ${profile.preferences || 'ninguna indicada'}.
-${history ? '- ' + history : ''}
+${history ? '- ' + history : ''}`;
+}
+
+async function requestDailyAssistantAI(sums, target, logs, date){
+  const statusText = await buildDailyStatusText(sums, target, logs, date);
+
+  const prompt = `Eres el asistente de la pestaña "Hoy" de Bulking OS, una app de nutrición para volumen (ganancia muscular). Responde SOLO este JSON, sin texto ni markdown fuera de él: {"title":"máximo 6 palabras, con un emoji delante","body":"2-3 frases directas, sin markdown"}.
+
+${statusText}
 
 Instrucciones:
 - Sugiere QUÉ TIPO de comida encaja mejor con lo que falta de kcal/macros/azúcar (no des receta completa ni cantidades), evitando repetir algo que ya aparece en las comidas registradas hoy.
@@ -1469,159 +1531,68 @@ async function callGemini(prompt, isJson=false, model=GEMINI_MODEL, maxRetries=2
 }
 
 // =========================================
-// 🎯 PIPELINE DE PRECISIÓN NUTRICIONAL (Niveles 1-4)
+// 🎯 PIPELINE DE ESTIMACIÓN NUTRICIONAL (100% modelo de IA)
 // =========================================
-// Nivel 1/2/3 (packaging / BD oficial / marca): se resuelven consultando
-// Open Food Facts (gratis, sin API key, cobertura buena de productos de
-// supermercado españoles/europeos, incluye datos declarados en el
-// packaging por el propio fabricante). Solo si OFF no tiene el producto se
-// recurre a la IA (Nivel 4), y dentro de ese nivel, SOLO si el alimento
-// parece de marca/regional se le permite a Gemini usar su herramienta
-// nativa de Google Search (misma API key, sin servicio de búsqueda nuevo)
-// para no inventar sobre productos que sí tienen datos reales en algún
-// sitio. Cada resultado lleva un score de fiabilidad 0-100:
-//   95-100 datos oficiales (OFF con match exacto)
-//   80-95  marca validada (OFF con match de marca, o búsqueda web confirmada)
-//   60-80  base genérica / estimación por tabla de composición
-//   <60    estimación pura de IA sin ningún dato verificable
-const RELIABILITY = { OFFICIAL: 97, BRAND: 87, GENERIC: 70, AI_ONLY: 45 };
-
+// Se quitó deliberadamente la consulta a Open Food Facts y la búsqueda web:
+// para comida casera (el caso normal al hablar/escribir rápido) casi nunca
+// encontraban un match fiable y solo añadían 1-2 llamadas de red extra de
+// latencia sin mejorar la precisión real. Ahora es una única llamada a
+// Gemini que hace TODO el trabajo (identificar alimento, gramos y macros a
+// la vez), con anclas de ración de cocina casera española en el prompt para
+// que el tamaño de ración se acerque más a la realidad. Un caché ligero por
+// texto normalizado evita repetir la llamada si registras exactamente lo
+// mismo otra vez (ej. "las mismas 2 tostadas de siempre").
 function normalizeFoodKey(text){
   return String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
 }
 async function getFoodCache(key){ return await safeGet('foodCache:' + key); }
 async function setFoodCache(key, val){ await safeSet('foodCache:' + key, val); }
 
-// Nivel 2/3: Open Food Facts. Busca por texto y se queda con el candidato
-// con el conjunto de macros más completo (no solo el primero devuelto).
-async function searchOpenFoodFacts(query){
-  try {
-    const url = `${OFF_API_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,nutriments,quantity,code`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if(!res.ok) return null;
-    const data = await res.json();
-    const candidates = (data.products || []).filter(p => p.nutriments &&
-      Number.isFinite(Number(p.nutriments['energy-kcal_100g'])) &&
-      Number.isFinite(Number(p.nutriments['proteins_100g'])));
-    if(!candidates.length) return null;
-    const completeness = p => ['carbohydrates_100g','fat_100g','sugars_100g'].filter(k => Number.isFinite(Number(p.nutriments[k]))).length;
-    candidates.sort((a,b) => completeness(b) - completeness(a));
-    return candidates[0];
-  } catch(e){ console.error('Fallo al consultar Open Food Facts:', e); return null; }
-}
+// Referencias de ración de cocina casera española, para que la IA ancle
+// mejor los gramos cuando el usuario no da cantidad exacta (caso más común
+// al dictar por voz o textear rápido).
+const PORTION_ANCHORS = `Pechuga de pollo mediana ≈150g · Muslo de pollo ≈120g · Filete de ternera/cerdo ≈150g · Lomo de pescado ≈150g · Plato de arroz o pasta (guarnición) cocido ≈150-200g, como plato único ≈250-300g · Puñado de arroz/pasta en crudo ≈70-90g/persona · Patata mediana ≈150g · Huevo grande ≈55g · Rebanada de pan ≈30-40g · Cucharada sopera de aceite ≈10-13g · Yogur individual ≈125g · Pieza de fruta mediana (manzana, plátano, naranja) ≈130-180g · Puñado de frutos secos ≈25-30g · Cazo de legumbre cocida (guarnición) ≈150-180g, plato único ≈250g.`;
 
-function macrosFromOFF(product, grams){
-  const n = product.nutriments;
-  const factor = grams / 100;
-  return {
-    label: `${product.product_name || 'Producto'}${product.brands ? ' (' + product.brands.split(',')[0] + ')' : ''}`,
-    kcal: Number(n['energy-kcal_100g'] || 0) * factor,
-    p: Number(n['proteins_100g'] || 0) * factor,
-    c: Number(n['carbohydrates_100g'] || 0) * factor,
-    f: Number(n['fat_100g'] || 0) * factor,
-    s: Number(n['sugars_100g'] || 0) * factor,
-    reliability: product.brands ? RELIABILITY.BRAND : RELIABILITY.OFFICIAL,
-    source: `Open Food Facts${product.brands ? ' · ' + product.brands.split(',')[0] : ''}`
-  };
-}
-
-// Nivel 4a: Gemini SOLO parsea qué alimento y cuántos gramos, sin inventar
-// macros todavía. Esto es lo que permite decidir si merece la pena ir a OFF.
-async function parseFoodMention(text){
-  const prompt = `Analiza este texto de un registro de comida: "${text}". Identifica el alimento o producto principal y la cantidad en gramos (o ml si es líquido; conviértelo a gramos usando densidad aproximada si hace falta). Si es un producto envasado/de marca reconocible, indícalo.
-Devuelve SOLO JSON: {"foodName":"nombre genérico y claro para buscar en una base de datos nutricional","brand":"marca o null","grams":numero,"looksPackaged":true|false,"isFood":true|false}`;
-  return await callGemini(prompt, true, GEMINI_MODEL);
-}
-
-// Nivel 4b: solo si OFF falló Y el producto parece de marca/regional, se
-// permite a Gemini usar su herramienta nativa de Google Search (misma
-// GEMINI_API_KEY; sin servicio de búsqueda adicional) para no inventar
-// sobre un producto con ficha nutricional real publicada en algún sitio.
-async function estimateWithGroundedSearch(text, foodName, brand){
-  const prompt = `Busca la información nutricional real (kcal y macros por 100g o por unidad) de este producto: "${foodName}"${brand ? ' de la marca ' + brand : ''}, mencionado como: "${text}". Usa la cantidad indicada en el texto original.
-Devuelve SOLO JSON, sin texto ni markdown fuera de él: {"label":"nombre del producto","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"foundRealData":true|false,"reply":"mensaje corto"}
-Si NO encuentras datos reales del producto, pon "foundRealData":false y da tu mejor estimación igualmente.`;
-  const res = await callGeminiWithSearch(prompt);
-  return res;
-}
-
-// Nivel 4c: último recurso, estimación pura de IA con tablas de composición
-// estándar (el comportamiento original, ahora marcado con fiabilidad <60).
+// Única llamada: identifica el alimento, estima gramos con las anclas de
+// ración de arriba, y calcula kcal/macros con tablas de composición
+// estándar españolas, todo en un mismo prompt/JSON.
 async function estimateWithAIOnly(text){
-  const prompt = `Actúa como Dietista Clínico. Extrae Kcal y Macros (g) de esta comida: "${text}".
-Aplica tablas de composición estándar españolas. Incluye "s" (azúcares totales en g, estimación realista: 0 si es un alimento sin azúcar como pollo o brócoli, valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados). Si el texto no es comida, pon todo a 0.
-Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
+  const prompt = `Actúa como Dietista Clínico español experto en estimar raciones de comida casera a partir de descripciones rápidas (dictadas por voz o texteadas deprisa, a menudo sin cantidad exacta).
+
+Texto del registro: "${text}"
+
+Referencias de ración habituales en cocina casera española (úsalas para estimar gramos cuando el texto no da cantidad exacta): ${PORTION_ANCHORS}
+
+Pasos a seguir mentalmente (no los muestres, solo da el resultado final):
+1. Identifica cada alimento/ingrediente mencionado y una cantidad razonable en gramos para cada uno (usa las referencias de arriba si no se especifica cantidad; si hay varias piezas o raciones, multiplica en consecuencia).
+2. Aplica tablas de composición nutricional estándar españolas por alimento.
+3. Suma el total de kcal y macros de todos los alimentos del texto.
+
+Incluye "s" (azúcares totales en g): 0 si es un alimento sin azúcar (pollo, brócoli, aceite...), valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados.
+Si el texto no describe comida real, pon todos los valores numéricos a 0 y explica brevemente por qué en "reply".
+
+Devuelve SOLO JSON estricto, sin texto ni markdown fuera de él:
+{"label":"Nombre resumido de la comida","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
   const res = await callGemini(prompt, true, GEMINI_MODEL);
-  if(res) { res.reliability = RELIABILITY.AI_ONLY; res.source = 'Estimación de IA (sin dato verificable)'; }
+  if(res){ res.source = 'Estimación de IA'; }
   return res;
 }
 
-// Orquestador del pipeline completo. SIEMPRE intenta datos verificables
-// antes de dejar que la IA invente macros libremente.
+// Envoltorio con caché: si el texto normalizado ya se estimó antes, reutiliza
+// el resultado sin llamar a la IA otra vez (rápido para comidas repetidas
+// dictadas con las mismas palabras). Si no, hace la única llamada a Gemini
+// y guarda el resultado para la próxima vez.
 async function estimateFoodEntry(text){
-  const parsed = await parseFoodMention(text);
-  if(!parsed || parsed.isFood === false){
-    return await estimateWithAIOnly(text); // fallback si el parseo falla del todo
+  const cacheKey = normalizeFoodKey(text);
+  const cached = cacheKey ? await getFoodCache(cacheKey) : null;
+  if(cached && cached.result && validateFoodEntry(cached.result)){
+    return { ...cached.result, source: (cached.result.source || 'Estimación de IA') + ' (caché)' };
   }
-  const cacheKey = normalizeFoodKey(`${parsed.foodName} ${parsed.brand || ''}`);
-  const cached = await getFoodCache(cacheKey);
-  const grams = Number(parsed.grams) > 0 ? Number(parsed.grams) : 100;
-
-  if(cached && cached.per100g){
-    const scaled = { ...cached.per100g, kcal: cached.per100g.kcal*grams/100, p: cached.per100g.p*grams/100, c: cached.per100g.c*grams/100, f: cached.per100g.f*grams/100, s: cached.per100g.s*grams/100 };
-    return { ...scaled, label: cached.label, reliability: cached.reliability, source: cached.source + ' (caché)' };
+  const result = await estimateWithAIOnly(text);
+  if(result && validateFoodEntry(result) && result.kcal > 0 && cacheKey){
+    await setFoodCache(cacheKey, { result });
   }
-
-  const offQuery = `${parsed.foodName} ${parsed.brand || ''}`.trim();
-  const offProduct = await searchOpenFoodFacts(offQuery);
-  if(offProduct){
-    const result = macrosFromOFF(offProduct, grams);
-    await setFoodCache(cacheKey, {
-      label: result.label, reliability: result.reliability, source: result.source,
-      per100g: { kcal: Number(offProduct.nutriments['energy-kcal_100g']||0), p: Number(offProduct.nutriments['proteins_100g']||0), c: Number(offProduct.nutriments['carbohydrates_100g']||0), f: Number(offProduct.nutriments['fat_100g']||0), s: Number(offProduct.nutriments['sugars_100g']||0) }
-    });
-    return result;
-  }
-
-  // OFF no lo tiene: si parece de marca/regional, dale una oportunidad a la
-  // búsqueda web antes de rendirte a la estimación pura.
-  if(parsed.looksPackaged){
-    const grounded = await estimateWithGroundedSearch(text, parsed.foodName, parsed.brand);
-    if(grounded && validateFoodEntry(grounded) && grounded.foundRealData){
-      grounded.reliability = RELIABILITY.BRAND;
-      grounded.source = 'Búsqueda web (Google Search vía Gemini)';
-      await setFoodCache(cacheKey, { label: grounded.label, reliability: grounded.reliability, source: grounded.source, per100g: { kcal: grounded.kcal*100/grams, p: grounded.p*100/grams, c: grounded.c*100/grams, f: grounded.f*100/grams, s: (grounded.s||0)*100/grams } });
-      return grounded;
-    }
-  }
-
-  const fallback = await estimateWithAIOnly(text);
-  if(fallback) fallback.reliability = RELIABILITY.GENERIC <= 60 ? RELIABILITY.AI_ONLY : fallback.reliability;
-  return fallback;
-}
-
-// Variante de callGemini que activa la herramienta nativa "google_search" de
-// Gemini (misma API key, sin servicio de búsqueda externo). Solo se usa para
-// el Nivel 4b del pipeline nutricional (productos de marca/regionales que
-// Open Food Facts no tiene). Gemini decide él solo si de verdad necesita
-// buscar o no, así que no dispara búsquedas para cosas que ya sabe.
-async function callGeminiWithSearch(prompt){
-  if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("TU_API_KEY_AQUI")) return null;
-  const payload = { contents: [{parts:[{text:prompt}]}], tools: [{ google_search: {} }] };
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(()=>controller.abort(), 25000);
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_PLAN}:generateContent?key=${GEMINI_API_KEY}`, {
-      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if(!res.ok) return null;
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('') || '';
-    const start = text.indexOf('{'); const end = text.lastIndexOf('}');
-    if(start === -1 || end === -1) return null;
-    return JSON.parse(text.substring(start, end+1));
-  } catch(e){ console.error('Fallo en búsqueda web vía Gemini:', e); return null; }
+  return result;
 }
 
 // =========================================
@@ -1632,16 +1603,14 @@ function validateFoodEntry(entry){
   return ['kcal','p','c','f','s'].every(key => Number.isFinite(Number(entry[key])) && Number(entry[key]) >= 0);
 }
 
-// Color/etiqueta del score de fiabilidad (punto 7 del pipeline nutricional).
-function reliabilityBadge(score){
-  if(score == null) return '';
-  const s = Math.round(score);
-  let color, label;
-  if(s >= 95){ color='var(--green)'; label='Datos oficiales'; }
-  else if(s >= 80){ color='#60a5fa'; label='Marca validada'; }
-  else if(s >= 60){ color='var(--accent)'; label='Base genérica'; }
-  else { color='var(--red)'; label='Estimación IA'; }
-  return `<div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:5px 10px; border-radius:20px; background:rgba(255,255,255,0.06); font-size:.72rem; font-weight:700; color:${color};">🎯 Fiabilidad ${s}/100 · ${label}</div>`;
+// Etiqueta de origen de la estimación (ya no hay niveles de fiabilidad
+// distintos: todo pasa por el mismo modelo de IA, con o sin caché).
+function reliabilityBadge(source){
+  if(!source) return '';
+  const cached = /caché/i.test(source);
+  const color = cached ? '#60a5fa' : 'var(--accent)';
+  const label = cached ? '⚡ Reutilizado de un registro anterior' : '🤖 Estimación de IA';
+  return `<div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:5px 10px; border-radius:20px; background:rgba(255,255,255,0.06); font-size:.72rem; font-weight:700; color:${color};">${label}</div>`;
 }
 
 function showFoodReview(entry, isEdit=false){
@@ -1649,7 +1618,7 @@ function showFoodReview(entry, isEdit=false){
   editingLogId = isEdit ? entry.id : null;
   const review = $('food-review');
   review.style.display = 'block';
-  review.innerHTML = `<strong>${isEdit ? 'Editar registro' : 'Revisa antes de guardar'}</strong><div style="color:var(--text-dim);font-size:.8rem;margin-top:4px;">${isEdit ? 'Corrige los valores y confirma (pulsa el número para escribir encima).' : 'La IA ha estimado estos valores. Pulsa para editarlos.'}</div>${reliabilityBadge(entry.reliability)}
+  review.innerHTML = `<strong>${isEdit ? 'Editar registro' : 'Revisa antes de guardar'}</strong><div style="color:var(--text-dim);font-size:.8rem;margin-top:4px;">${isEdit ? 'Corrige los valores y confirma (pulsa el número para escribir encima).' : 'La IA ha estimado estos valores. Pulsa para editarlos.'}</div>${reliabilityBadge(entry.source)}
     <div class="food-review-grid">
       <input id="review-label" value="${String(entry.label).replace(/"/g, '&quot;')}" aria-label="Nombre de la comida">
       <input id="review-kcal" type="number" min="0" step="1" value="${Math.round(entry.kcal)}" aria-label="Kcal">
@@ -1694,7 +1663,7 @@ function showFoodReviewComparison(oldEntry, newEntry, kcalDiff){
         <div style="color:var(--green); font-size:.68rem; text-transform:uppercase; margin-bottom:6px;">Nueva</div>
         <div style="font-weight:700;">${newEntry.label}</div>
         <div style="margin-top:4px;">${Math.round(newEntry.kcal)} kcal · P:${Math.round(newEntry.p)} C:${Math.round(newEntry.c)} G:${Math.round(newEntry.f)}</div>
-        <div style="margin-top:6px;">${reliabilityBadge(newEntry.reliability)}</div>
+        <div style="margin-top:6px;">${reliabilityBadge(newEntry.source)}</div>
       </div>
     </div>
     <div style="font-size:.75rem; color:var(--text-dim); margin-bottom:10px;">Texto original: "${String(oldEntry.originalText || '').replace(/"/g, '&quot;')}"</div>
@@ -1721,26 +1690,23 @@ window.reestimateLog = async (id) => {
     showToast('Este registro no guardó el texto original (es de antes de esta función, o se editó a mano), así que no se puede re-estimar.', true);
     return;
   }
-  showToast('Re-estimando con el pipeline de precisión (OFF → búsqueda → IA)...');
-  // A diferencia de antes, esto NO repite el mismo prompt de estimación
-  // directa: pasa por el pipeline completo (Open Food Facts primero, luego
-  // búsqueda web si procede, IA solo como último recurso), así que puede
-  // dar un resultado genuinamente distinto y más fiable si el registro
-  // original vino de una estimación pura de IA.
-  const res = await estimateFoodEntry(entry.originalText);
+  showToast('Pidiendo una nueva estimación a la IA...');
+  // Llama directamente al modelo (sin pasar por el caché de estimateFoodEntry):
+  // re-estimar solo tiene sentido si es una pasada genuinamente nueva, no si
+  // te devuelve lo mismo que ya tenías guardado en caché.
+  const res = await estimateWithAIOnly(entry.originalText);
   if(!validateFoodEntry(res) || res.kcal <= 0){
     showToast('No se pudo generar una nueva estimación ahora mismo.', true);
     return;
   }
   res.originalText = entry.originalText;
+  const cacheKey = normalizeFoodKey(entry.originalText);
+  if(cacheKey) await setFoodCache(cacheKey, { result: res }); // refresca el caché con la nueva pasada
 
   const kcalDiff = res.kcal - entry.kcal;
   const pctDiff = entry.kcal > 0 ? Math.abs(kcalDiff) / entry.kcal * 100 : 100;
-  // Si el método es el mismo (misma fuente/fiabilidad) y el cambio es
-  // trivial, no fingimos un "hallazgo": lo decimos claramente.
-  const sameSource = entry.source && res.source && entry.source === res.source;
-  if(sameSource && pctDiff < 3){
-    showToast(`Sin cambios relevantes: la fuente (${res.source}) ya dio el mismo resultado (diferencia de ${Math.round(Math.abs(kcalDiff))} kcal, <3%).`, false);
+  if(pctDiff < 3){
+    showToast(`Sin cambios relevantes: la nueva estimación da un resultado muy similar (diferencia de ${Math.round(Math.abs(kcalDiff))} kcal, <3%).`, false);
     return;
   }
   showFoodReviewComparison(entry, res, kcalDiff);
@@ -1782,7 +1748,7 @@ async function processText(voiceText){
   if(!input.trim()) return;
   
   inputEl.value=''; btnEl.disabled=true; $('btn-mic').disabled=true;
-  $('ai-status').innerText = 'Buscando datos verificables (Open Food Facts)...';
+  $('ai-status').innerText = 'Estimando kcal y macros con la IA...';
 
   const res = await estimateFoodEntry(input);
   if(validateFoodEntry(res) && res.kcal > 0){
@@ -2113,12 +2079,28 @@ async function sendChatMessage(){
   h.push({ role:'user', text });
   renderChatWindow(h);
 
-  const baseKcal = profile.targetKcal||2500;
-  
-  const prompt = `Eres coach nutricionista del usuario en la app Bulking OS. Habla directo, clínico pero amistoso.
-Usuario Kcal Base: ${Math.round(baseKcal)}. Peso actual: ${profile.weight} kg. Meta de ganancia: ${profile.weeklyGainGoalKg || 0.3} kg/semana.
-Preferencias: ${profile.preferences || 'sin restricciones indicadas'}.
-Si el usuario indica que ayer comió poco/mucho y quiere compensar HOY, evalúa y propone un ajuste (max +- 400 kcal) devolviéndolo en "suggestedDelta" (ej: 200). Si no hay ajuste para HOY, "suggestedDelta" es 0.
+  // Contexto COMPLETO de hoy: mismos datos exactos que ve el asistente de la
+  // pestaña "Hoy" (kcal/macros objetivo, ingeridos y restantes, comidas ya
+  // registradas, hora del día e histórico reciente), para que el coach
+  // pueda responder con conocimiento real de la situación, no a ciegas.
+  const t = todayStr();
+  const logsToday = await getLog(t);
+  const sumsToday = sumEntries(logsToday);
+  const overrideToday = await getDailyOverride(t);
+  const tgtToday = getTargets(overrideToday);
+  const statusText = await buildDailyStatusText(sumsToday, tgtToday, logsToday, t);
+  const dyn = await computeDynamicMaintenance();
+
+  const prompt = `Eres coach nutricionista del usuario en la app Bulking OS (nutrición para volumen/ganancia muscular). Habla directo, clínico pero amistoso, y usa los datos reales de abajo en vez de suposiciones genéricas.
+
+Perfil: peso actual ${profile.weight} kg, meta de ganancia ${profile.weeklyGainGoalKg || 0.3} kg/semana, kcal base ${Math.round(profile.targetKcal||2500)}${overrideToday ? ` (con un ajuste manual ya aplicado hoy de ${overrideToday>0?'+':''}${overrideToday} kcal)` : ''}.
+${dyn ? `Mantenimiento calórico real estimado (modelo dinámico): ~${Math.round(dyn.estimatedMaintenance)} kcal/día.` : ''}
+
+${statusText}
+
+Instrucciones:
+- Usa las kcal/macros restantes y las comidas ya registradas hoy para responder con precisión (ej. si pregunta si le cabe algo, compáralo con lo que le queda de verdad).
+- Si el usuario indica que ayer comió poco/mucho y quiere compensar HOY, evalúa y propone un ajuste (max +- 400 kcal) devolviéndolo en "suggestedDelta" (ej: 200). Si no hay ajuste para HOY, "suggestedDelta" es 0.
 Historial de charla: ${h.slice(-4).map(m=>`${m.role}: ${m.text}`).join(' | ')}.
 Responde SOLO este JSON: {"reply":"respuesta breve","suggestedDelta":0}`;
 
@@ -2452,6 +2434,11 @@ async function generateBodySummary(){
   const dyn = await computeDynamicMaintenance();
   const whtr = latest && latest.waist ? whtrOf(latest.waist, profile.height) : null;
   const whr = latest && latest.waist && latest.hip ? whrOf(latest.waist, latest.hip) : null;
+  const insights = await computeWeekInsights();
+  const targetHist = ((await safeGet('targetHistory')) || []).slice(-3);
+  const targetHistText = targetHist.length
+    ? `- Últimos ajustes de objetivo: ${targetHist.map(h=>`semana ${h.week}: ${Math.round(h.prevTarget)}→${Math.round(h.newTarget)} kcal (${h.mode==='dinamico'?'modelo dinámico':'básico'})`).join('; ')}.`
+    : '- Aún no se ha completado ningún ajuste semanal automático.';
 
   const prompt = `Actúa como médico especialista en nutrición deportiva y composición corporal. Sé totalmente transparente, directo y basado en evidencia científica, sin paños calientes, como en una consulta clínica real. Analiza estos datos de un usuario en fase de volumen (ganancia muscular):
 - Sexo: ${profile.sex === 'm' ? 'hombre' : 'mujer'}, edad: ${profile.age} años, altura: ${profile.height} cm, peso actual: ${profile.weight.toFixed(1)} kg.
@@ -2461,9 +2448,14 @@ async function generateBodySummary(){
 - FFMI normalizado: ${ffmiNorm.toFixed(1)} (referencia: límite natural típico ~25, Kouri et al. 1995).
 ${whtr ? `- Ratio cintura/altura: ${whtr.toFixed(2)}.` : ''}
 ${whr ? `- Ratio cintura/cadera: ${whr.toFixed(2)}.` : ''}
-${trend.status === 'ok' ? `- Ritmo real de cambio de peso: ${trend.ratePerWeek >= 0 ? '+' : ''}${trend.ratePerWeek.toFixed(2)} kg/semana (${trend.dataPoints} pesajes en ${trend.elapsedDays} días).` : '- Sin histórico de peso suficiente todavía.'}
-${dyn ? `- Mantenimiento calórico real estimado: ${Math.round(dyn.estimatedMaintenance)} kcal/día.` : ''}
+${trend.status === 'ok' ? `- Ritmo real de cambio de peso: ${trend.ratePerWeek >= 0 ? '+' : ''}${trend.ratePerWeek.toFixed(2)} kg/semana (${trend.dataPoints} pesajes en ${trend.elapsedDays} días, confianza ${trend.confidence}).` : '- Sin histórico de peso suficiente todavía.'}
+${dyn ? `- Mantenimiento calórico real estimado (regresión ponderada): ${Math.round(dyn.estimatedMaintenance)} kcal/día (confianza ${(dyn.confidence*100).toFixed(0)}%).` : ''}
 - Objetivo de kcal actual: ${Math.round(profile.targetKcal || 0)} kcal/día. Entrenamientos/semana: ${profile.trainingDays || 0}.
+- Adherencia últimos 7 días: ${insights.kcalDays}/${insights.completeDays || 7} días dentro de ±10% del objetivo de kcal, ${insights.proteinDays}/${insights.completeDays || 7} días con proteína ≥90% del objetivo. Media real ingerida: ${insights.avgKcal ? insights.avgKcal + ' kcal/día' : 'sin registros suficientes'}.
+${targetHistText}
+- Ajuste automático semanal: ${profile.adjustmentPaused ? 'pausado por el usuario' : 'activo'}.
+
+Ten en cuenta la adherencia real y el historial de ajustes al valorar si el objetivo actual tiene sentido o si la falta de progreso (si la hay) se debe más a la adherencia que al objetivo en sí.
 
 Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
 {"veredicto":"1 frase muy directa resumiendo su situación física (musculado/promedio/poco desarrollado, nivel de grasa alto/normal/bajo, comparado con población general y con referencias de fuerza)","analisis":"2-4 frases de análisis clínico basado en evidencia","fortalezas":["punto breve 1","punto breve 2"],"mejoras":["punto breve 1","punto breve 2"],"recomendaciones":["recomendación científica concreta 1","recomendación 2","recomendación 3"]}`;
@@ -2843,10 +2835,13 @@ async function renderDynamicModelStatus(){
     return;
   }
 
-  const diff = dyn.estimatedMaintenance - formulaTdee;
+  const smoothed = Number.isFinite(Number(profile.emaMaintenanceKcal)) ? Number(profile.emaMaintenanceKcal) : dyn.estimatedMaintenance;
+  const diff = smoothed - formulaTdee;
+  const confColor = dyn.confidence >= 0.7 ? 'var(--green)' : dyn.confidence >= 0.4 ? 'var(--accent)' : 'var(--red)';
   el.innerHTML = `
-    <div style="padding:12px; border-radius:var(--radius-sm); background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); margin-bottom:12px; font-size:0.82rem; color:#d1fae5;">✅ Modelo dinámico activo (${dyn.weightDays} pesajes, ${dyn.intakeDays} días de comida).</div>
-    <div style="display:flex; justify-content:space-between; padding-bottom:10px; border-bottom:1px solid var(--glass-border); margin-bottom:10px;"><span style="color:var(--text-dim);">Mantenimiento real estimado</span><b>${Math.round(dyn.estimatedMaintenance)} kcal</b></div>
+    <div style="padding:12px; border-radius:var(--radius-sm); background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); margin-bottom:12px; font-size:0.82rem; color:#d1fae5;">✅ Modelo dinámico activo (${dyn.weightDays} pesajes, ${dyn.intakeDays} días de comida) · confianza <b style="color:${confColor};">${(dyn.confidence*100).toFixed(0)}%</b></div>
+    <div style="display:flex; justify-content:space-between; padding-bottom:10px; border-bottom:1px solid var(--glass-border); margin-bottom:10px;"><span style="color:var(--text-dim);">Mantenimiento estimado (suavizado)</span><b>${Math.round(smoothed)} kcal</b></div>
+    <div style="display:flex; justify-content:space-between; padding-bottom:10px; border-bottom:1px solid var(--glass-border); margin-bottom:10px;"><span style="color:var(--text-dim);">Regresión de esta semana (sin suavizar)</span><b>${Math.round(dyn.estimatedMaintenance)} kcal</b></div>
     <div style="display:flex; justify-content:space-between;"><span style="color:var(--text-dim);">Fórmula (Mifflin-St Jeor)</span><b>${Math.round(formulaTdee)} kcal <span style="color:${diff>=0?'var(--green)':'var(--red)'}; font-size:.78rem;">(${diff>=0?'+':''}${Math.round(diff)})</span></b></div>
   `;
 }
@@ -2894,9 +2889,12 @@ async function renderTrendCharts(){
   });
 }
 
-async function renderWeekInsights(){
-  const avg = await getAverageWeight(0, 7);
-  let kcalDays = 0; let proteinDays = 0; let completeDays = 0; let kcalTotal = 0;
+// Calcula la adherencia de los últimos 7 días (kcal, proteína, media real).
+// Función pura sin efectos DOM para que también pueda alimentar el prompt
+// del resumen clínico de IA, no solo el render del dashboard.
+async function computeWeekInsights(){
+  const avgWeight = await getAverageWeight(0, 7);
+  let kcalDays = 0, proteinDays = 0, completeDays = 0, kcalTotal = 0;
   const targetKcal = Number(profile.targetKcal || 2500);
   const targetProtein = Number(profile.targetProtein || profile.weight * 2 || 130);
   for(let i = 0; i < 7; i++){
@@ -2909,11 +2907,16 @@ async function renderWeekInsights(){
     if(sums.p >= targetProtein * 0.9) proteinDays++;
   }
   const avgKcal = completeDays ? Math.round(kcalTotal / completeDays) : 0;
-  const html = `<div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--glass-border); padding-bottom:8px;"><span>Meta diaria:</span><b style="color:var(--accent);">${Math.round(targetKcal)} kcal</b></div>
-                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Media peso 7 días:</span><b>${avg === null ? 'Aún faltan pesajes' : avg.toFixed(1)+' kg'}</b></div>
-                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Adherencia kcal:</span><b>${kcalDays}/${completeDays || 7} días</b></div>
-                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Proteína cumplida:</span><b>${proteinDays}/${completeDays || 7} días</b></div>
-                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Media ingerida:</span><b>${avgKcal ? avgKcal+' kcal' : 'Sin registros'}</b></div>
+  return { avgWeight, kcalDays, proteinDays, completeDays, avgKcal, targetKcal, targetProtein };
+}
+
+async function renderWeekInsights(){
+  const ins = await computeWeekInsights();
+  const html = `<div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--glass-border); padding-bottom:8px;"><span>Meta diaria:</span><b style="color:var(--accent);">${Math.round(ins.targetKcal)} kcal</b></div>
+                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Media peso 7 días:</span><b>${ins.avgWeight === null ? 'Aún faltan pesajes' : ins.avgWeight.toFixed(1)+' kg'}</b></div>
+                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Adherencia kcal:</span><b>${ins.kcalDays}/${ins.completeDays || 7} días</b></div>
+                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Proteína cumplida:</span><b>${ins.proteinDays}/${ins.completeDays || 7} días</b></div>
+                <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Media ingerida:</span><b>${ins.avgKcal ? ins.avgKcal+' kcal' : 'Sin registros'}</b></div>
                 <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Ajuste automático:</span><b>${profile.adjustmentPaused?'Pausado':'Activo'}</b></div>`;
   $('insights-card').innerHTML = html;
 }
@@ -3024,6 +3027,14 @@ window.runSelfTests = async function(){
   check('RFM: valor en rango plausible', rfm !== null && rfm >= 2 && rfm <= 60);
   const ymca = ymcaBodyFat({ waistCm: 85, weightKg: 80, sex: 'm' });
   check('YMCA: valor en rango plausible', ymca !== null && ymca >= 2 && ymca <= 60);
+
+  // --- Regresión lineal (modelo de mantenimiento dinámico) ---
+  const perfectLine = [{x:0,y:10},{x:1,y:12},{x:2,y:14},{x:3,y:16}]; // pendiente exacta = 2
+  check('Regresión: pendiente exacta en línea perfecta (=2)', approx(linearRegressionSlope(perfectLine), 2, 0.001));
+  const noisyLine = [{x:0,y:10},{x:1,y:11.5},{x:2,y:14.5},{x:3,y:15.5}]; // pendiente ~1.83, con ruido
+  const noisySlope = linearRegressionSlope(noisyLine);
+  check('Regresión: pendiente razonable con ruido (entre 1 y 3)', noisySlope > 1 && noisySlope < 3);
+  check('Regresión: null con menos de 2 puntos', linearRegressionSlope([{x:0,y:5}]) === null);
 
   // --- CUN-BAE ---
   const cunbae = cunBaeBodyFat(24.7, 30, 'm');
