@@ -49,7 +49,7 @@ GEMINI_MODEL_PLAN = "gemini-3.5-flash"
 # sincronización (el "?uid=...") puede leer/escribir tus datos, igual que
 # con un Google Doc compartido por link. Suficiente para uso personal, pero
 # no subas ese link a ningún sitio público.
-FIREBASE_DB_URL = "https://bulking-c9496-default-rtdb.europe-west1.firebasedatabase.app/"
+FIREBASE_DB_URL = "https://bulking-c9496-default-rtdb.europe-west1.firebasedatabase.app"
 
 # 🍽️ Open Food Facts (base de datos nutricional oficial/comunitaria, gratis,
 # sin API key, con buena cobertura de productos españoles/europeos). Se usa
