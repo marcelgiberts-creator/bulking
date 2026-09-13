@@ -25,8 +25,9 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 GEMINI_API_KEY_B64 = "QVEuQWI4Uk42S2szdjJuZS1ONE9qZWVwR0FtNmVOOHZnRGgxUENFOXBTZ1VRQng5TkJ0ZXc="
 # Modelo rápido/barato para tareas cortas (loguear comidas, chat, sustituciones).
 GEMINI_MODEL = "gemini-3.5-flash-lite"
-# Modelo más capaz para la generación del plan semanal completo (tarea larga y compleja).
-GEMINI_MODEL_PLAN = "gemini-3.5-flash-lite"
+# Modelo más capaz para la generación del plan semanal completo, el resumen
+# clínico y la re-estimación (tareas que se benefician de más razonamiento).
+GEMINI_MODEL_PLAN = "gemini-3.5-flash"
 
 # 🔗 SINCRONIZACIÓN EN LA NUBE (Firebase Realtime Database)
 # Permite que tus datos (comidas, pesos, perfil...) viajen contigo entre PC,
@@ -38,13 +39,24 @@ GEMINI_MODEL_PLAN = "gemini-3.5-flash-lite"
 #   3. Copia la URL que aparece arriba de los datos (tipo
 #      "https://TU-PROYECTO-default-rtdb.europe-west1.firebasedatabase.app")
 #      y pégala abajo, SIN barra final.
-# Si lo dejas vacío (""), la app sigue funcionando en local (localStorage)
-# exactamente como hasta ahora, sin sincronización entre dispositivos.
+# ⚠️ IMPORTANTE: si lo dejas vacío (""), la app funciona SOLO con localStorage,
+# que es exclusivo de cada navegador/origen. Esto significa que localhost y tu
+# web publicada en GitHub Pages son dos almacenes completamente distintos y
+# NUNCA verán los mismos datos entre sí. Para que "abrir la web" muestre lo
+# mismo que "abrir localhost", esta URL debe estar configurada: es la única
+# fuente de verdad compartida entre ambos entornos.
 # ⚠️ Nota de seguridad: en modo de prueba, cualquiera con tu link de
 # sincronización (el "?uid=...") puede leer/escribir tus datos, igual que
 # con un Google Doc compartido por link. Suficiente para uso personal, pero
 # no subas ese link a ningún sitio público.
-FIREBASE_DB_URL = ""
+FIREBASE_DB_URL = "https://bulking-c9496-default-rtdb.europe-west1.firebasedatabase.app/"
+
+# 🍽️ Open Food Facts (base de datos nutricional oficial/comunitaria, gratis,
+# sin API key, con buena cobertura de productos españoles/europeos). Se usa
+# como Nivel 2/3 del pipeline de precisión nutricional: si el usuario nombra
+# un producto envasado reconocible, se consulta aquí ANTES de dejar que la IA
+# invente macros. No requiere configuración: la URL base es pública.
+OFF_API_BASE = "https://world.openfoodfacts.org"
 
 # 🍔 Alimentos de relleno (Alta densidad calórica, baja saciedad)
 FILLER_FOODS = "Maltodextrina en polvo, clear/hydro protein de limon, crema de arroz, harina de arroz, aceite de oliva virgen extra, miel, crema de cacahute, whey protein de chocolate"
@@ -359,6 +371,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <!-- ========================================================================= -->
   <div id="tab-dash" class="section active">
     <h2>Resumen <span class="subtitle" id="date-display"></span></h2>
+    <div id="no-sync-banner" class="alert warn" style="display:none;"></div>
     <div id="adjust-alert" class="alert" style="display:none;"></div>
     <div id="backup-reminder" class="alert" style="display:none;"></div>
     <div id="daily-assistant" class="daily-assistant" style="display:none;"></div>
@@ -522,7 +535,20 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="glass-card">
       <h3>📐 Composición corporal</h3>
       <div id="body-comp-content"></div>
-      <div class="chart-container" id="body-comp-chart-wrap" style="display:none; margin-top:20px;"><canvas id="bodyCompChart"></canvas></div>
+      <div id="body-comp-chart-wrap" style="display:none; margin-top:20px;">
+        <div class="form-group" style="max-width:260px; margin-bottom:6px;">
+          <label>Métrica del gráfico</label>
+          <select id="metric-select" onchange="renderBodyCompositionChart()">
+            <option value="weight">Peso (kg)</option>
+            <option value="bmi">IMC</option>
+            <option value="bodyfat">% Grasa corporal</option>
+            <option value="ffmi">FFMI (normalizado)</option>
+            <option value="fatmass">Masa grasa (kg)</option>
+            <option value="leanmass">Masa libre de grasa (kg)</option>
+          </select>
+        </div>
+        <div class="chart-container"><canvas id="bodyCompChart"></canvas></div>
+      </div>
     </div>
 
     <!-- REGISTRO Y GRÁFICA DE PESO -->
@@ -670,6 +696,7 @@ const GEMINI_MODEL = "__MODEL__";
 const GEMINI_MODEL_PLAN = "__MODEL_PLAN__";
 const FILLER_FOODS = "__FILLER__";
 const FIREBASE_DB_URL = "__FIREBASE_DB_URL__";
+const OFF_API_BASE = "__OFF_API_BASE__";
 
 // UTILIDADES DOM Y FECHAS
 const $ = id => document.getElementById(id);
@@ -812,6 +839,34 @@ function renderSyncStatus(){
 window.copySyncLink = () => {
   navigator.clipboard.writeText(getSyncLink()).then(()=>showToast('Link copiado')).catch(()=>showToast('No se pudo copiar', true));
 };
+
+// Aviso imposible de pasar por alto: sin FIREBASE_DB_URL configurada, cada
+// origen (localhost vs tu URL de GitHub Pages) tiene su PROPIO localStorage
+// y nunca van a coincidir. Esto no es un fallo puntual, es cómo funciona
+// localStorage por diseño del navegador — por eso se avisa de forma
+// permanente en el dashboard, no solo en la pestaña de Datos.
+function renderNoSyncBanner(){
+  const el = $('no-sync-banner');
+  if(!el) return;
+  if(cloudSyncEnabled){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = `⚠️ <b>Sincronización no configurada.</b> Tus datos viven solo en ESTE navegador/origen. localhost y tu web publicada NUNCA compartirán datos hasta que configures <code>FIREBASE_DB_URL</code> en <code>bulking_app.py</code>. Ve a la pestaña 💾 Datos para más detalles.`;
+}
+
+// Purga de claves de caché de asistente antiguas (>30 días) para que el
+// payload subido a Firebase en cada sync no crezca sin límite con el tiempo.
+async function pruneOldCaches(){
+  try {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffKey = dateKey(cutoff);
+    const toRemove = [];
+    for(let i = 0; i < localStorage.length; i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith('assistantCache:') && k.slice('assistantCache:'.length) < cutoffKey) toRemove.push(k);
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
+  } catch(e){ console.error('Fallo al purgar caché antigua', e); }
+}
 
 // ESTADO GLOBAL
 let profile = null;
@@ -1490,6 +1545,162 @@ async function callGemini(prompt, isJson=false, model=GEMINI_MODEL, maxRetries=2
 }
 
 // =========================================
+// 🎯 PIPELINE DE PRECISIÓN NUTRICIONAL (Niveles 1-4)
+// =========================================
+// Nivel 1/2/3 (packaging / BD oficial / marca): se resuelven consultando
+// Open Food Facts (gratis, sin API key, cobertura buena de productos de
+// supermercado españoles/europeos, incluye datos declarados en el
+// packaging por el propio fabricante). Solo si OFF no tiene el producto se
+// recurre a la IA (Nivel 4), y dentro de ese nivel, SOLO si el alimento
+// parece de marca/regional se le permite a Gemini usar su herramienta
+// nativa de Google Search (misma API key, sin servicio de búsqueda nuevo)
+// para no inventar sobre productos que sí tienen datos reales en algún
+// sitio. Cada resultado lleva un score de fiabilidad 0-100:
+//   95-100 datos oficiales (OFF con match exacto)
+//   80-95  marca validada (OFF con match de marca, o búsqueda web confirmada)
+//   60-80  base genérica / estimación por tabla de composición
+//   <60    estimación pura de IA sin ningún dato verificable
+const RELIABILITY = { OFFICIAL: 97, BRAND: 87, GENERIC: 70, AI_ONLY: 45 };
+
+function normalizeFoodKey(text){
+  return String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,' ').trim();
+}
+async function getFoodCache(key){ return await safeGet('foodCache:' + key); }
+async function setFoodCache(key, val){ await safeSet('foodCache:' + key, val); }
+
+// Nivel 2/3: Open Food Facts. Busca por texto y se queda con el candidato
+// con el conjunto de macros más completo (no solo el primero devuelto).
+async function searchOpenFoodFacts(query){
+  try {
+    const url = `${OFF_API_BASE}/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=5&fields=product_name,brands,nutriments,quantity,code`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if(!res.ok) return null;
+    const data = await res.json();
+    const candidates = (data.products || []).filter(p => p.nutriments &&
+      Number.isFinite(Number(p.nutriments['energy-kcal_100g'])) &&
+      Number.isFinite(Number(p.nutriments['proteins_100g'])));
+    if(!candidates.length) return null;
+    const completeness = p => ['carbohydrates_100g','fat_100g','sugars_100g'].filter(k => Number.isFinite(Number(p.nutriments[k]))).length;
+    candidates.sort((a,b) => completeness(b) - completeness(a));
+    return candidates[0];
+  } catch(e){ console.error('Fallo al consultar Open Food Facts:', e); return null; }
+}
+
+function macrosFromOFF(product, grams){
+  const n = product.nutriments;
+  const factor = grams / 100;
+  return {
+    label: `${product.product_name || 'Producto'}${product.brands ? ' (' + product.brands.split(',')[0] + ')' : ''}`,
+    kcal: Number(n['energy-kcal_100g'] || 0) * factor,
+    p: Number(n['proteins_100g'] || 0) * factor,
+    c: Number(n['carbohydrates_100g'] || 0) * factor,
+    f: Number(n['fat_100g'] || 0) * factor,
+    s: Number(n['sugars_100g'] || 0) * factor,
+    reliability: product.brands ? RELIABILITY.BRAND : RELIABILITY.OFFICIAL,
+    source: `Open Food Facts${product.brands ? ' · ' + product.brands.split(',')[0] : ''}`
+  };
+}
+
+// Nivel 4a: Gemini SOLO parsea qué alimento y cuántos gramos, sin inventar
+// macros todavía. Esto es lo que permite decidir si merece la pena ir a OFF.
+async function parseFoodMention(text){
+  const prompt = `Analiza este texto de un registro de comida: "${text}". Identifica el alimento o producto principal y la cantidad en gramos (o ml si es líquido; conviértelo a gramos usando densidad aproximada si hace falta). Si es un producto envasado/de marca reconocible, indícalo.
+Devuelve SOLO JSON: {"foodName":"nombre genérico y claro para buscar en una base de datos nutricional","brand":"marca o null","grams":numero,"looksPackaged":true|false,"isFood":true|false}`;
+  return await callGemini(prompt, true, GEMINI_MODEL);
+}
+
+// Nivel 4b: solo si OFF falló Y el producto parece de marca/regional, se
+// permite a Gemini usar su herramienta nativa de Google Search (misma
+// GEMINI_API_KEY; sin servicio de búsqueda adicional) para no inventar
+// sobre un producto con ficha nutricional real publicada en algún sitio.
+async function estimateWithGroundedSearch(text, foodName, brand){
+  const prompt = `Busca la información nutricional real (kcal y macros por 100g o por unidad) de este producto: "${foodName}"${brand ? ' de la marca ' + brand : ''}, mencionado como: "${text}". Usa la cantidad indicada en el texto original.
+Devuelve SOLO JSON, sin texto ni markdown fuera de él: {"label":"nombre del producto","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"foundRealData":true|false,"reply":"mensaje corto"}
+Si NO encuentras datos reales del producto, pon "foundRealData":false y da tu mejor estimación igualmente.`;
+  const res = await callGeminiWithSearch(prompt);
+  return res;
+}
+
+// Nivel 4c: último recurso, estimación pura de IA con tablas de composición
+// estándar (el comportamiento original, ahora marcado con fiabilidad <60).
+async function estimateWithAIOnly(text){
+  const prompt = `Actúa como Dietista Clínico. Extrae Kcal y Macros (g) de esta comida: "${text}".
+Aplica tablas de composición estándar españolas. Incluye "s" (azúcares totales en g, estimación realista: 0 si es un alimento sin azúcar como pollo o brócoli, valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados). Si el texto no es comida, pon todo a 0.
+Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
+  const res = await callGemini(prompt, true, GEMINI_MODEL);
+  if(res) { res.reliability = RELIABILITY.AI_ONLY; res.source = 'Estimación de IA (sin dato verificable)'; }
+  return res;
+}
+
+// Orquestador del pipeline completo. SIEMPRE intenta datos verificables
+// antes de dejar que la IA invente macros libremente.
+async function estimateFoodEntry(text){
+  const parsed = await parseFoodMention(text);
+  if(!parsed || parsed.isFood === false){
+    return await estimateWithAIOnly(text); // fallback si el parseo falla del todo
+  }
+  const cacheKey = normalizeFoodKey(`${parsed.foodName} ${parsed.brand || ''}`);
+  const cached = await getFoodCache(cacheKey);
+  const grams = Number(parsed.grams) > 0 ? Number(parsed.grams) : 100;
+
+  if(cached && cached.per100g){
+    const scaled = { ...cached.per100g, kcal: cached.per100g.kcal*grams/100, p: cached.per100g.p*grams/100, c: cached.per100g.c*grams/100, f: cached.per100g.f*grams/100, s: cached.per100g.s*grams/100 };
+    return { ...scaled, label: cached.label, reliability: cached.reliability, source: cached.source + ' (caché)' };
+  }
+
+  const offQuery = `${parsed.foodName} ${parsed.brand || ''}`.trim();
+  const offProduct = await searchOpenFoodFacts(offQuery);
+  if(offProduct){
+    const result = macrosFromOFF(offProduct, grams);
+    await setFoodCache(cacheKey, {
+      label: result.label, reliability: result.reliability, source: result.source,
+      per100g: { kcal: Number(offProduct.nutriments['energy-kcal_100g']||0), p: Number(offProduct.nutriments['proteins_100g']||0), c: Number(offProduct.nutriments['carbohydrates_100g']||0), f: Number(offProduct.nutriments['fat_100g']||0), s: Number(offProduct.nutriments['sugars_100g']||0) }
+    });
+    return result;
+  }
+
+  // OFF no lo tiene: si parece de marca/regional, dale una oportunidad a la
+  // búsqueda web antes de rendirte a la estimación pura.
+  if(parsed.looksPackaged){
+    const grounded = await estimateWithGroundedSearch(text, parsed.foodName, parsed.brand);
+    if(grounded && validateFoodEntry(grounded) && grounded.foundRealData){
+      grounded.reliability = RELIABILITY.BRAND;
+      grounded.source = 'Búsqueda web (Google Search vía Gemini)';
+      await setFoodCache(cacheKey, { label: grounded.label, reliability: grounded.reliability, source: grounded.source, per100g: { kcal: grounded.kcal*100/grams, p: grounded.p*100/grams, c: grounded.c*100/grams, f: grounded.f*100/grams, s: (grounded.s||0)*100/grams } });
+      return grounded;
+    }
+  }
+
+  const fallback = await estimateWithAIOnly(text);
+  if(fallback) fallback.reliability = RELIABILITY.GENERIC <= 60 ? RELIABILITY.AI_ONLY : fallback.reliability;
+  return fallback;
+}
+
+// Variante de callGemini que activa la herramienta nativa "google_search" de
+// Gemini (misma API key, sin servicio de búsqueda externo). Solo se usa para
+// el Nivel 4b del pipeline nutricional (productos de marca/regionales que
+// Open Food Facts no tiene). Gemini decide él solo si de verdad necesita
+// buscar o no, así que no dispara búsquedas para cosas que ya sabe.
+async function callGeminiWithSearch(prompt){
+  if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("TU_API_KEY_AQUI")) return null;
+  const payload = { contents: [{parts:[{text:prompt}]}], tools: [{ google_search: {} }] };
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(()=>controller.abort(), 25000);
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_PLAN}:generateContent?key=${GEMINI_API_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload), signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('') || '';
+    const start = text.indexOf('{'); const end = text.lastIndexOf('}');
+    if(start === -1 || end === -1) return null;
+    return JSON.parse(text.substring(start, end+1));
+  } catch(e){ console.error('Fallo en búsqueda web vía Gemini:', e); return null; }
+}
+
+// =========================================
 // 🎙️ PROCESAR TEXTO Y VOZ (NUTRICIÓN)
 // =========================================
 function validateFoodEntry(entry){
@@ -1497,12 +1708,24 @@ function validateFoodEntry(entry){
   return ['kcal','p','c','f','s'].every(key => Number.isFinite(Number(entry[key])) && Number(entry[key]) >= 0);
 }
 
+// Color/etiqueta del score de fiabilidad (punto 7 del pipeline nutricional).
+function reliabilityBadge(score){
+  if(score == null) return '';
+  const s = Math.round(score);
+  let color, label;
+  if(s >= 95){ color='var(--green)'; label='Datos oficiales'; }
+  else if(s >= 80){ color='#60a5fa'; label='Marca validada'; }
+  else if(s >= 60){ color='var(--accent)'; label='Base genérica'; }
+  else { color='var(--red)'; label='Estimación IA'; }
+  return `<div style="display:inline-flex; align-items:center; gap:6px; margin-top:8px; padding:5px 10px; border-radius:20px; background:rgba(255,255,255,0.06); font-size:.72rem; font-weight:700; color:${color};">🎯 Fiabilidad ${s}/100 · ${label}</div>`;
+}
+
 function showFoodReview(entry, isEdit=false){
   pendingFoodEntry = entry;
   editingLogId = isEdit ? entry.id : null;
   const review = $('food-review');
   review.style.display = 'block';
-  review.innerHTML = `<strong>${isEdit ? 'Editar registro' : 'Revisa antes de guardar'}</strong><div style="color:var(--text-dim);font-size:.8rem;margin-top:4px;">${isEdit ? 'Corrige los valores y confirma (pulsa el número para escribir encima).' : 'La IA ha estimado estos valores. Pulsa para editarlos.'}</div>
+  review.innerHTML = `<strong>${isEdit ? 'Editar registro' : 'Revisa antes de guardar'}</strong><div style="color:var(--text-dim);font-size:.8rem;margin-top:4px;">${isEdit ? 'Corrige los valores y confirma (pulsa el número para escribir encima).' : 'La IA ha estimado estos valores. Pulsa para editarlos.'}</div>${reliabilityBadge(entry.reliability)}
     <div class="food-review-grid">
       <input id="review-label" value="${String(entry.label).replace(/"/g, '&quot;')}" aria-label="Nombre de la comida">
       <input id="review-kcal" type="number" min="0" step="1" value="${Math.round(entry.kcal)}" aria-label="Kcal">
@@ -1521,23 +1744,33 @@ function cancelFoodReview(){
   if(review){ review.style.display = 'none'; }
 }
 
-function showFoodReviewComparison(oldEntry, newEntry){
+function showFoodReviewComparison(oldEntry, newEntry, kcalDiff){
   pendingFoodEntry = newEntry;
   editingLogId = oldEntry.id;
+  const diff = Number.isFinite(kcalDiff) ? kcalDiff : (newEntry.kcal - oldEntry.kcal);
+  const diffColor = diff > 0 ? 'var(--accent)' : diff < 0 ? 'var(--green)' : 'var(--text-dim)';
   const review = $('food-review');
   review.style.display = 'block';
-  review.innerHTML = `<strong>Nueva estimación de la IA</strong>
+  review.innerHTML = `<strong>Nueva estimación</strong>
     <div style="color:var(--text-dim);font-size:.8rem;margin-top:4px;">Compara con lo que tenías guardado, ajusta si hace falta y decide cuál te quedas.</div>
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; margin:12px 0; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); font-size:.85rem;">
+      <span>Antes: <b>${Math.round(oldEntry.kcal)} kcal</b></span>
+      <span style="color:var(--text-dim);">→</span>
+      <span>Ahora: <b>${Math.round(newEntry.kcal)} kcal</b></span>
+      <span style="color:${diffColor}; font-weight:800;">${diff>=0?'+':''}${Math.round(diff)} kcal</span>
+    </div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0; font-size:.82rem;">
       <div style="padding:10px; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border);">
         <div style="color:var(--text-dim); font-size:.68rem; text-transform:uppercase; margin-bottom:6px;">Anterior</div>
         <div style="font-weight:700;">${oldEntry.label}</div>
         <div style="margin-top:4px;">${Math.round(oldEntry.kcal)} kcal · P:${Math.round(oldEntry.p)} C:${Math.round(oldEntry.c)} G:${Math.round(oldEntry.f)}</div>
+        <div style="margin-top:6px; font-size:.7rem; color:var(--text-dim);">${oldEntry.source || 'Sin fuente registrada (estimación original)'}</div>
       </div>
       <div style="padding:10px; border-radius:8px; background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25);">
-        <div style="color:var(--green); font-size:.68rem; text-transform:uppercase; margin-bottom:6px;">Nueva (IA)</div>
+        <div style="color:var(--green); font-size:.68rem; text-transform:uppercase; margin-bottom:6px;">Nueva</div>
         <div style="font-weight:700;">${newEntry.label}</div>
         <div style="margin-top:4px;">${Math.round(newEntry.kcal)} kcal · P:${Math.round(newEntry.p)} C:${Math.round(newEntry.c)} G:${Math.round(newEntry.f)}</div>
+        <div style="margin-top:6px;">${reliabilityBadge(newEntry.reliability)}</div>
       </div>
     </div>
     <div style="font-size:.75rem; color:var(--text-dim); margin-bottom:10px;">Texto original: "${String(oldEntry.originalText || '').replace(/"/g, '&quot;')}"</div>
@@ -1564,17 +1797,29 @@ window.reestimateLog = async (id) => {
     showToast('Este registro no guardó el texto original (es de antes de esta función, o se editó a mano), así que no se puede re-estimar.', true);
     return;
   }
-  showToast('Re-estimando con IA...');
-  const prompt = `Actúa como Dietista Clínico. Extrae Kcal y Macros (g) de esta comida: "${entry.originalText}". 
-Aplica tablas de composición estándar españolas. Incluye "s" (azúcares totales en g, estimación realista: 0 si es un alimento sin azúcar como pollo o brócoli, valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados). Si el texto no es comida, pon todo a 0.
-Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
-  const res = await callGemini(prompt, true, GEMINI_MODEL);
+  showToast('Re-estimando con el pipeline de precisión (OFF → búsqueda → IA)...');
+  // A diferencia de antes, esto NO repite el mismo prompt de estimación
+  // directa: pasa por el pipeline completo (Open Food Facts primero, luego
+  // búsqueda web si procede, IA solo como último recurso), así que puede
+  // dar un resultado genuinamente distinto y más fiable si el registro
+  // original vino de una estimación pura de IA.
+  const res = await estimateFoodEntry(entry.originalText);
   if(!validateFoodEntry(res) || res.kcal <= 0){
     showToast('No se pudo generar una nueva estimación ahora mismo.', true);
     return;
   }
   res.originalText = entry.originalText;
-  showFoodReviewComparison(entry, res);
+
+  const kcalDiff = res.kcal - entry.kcal;
+  const pctDiff = entry.kcal > 0 ? Math.abs(kcalDiff) / entry.kcal * 100 : 100;
+  // Si el método es el mismo (misma fuente/fiabilidad) y el cambio es
+  // trivial, no fingimos un "hallazgo": lo decimos claramente.
+  const sameSource = entry.source && res.source && entry.source === res.source;
+  if(sameSource && pctDiff < 3){
+    showToast(`Sin cambios relevantes: la fuente (${res.source}) ya dio el mismo resultado (diferencia de ${Math.round(Math.abs(kcalDiff))} kcal, <3%).`, false);
+    return;
+  }
+  showFoodReviewComparison(entry, res, kcalDiff);
 };
 
 window.confirmFoodReview = async () => {
@@ -1613,13 +1858,9 @@ async function processText(voiceText){
   if(!input.trim()) return;
   
   inputEl.value=''; btnEl.disabled=true; $('btn-mic').disabled=true;
-  $('ai-status').innerText = 'Analizando con IA Clínica...';
+  $('ai-status').innerText = 'Buscando datos verificables (Open Food Facts)...';
 
-  const prompt = `Actúa como Dietista Clínico. Extrae Kcal y Macros (g) de esta comida: "${input}". 
-Aplica tablas de composición estándar españolas. Incluye "s" (azúcares totales en g, estimación realista: 0 si es un alimento sin azúcar como pollo o brócoli, valor real si lleva fruta, lácteos, miel, salsas o ultraprocesados). Si el texto no es comida, pon todo a 0.
-Devuelve SOLO JSON estricto: {"label":"Nombre resumido","kcal":numero,"p":numero,"c":numero,"f":numero,"s":numero,"reply":"mensaje corto motivador"}`;
-
-  const res = await callGemini(prompt, true, GEMINI_MODEL);
+  const res = await estimateFoodEntry(input);
   if(validateFoodEntry(res) && res.kcal > 0){
     res.originalText = input;
     showFoodReview(res, false);
@@ -1743,6 +1984,7 @@ RESTRICCIONES:
   
   const validation = validatePlan(res, planTargets);
   if(res && res.days && validation.ok){
+    syncPlanDerivedData(res); // fuente única de verdad desde el primer momento
     await safeSet('lastPlan', { plan: res, generatedAt: new Date().toISOString() });
     renderPlanObject(res, new Date().toLocaleString('es-ES'));
     showToast("Menú semanal generado correctamente");
@@ -1751,6 +1993,56 @@ RESTRICCIONES:
     $('plan-validation').style.display='block'; $('plan-validation').innerText = message;
     showToast("Plan rechazado: no cumple tus objetivos.", true);
   }
+}
+
+// =========================================
+// 🔗 FUENTE ÚNICA DE VERDAD: MENÚ ↔ COMPRA ↔ BATCH (punto 9)
+// =========================================
+// La lista de la compra y el plan de conservación YA NO son texto fijo que
+// la IA entrega una vez y puede quedar obsoleto: se recalculan aquí a
+// partir de plan.days cada vez que el plan cambia (generación inicial,
+// sustituir ingrediente, sustituir comida). Así nunca pueden desincronizarse
+// del menú real, sin duplicar la lógica en tres sitios distintos.
+function recomputeShoppingList(plan){
+  const totals = new Map();
+  plan.days.forEach(day => {
+    (day.meals || []).forEach(meal => {
+      (meal.items || []).forEach(item => {
+        const key = normalizeFoodKey(item.food || '');
+        if(!key) return;
+        const prev = totals.get(key) || { food: item.food, grams: 0, ml: 0, isLiquid: !!item.isLiquid };
+        prev.grams += Number(item.grams) || 0;
+        if(item.isLiquid) prev.ml += Number(item.ml || item.grams) || 0;
+        totals.set(key, prev);
+      });
+    });
+  });
+  return [...totals.values()].map(t => ({ item: t.food, qty: t.isLiquid ? `${Math.round(t.ml)} ml` : `${Math.round(t.grams)} g` }));
+}
+
+function recomputeStoragePlan(plan){
+  // Regla fija AESAN/FDA ya usada en el prompt original: nevera máx 3-4 días
+  // desde el domingo de batch cooking; de ahí en adelante, congelador.
+  // Se deriva del orden REAL de los días del plan, no de una tabla aparte.
+  const dayOrder = plan.days.map(d => d.day);
+  const sundayIdx = dayOrder.findIndex(d => /domingo/i.test(d));
+  const storagePlan = [];
+  plan.days.forEach((day, idx) => {
+    (day.meals || []).forEach(meal => {
+      if(meal.type !== 'batch') return;
+      const distanceFromSunday = sundayIdx === -1 ? idx : ((idx - sundayIdx) + 7) % 7;
+      const storage = distanceFromSunday <= 3 ? 'Nevera' : 'Congelador';
+      const note = storage === 'Congelador' ? 'Sacar a nevera la noche antes de consumir' : 'Consumir dentro de 3-4 días desde el domingo';
+      storagePlan.push({ meal: `${meal.name}-${day.day}`, consumeDay: day.day, storage, note });
+    });
+  });
+  return storagePlan;
+}
+
+function syncPlanDerivedData(plan){
+  plan.shoppingList = recomputeShoppingList(plan);
+  plan.storagePlan = recomputeStoragePlan(plan);
+  return plan;
 }
 
 function validatePlan(plan, targets){
@@ -1860,9 +2152,10 @@ Devuelve SOLO JSON con esta forma: {"food":"","grams":0,"kcal":0,"p":0,"c":0,"f"
     showToast('El sustituto no mantiene el objetivo diario.', true);
     return;
   }
+  syncPlanDerivedData(saved.plan); // recalcula compra y batch a partir del ingrediente ya sustituido
   await safeSet('lastPlan', saved);
   renderPlanObject(saved.plan, new Date(saved.generatedAt).toLocaleString('es-ES'));
-  showToast('Ingrediente sustituido manteniendo el objetivo');
+  showToast('Ingrediente sustituido: compra y batch actualizados automáticamente');
 };
 
 window.replaceMeal = async (dayIndex, mealIndex) => {
@@ -1877,9 +2170,10 @@ window.replaceMeal = async (dayIndex, mealIndex) => {
   saved.plan.days[dayIndex].meals[mealIndex] = replacement;
   const validation = validatePlan(saved.plan, getPlanTargets());
   if(!validation.ok) { showToast('La sustitución no mantiene los objetivos.', true); return; }
+  syncPlanDerivedData(saved.plan); // recalcula compra y batch con la comida nueva
   await safeSet('lastPlan', saved);
   renderPlanObject(saved.plan, new Date(saved.generatedAt).toLocaleString('es-ES'));
-  showToast('Comida sustituida');
+  showToast('Comida sustituida: compra y batch actualizados automáticamente');
 };
 
 // =========================================
@@ -1995,21 +2289,110 @@ function deurenbergBodyFat(bmiVal, age, sex){
 }
 
 // Método de cinta métrica de la Marina de EE.UU. (Hodgdon & Beckett, 1984).
-// Más preciso que fórmulas basadas solo en peso/altura porque usa
-// circunferencias reales. Requiere cuello + cintura (+ cadera en mujeres).
+// Usa circunferencias reales, pero es sensible a cuellos gruesos respecto a
+// la cintura (típico en gente entrenada/musculada): si "waist - neck" es
+// pequeño, el log10 dispara el resultado hacia valores irreales (incluso
+// negativos o <5%). Por eso ya NO se usa en solitario — ver auditoría más
+// abajo. Devuelve null si las medidas no permiten un cálculo mínimamente
+// estable (diferencia demasiado pequeña).
 function navyBodyFat({ neck, waist, hip, heightCm, sex }){
   if(!(neck > 0) || !(waist > 0) || !(heightCm > 0)) return null;
   if(sex === 'm'){
     const diff = waist - neck;
-    if(diff <= 0) return null;
+    if(diff <= 4) return null; // por debajo de esto la fórmula deja de ser fiable (ver nota arriba)
     const bf = 495 / (1.0324 - 0.19077 * Math.log10(diff) + 0.15456 * Math.log10(heightCm)) - 450;
     return Number.isFinite(bf) ? Math.max(2, Math.min(60, bf)) : null;
   }
   if(!(hip > 0)) return null;
   const diff = waist + hip - neck;
-  if(diff <= 0) return null;
+  if(diff <= 4) return null;
   const bf = 495 / (1.29579 - 0.35004 * Math.log10(diff) + 0.22100 * Math.log10(heightCm)) - 450;
   return Number.isFinite(bf) ? Math.max(2, Math.min(60, bf)) : null;
+}
+
+// YMCA (fórmula clásica de cinta métrica, más simple y menos sensible que
+// Navy porque no usa log10 de una diferencia pequeña). Requiere cintura +
+// peso. Constantes en unidades imperiales (pulgadas/libras) tal como se
+// publicó originalmente; convertimos desde cm/kg.
+function ymcaBodyFat({ waistCm, weightKg, sex }){
+  if(!(waistCm > 0) || !(weightKg > 0)) return null;
+  const waistIn = waistCm / 2.54;
+  const weightLb = weightKg * 2.20462;
+  const raw = sex === 'm'
+    ? (-98.42 + 4.15 * waistIn - 0.082 * weightLb) / weightLb * 100
+    : (-76.76 + 4.15 * waistIn - 0.082 * weightLb) / weightLb * 100;
+  return Number.isFinite(raw) ? Math.max(2, Math.min(60, raw)) : null;
+}
+
+// RFM — Relative Fat Mass (Woolcock/Stanford, Ortega et al., Clinical
+// Nutrition 2018): fórmula moderna validada contra DEXA, más precisa que el
+// IMC clásico para estimar %grasa poblacional, y solo necesita altura +
+// cintura (ni peso ni cuello). Buen método de contraste porque no comparte
+// las mismas fuentes de error que Navy o YMCA.
+function rfmBodyFat({ heightCm, waistCm, sex }){
+  if(!(heightCm > 0) || !(waistCm > 0)) return null;
+  const raw = sex === 'm' ? 64 - 20 * (heightCm / waistCm) : 76 - 20 * (heightCm / waistCm);
+  return Number.isFinite(raw) ? Math.max(2, Math.min(60, raw)) : null;
+}
+
+// CUN-BAE (Clínica Universidad de Navarra — Body Adiposity Estimator,
+// Gómez-Ambrosi et al., Obesity 2012). Validado contra DEXA en población
+// española, mejora sustancialmente al IMC clásico como predictor de %grasa
+// porque incorpora edad y sexo con términos no lineales. No requiere cinta
+// métrica, solo peso/altura/edad/sexo — por eso es el mejor sustituto de
+// Deurenberg cuando no hay medidas de circunferencias.
+function cunBaeBodyFat(bmiVal, age, sex){
+  const sexTerm = sex === 'f' ? 1 : 0;
+  const bf = -44.988 + (0.503 * age) + (10.689 * sexTerm) + (3.172 * bmiVal) - (0.026 * bmiVal * bmiVal)
+    + (0.181 * bmiVal * sexTerm) - (0.02 * bmiVal * age) - (0.005 * bmiVal * bmiVal * sexTerm) + (0.00021 * bmiVal * bmiVal * age);
+  return Number.isFinite(bf) ? Math.max(2, Math.min(60, bf)) : null;
+}
+
+// =========================================
+// 🧪 CONSENSO MULTI-FÓRMULA DE % GRASA CORPORAL (auditoría punto 5/6)
+// =========================================
+// Ninguna fórmula individual es fiable para todo el mundo: Navy falla con
+// cuellos gruesos, Deurenberg sobreestima en gente musculada, YMCA/RFM son
+// más estables pero menos "de precisión clínica". La estrategia: calcular
+// TODAS las que tengan datos suficientes, descartar outliers fisiológicamente
+// imposibles, y dar min/max/recomendado en vez de un único número falsamente
+// preciso.
+const BF_IMPLAUSIBLE_MIN = { m: 5, f: 10 }; // por debajo de esto, esencial/imposible sin patología
+
+function computeBodyFatConsensus({ weightKg, heightCm, age, sex, neck, waist, hip }){
+  const bmiVal = bmiOf(weightKg, heightCm);
+  const results = [];
+  const navy = navyBodyFat({ neck, waist, hip, heightCm, sex });
+  if(navy !== null) results.push({ method:'Navy (cinta métrica)', value:navy, tier:'medida' });
+  const ymca = waist > 0 ? ymcaBodyFat({ waistCm:waist, weightKg, sex }) : null;
+  if(ymca !== null) results.push({ method:'YMCA (cinta métrica)', value:ymca, tier:'medida' });
+  const rfm = waist > 0 ? rfmBodyFat({ heightCm, waistCm:waist, sex }) : null;
+  if(rfm !== null) results.push({ method:'RFM (Woolcock/Stanford 2018)', value:rfm, tier:'medida' });
+  const cunbae = cunBaeBodyFat(bmiVal, age, sex);
+  if(cunbae !== null) results.push({ method:'CUN-BAE (Gómez-Ambrosi 2012)', value:cunbae, tier:'formula' });
+  const deurenberg = deurenbergBodyFat(bmiVal, age, sex);
+  results.push({ method:'Deurenberg 1991 (solo referencia)', value:deurenberg, tier:'referencia' });
+
+  const implausibleFloor = BF_IMPLAUSIBLE_MIN[sex] || 5;
+  results.forEach(r => { r.implausible = r.value < implausibleFloor; });
+
+  // El consenso usa solo métodos "medida" (cinta métrica) si hay al menos
+  // uno no-implausible; si no hay ninguna medida fiable, cae a CUN-BAE
+  // (fórmula validada) y deja Deurenberg fuera del cómputo, solo como dato
+  // complementario en pantalla (punto 6).
+  const usable = results.filter(r => !r.implausible && r.tier !== 'referencia');
+  const measureBased = usable.filter(r => r.tier === 'medida');
+  const pool = measureBased.length ? measureBased : usable;
+
+  let recommended = null, min = null, max = null;
+  if(pool.length){
+    const values = pool.map(r => r.value).sort((a,b)=>a-b);
+    min = values[0]; max = values[values.length-1];
+    const mid = Math.floor(values.length/2);
+    recommended = values.length % 2 ? values[mid] : (values[mid-1]+values[mid])/2;
+  }
+  const anyImplausible = results.some(r => r.implausible && r.tier !== 'referencia');
+  return { results, recommended, min, max, anyImplausible, implausibleFloor, hasMeasurements: measureBased.length > 0 };
 }
 
 // FFMI = masa libre de grasa / altura². La versión "normalizada" ajusta por
@@ -2135,12 +2518,9 @@ async function generateBodySummary(){
 
   const bmiVal = bmiOf(profile.weight, profile.height);
   const latest = await getLatestBodyMeasure();
-  let bfPct = deurenbergBodyFat(bmiVal, profile.age, profile.sex);
-  let bfMethod = 'fórmula estimada (peso/altura/edad)';
-  if(latest && latest.neck && latest.waist && (profile.sex === 'm' || latest.hip)){
-    const navyBF = navyBodyFat({ neck: latest.neck, waist: latest.waist, hip: latest.hip, heightCm: profile.height, sex: profile.sex });
-    if(navyBF !== null){ bfPct = navyBF; bfMethod = 'cinta métrica US Navy'; }
-  }
+  const consensus = computeBodyFatConsensus({ weightKg: profile.weight, heightCm: profile.height, age: profile.age, sex: profile.sex, neck: latest?.neck, waist: latest?.waist, hip: latest?.hip });
+  const bfPct = consensus.recommended ?? cunBaeBodyFat(bmiVal, profile.age, profile.sex);
+  const bfMethod = consensus.hasMeasurements ? `consenso de ${consensus.results.filter(r=>!r.implausible && r.tier==='medida').length} métodos de cinta métrica (rango ${consensus.min?.toFixed(1)}-${consensus.max?.toFixed(1)}%)` : 'CUN-BAE (Gómez-Ambrosi 2012, validado en población española)';
   const fatMass = profile.weight * (bfPct / 100);
   const leanMass = profile.weight - fatMass;
   const { normalized: ffmiNorm } = ffmiOf(leanMass, profile.height);
@@ -2182,39 +2562,90 @@ Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
 // =========================================
 // 📐 COMPOSICIÓN CORPORAL (output enriquecido a partir del mínimo input)
 // =========================================
+// Rangos de referencia con FUENTE citada para cada barra (punto 4). No se
+// inventa ningún corte: cuando la literatura no da un rango de consenso
+// claro, se indica explícitamente en vez de rellenar un número.
+const REFERENCE_BANDS = {
+  bodyFat: {
+    source: 'ACE (American Council on Exercise) — categorías estándar de %grasa esencial/atlética/fitness/aceptable/obesidad',
+    m: [ {max:6,label:'Esencial'}, {max:14,label:'Atlético'}, {max:18,label:'Fitness'}, {max:25,label:'Aceptable'}, {max:100,label:'Alto'} ],
+    f: [ {max:14,label:'Esencial'}, {max:21,label:'Atlético'}, {max:25,label:'Fitness'}, {max:32,label:'Aceptable'}, {max:100,label:'Alto'} ]
+  },
+  ffmi: {
+    source: 'Kouri et al. 1995 (Clin J Sport Med) — límite natural típico ~25 en hombres sin ayuda farmacológica',
+    m: [ {max:18,label:'Bajo'}, {max:20,label:'Medio'}, {max:22,label:'Bueno'}, {max:25,label:'Muy alto (límite natural)'}, {max:100,label:'Atípico'} ],
+    f: [ {max:14,label:'Bajo'}, {max:16,label:'Medio'}, {max:18,label:'Bueno'}, {max:21,label:'Muy alto (límite natural)'}, {max:100,label:'Atípico'} ]
+  },
+  bmi: {
+    source: 'OMS — clasificación estándar de IMC',
+    m: [ {max:18.5,label:'Bajo peso'}, {max:25,label:'Normopeso'}, {max:30,label:'Sobrepeso'}, {max:35,label:'Obesidad I'}, {max:100,label:'Obesidad II+'} ],
+    f: [ {max:18.5,label:'Bajo peso'}, {max:25,label:'Normopeso'}, {max:30,label:'Sobrepeso'}, {max:35,label:'Obesidad I'}, {max:100,label:'Obesidad II+'} ]
+  }
+};
+
+function renderReferenceBar(value, bandKey, sex){
+  const band = REFERENCE_BANDS[bandKey]; if(!band) return '';
+  const scale = band[sex] || band.m;
+  const idx = scale.findIndex(b => value <= b.max);
+  const activeIdx = idx === -1 ? scale.length - 1 : idx;
+  const colors = ['#3b82f6','#10b981','#f6b73c','#f59e0b','#ef4444'];
+  const segs = scale.map((b,i)=>`<div style="flex:1; height:8px; background:${i===activeIdx? colors[i] : 'rgba(255,255,255,0.08)'}; border-radius:3px;"></div>`).join('');
+  return `<div style="margin-top:8px;">
+    <div style="display:flex; gap:3px;">${segs}</div>
+    <div style="display:flex; justify-content:space-between; font-size:.62rem; color:var(--text-dim); margin-top:4px;">${scale.map((b,i)=>`<span style="${i===activeIdx?'color:'+colors[i]+';font-weight:800;':''}">${b.label}</span>`).join('')}</div>
+    <div style="font-size:.62rem; color:var(--text-dim); margin-top:4px; opacity:.75;">Fuente: ${band.source}</div>
+  </div>`;
+}
+
 async function renderBodyComposition(){
   const el = $('body-comp-content');
   if(!el) return;
   const latest = await getLatestBodyMeasure();
   const bmiVal = bmiOf(profile.weight, profile.height);
+  const sex = profile.sex;
 
-  let bfPct = deurenbergBodyFat(bmiVal, profile.age, profile.sex);
-  let bfMethod = 'Fórmula orientativa';
-  if(latest && latest.neck && latest.waist && (profile.sex === 'm' || latest.hip)){
-    const navyBF = navyBodyFat({ neck: latest.neck, waist: latest.waist, hip: latest.hip, heightCm: profile.height, sex: profile.sex });
-    if(navyBF !== null){ bfPct = navyBF; bfMethod = 'Cinta métrica (precisa)'; }
-  }
+  const consensus = computeBodyFatConsensus({
+    weightKg: profile.weight, heightCm: profile.height, age: profile.age, sex,
+    neck: latest?.neck, waist: latest?.waist, hip: latest?.hip
+  });
 
+  const bfPct = consensus.recommended ?? cunBaeBodyFat(bmiVal, profile.age, sex);
   const fatMass = profile.weight * (bfPct / 100);
   const leanMass = profile.weight - fatMass;
   const { normalized } = ffmiOf(leanMass, profile.height);
 
-  let ffmiNote;
-  if(normalized < 18) ffmiNote = 'Por debajo de la media';
-  else if(normalized < 20) ffmiNote = 'Media';
-  else if(normalized < 22) ffmiNote = 'Buena base muscular';
-  else if(normalized < 23) ffmiNote = 'Muy buena, cerca de lo típico natural';
-  else if(normalized < 25) ffmiNote = 'Excelente, límite alto natural habitual';
-  else ffmiNote = 'Muy por encima de lo habitual sin ayuda farmacológica (ref. Kouri et al. 1995)';
+  let html = '';
 
-  let html = `
-    <div class="stats-grid" style="margin-bottom:16px;">
-      <div class="stat-box"><div class="stat-title">% Grasa corporal</div><div class="stat-val" style="color:var(--accent);">${bfPct.toFixed(1)}%</div><div style="font-size:0.68rem; color:var(--text-dim);">${bfMethod}</div></div>
-      <div class="stat-box"><div class="stat-title">FFMI (normalizado)</div><div class="stat-val" style="color:var(--pro-color);">${normalized.toFixed(1)}</div><div style="font-size:0.68rem; color:var(--text-dim);">${ffmiNote}</div></div>
-    </div>
-    <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--glass-border);"><span style="color:var(--text-dim);">Masa grasa</span><b>${fatMass.toFixed(1)} kg</b></div>
+  if(consensus.anyImplausible){
+    const floor = consensus.implausibleFloor;
+    html += `<div class="alert warn" style="margin-bottom:16px;">⚠️ Alguna medida dio un %grasa por debajo de ${floor}% (${sex==='m'?'hombre':'mujer'}), fisiológicamente improbable sin patología. Se ha excluido del consenso automáticamente. Revisa que cuello/cintura/cadera estén bien medidos (cinta ajustada pero sin apretar, en el punto anatómico correcto) antes de confiar en el resultado.</div>`;
+  }
+
+  html += `
+    <div class="stats-grid" style="margin-bottom:12px;">
+      <div class="stat-box"><div class="stat-title">% Grasa (recomendado)</div><div class="stat-val" style="color:var(--accent);">${bfPct.toFixed(1)}%</div><div style="font-size:0.66rem; color:var(--text-dim);">${consensus.hasMeasurements ? 'Consenso de métodos con cinta métrica' : 'CUN-BAE (sin medidas de cinta aún)'}</div></div>
+      <div class="stat-box"><div class="stat-title">FFMI (normalizado)</div><div class="stat-val" style="color:var(--pro-color);">${normalized.toFixed(1)}</div></div>
+    </div>`;
+
+  if(consensus.min !== null && consensus.max !== null && consensus.min !== consensus.max){
+    html += `<div style="display:flex; justify-content:space-between; font-size:.78rem; padding:10px 12px; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:14px;">
+      <span>Mínima: <b>${consensus.min.toFixed(1)}%</b></span><span>Recomendada: <b style="color:var(--accent);">${bfPct.toFixed(1)}%</b></span><span>Máxima: <b>${consensus.max.toFixed(1)}%</b></span>
+    </div>`;
+  }
+
+  html += `<div style="margin-bottom:16px;">${renderReferenceBar(bfPct, 'bodyFat', sex)}</div>`;
+
+  html += `<details style="margin-bottom:14px;"><summary style="cursor:pointer; font-size:.82rem; color:var(--text-dim);">Ver los ${consensus.results.length} métodos calculados</summary>
+    <div style="margin-top:10px;">${consensus.results.map(r => `<div style="display:flex; justify-content:space-between; padding:6px 0; font-size:.8rem; ${r.implausible?'opacity:.5;':''}">
+      <span>${r.method}${r.implausible ? ' ⚠️ descartado (implausible)' : (r.tier==='referencia' ? ' (solo referencia, no entra en el consenso)' : '')}</span><b>${r.value.toFixed(1)}%</b>
+    </div>`).join('')}</div>
+  </details>`;
+
+  html += `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--glass-border); border-bottom:1px solid var(--glass-border);"><span style="color:var(--text-dim);">Masa grasa</span><b>${fatMass.toFixed(1)} kg</b></div>
     <div style="display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--glass-border);"><span style="color:var(--text-dim);">Masa magra (libre de grasa)</span><b>${leanMass.toFixed(1)} kg</b></div>
-    <div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="color:var(--text-dim);">IMC</span><b>${bmiVal.toFixed(1)}</b></div>`;
+    <div style="display:flex; justify-content:space-between; padding:8px 0; margin-bottom:8px;"><span style="color:var(--text-dim);">IMC</span><b>${bmiVal.toFixed(1)}</b></div>
+    ${renderReferenceBar(bmiVal, 'bmi', sex)}
+    ${renderReferenceBar(normalized, 'ffmi', sex)}`;
 
   if(latest && latest.waist){
     const whtrVal = whtrOf(latest.waist, profile.height);
@@ -2223,54 +2654,70 @@ async function renderBodyComposition(){
     else if(whtrVal < 0.5){ whtrBand = 'rango saludable'; whtrColor = 'var(--green)'; }
     else if(whtrVal < 0.6){ whtrBand = 'riesgo aumentado'; whtrColor = 'var(--accent)'; }
     else { whtrBand = 'riesgo alto'; whtrColor = 'var(--red)'; }
-    html += `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--glass-border); margin-top:4px;"><span style="color:var(--text-dim);">Cintura/Altura (WHtR)</span><b>${whtrVal.toFixed(2)} <span style="font-size:.7rem; color:${whtrColor};">(${whtrBand})</span></b></div>`;
-
+    html += `<div style="display:flex; justify-content:space-between; padding:8px 0; border-top:1px solid var(--glass-border); margin-top:10px;"><span style="color:var(--text-dim);">Cintura/Altura (WHtR)</span><b>${whtrVal.toFixed(2)} <span style="font-size:.7rem; color:${whtrColor};">(${whtrBand})</span></b></div>`;
     if(latest.hip){
       const whrVal = whrOf(latest.waist, latest.hip);
-      const whrCutoff = profile.sex === 'm' ? 0.90 : 0.85;
+      const whrCutoff = sex === 'm' ? 0.90 : 0.85;
       const overCutoff = whrVal > whrCutoff;
       html += `<div style="display:flex; justify-content:space-between; padding:8px 0;"><span style="color:var(--text-dim);">Cintura/Cadera (WHR)</span><b>${whrVal.toFixed(2)} <span style="font-size:.7rem; color:${overCutoff?'var(--red)':'var(--green)'};">(${overCutoff?'por encima del':'dentro del'} umbral OMS ${whrCutoff})</span></b></div>`;
     }
   } else {
-    html += `<div style="font-size:0.8rem; color:var(--text-dim); margin-top:10px;">Añade tus medidas arriba para desbloquear el % de grasa medido.</div>`;
+    html += `<div style="font-size:0.8rem; color:var(--text-dim); margin-top:10px;">Añade cuello + cintura (+ cadera en mujeres) arriba para activar los métodos de cinta métrica en el consenso.</div>`;
   }
 
   el.innerHTML = html;
 }
 
+// Gráfico único dirigido por el selector de métrica (puntos 3/4). Para cada
+// día con dato de peso disponible (weight:*), recalcula la métrica elegida
+// usando SIEMPRE el consenso multi-fórmula de %grasa (nunca Deurenberg en
+// solitario, ni Navy en solitario), reutilizando las medidas de cintura/
+// cuello/cadera más recientes conocidas hasta esa fecha (no siempre habrá
+// una medida exacta ese mismo día).
 async function renderBodyCompositionChart(){
   const wrap = $('body-comp-chart-wrap');
   if(!wrap) return;
-  const series = await getBodyMeasureSeries(90);
-  if(series.length < 2){ wrap.style.display = 'none'; return; }
+  const metric = $('metric-select') ? $('metric-select').value : 'weight';
+  const weightSeries = await getDailyWeightSeries(90);
+  if(weightSeries.length < 2){ wrap.style.display = 'none'; return; }
   wrap.style.display = 'block';
 
+  const measureSeries = await getBodyMeasureSeries(180); // histórico completo para "última medida conocida hasta la fecha"
+  const findLatestMeasureUpTo = (dateStr) => {
+    let latest = null;
+    for(const m of measureSeries){ if(m.date <= dateStr) latest = m; else break; }
+    return latest;
+  };
+
   const points = [];
-  for(const m of series){
-    const weightEntries = await safeGet('weight:' + m.date);
-    const weightOnDate = (Array.isArray(weightEntries) && weightEntries.length)
-      ? weightEntries.reduce((a,e)=>a+e.kg,0) / weightEntries.length
-      : profile.weight;
-    let bf = (m.neck && m.waist && (profile.sex === 'm' || m.hip))
-      ? navyBodyFat({ neck:m.neck, waist:m.waist, hip:m.hip, heightCm:profile.height, sex:profile.sex })
-      : null;
-    if(bf === null) bf = deurenbergBodyFat(bmiOf(weightOnDate, profile.height), profile.age, profile.sex);
-    const fat = weightOnDate * (bf / 100);
-    points.push({ date: m.date, fat, lean: weightOnDate - fat });
+  for(const w of weightSeries){
+    const bmiVal = bmiOf(w.kg, profile.height);
+    let bfPct;
+    if(metric === 'bmi'){ points.push({ date:w.date, value:bmiVal }); continue; }
+    if(metric === 'weight'){ points.push({ date:w.date, value:w.kg }); continue; }
+    const measure = findLatestMeasureUpTo(w.date);
+    const consensus = computeBodyFatConsensus({ weightKg:w.kg, heightCm:profile.height, age:profile.age, sex:profile.sex, neck:measure?.neck, waist:measure?.waist, hip:measure?.hip });
+    bfPct = consensus.recommended ?? cunBaeBodyFat(bmiVal, profile.age, profile.sex);
+    const fatMass = w.kg * (bfPct/100);
+    const leanMass = w.kg - fatMass;
+    if(metric === 'bodyfat') points.push({ date:w.date, value:bfPct });
+    else if(metric === 'ffmi') points.push({ date:w.date, value: ffmiOf(leanMass, profile.height).normalized });
+    else if(metric === 'fatmass') points.push({ date:w.date, value: fatMass });
+    else if(metric === 'leanmass') points.push({ date:w.date, value: leanMass });
   }
+
+  const metricMeta = {
+    weight: {label:'Peso (kg)', color:'#f59e0b'}, bmi: {label:'IMC', color:'#3b82f6'},
+    bodyfat: {label:'% Grasa corporal', color:'#ef4444'}, ffmi: {label:'FFMI', color:'#10b981'},
+    fatmass: {label:'Masa grasa (kg)', color:'#ef4444'}, leanmass: {label:'Masa libre de grasa (kg)', color:'#3b82f6'}
+  }[metric];
 
   const labels = points.map(p => new Date(p.date + 'T00:00:00').toLocaleDateString('es-ES', {month:'short', day:'numeric', year:'2-digit'}));
   const ctx = $('bodyCompChart').getContext('2d');
   if(bodyCompChartInstance) bodyCompChartInstance.destroy();
   bodyCompChartInstance = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label:'Masa magra (kg)', data: points.map(p=>p.lean), borderColor:'#3b82f6', backgroundColor:'rgba(59,130,246,0.12)', borderWidth:2.5, fill:true, tension:0.3, pointRadius:3 },
-        { label:'Masa grasa (kg)', data: points.map(p=>p.fat), borderColor:'#ef4444', backgroundColor:'rgba(239,68,68,0.12)', borderWidth:2.5, fill:true, tension:0.3, pointRadius:3 }
-      ]
-    },
+    data: { labels, datasets: [ { label: metricMeta.label, data: points.map(p=>p.value), borderColor: metricMeta.color, backgroundColor: metricMeta.color + '22', borderWidth:2.5, fill:true, tension:0.3, pointRadius:2.5 } ] },
     options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:true, labels:{color:'#94a3b8', boxWidth:12, font:{size:10}}}, tooltip:{mode:'index', intersect:false}}, scales:{ y:{grid:{color:'rgba(255,255,255,0.05)'}}, x:{grid:{display:false}} } }
   });
 }
@@ -2502,12 +2949,16 @@ async function renderTargetHistory(){
 }
 
 async function renderTrendCharts(){
-  const days=[]; const kcal=[], p=[], c=[], f=[];
+  // Nota de limpieza: antes se calculaban aquí también arrays de proteína/
+  // carbos/grasas que nunca llegaban a renderizarse (código muerto). Ahora
+  // el detalle de macros vive en el selector de métricas de "Composición
+  // corporal"; este gráfico se centra solo en kcal vs objetivo.
+  const days=[]; const kcal=[];
   for(let i=13;i>=0;i--){ 
     const d=new Date(); d.setDate(d.getDate()-i); 
     const str = dateKey(d); days.push(d.toLocaleDateString('es-ES',{month:'short',day:'numeric',year:'2-digit'}));
     const s = sumEntries(await getLog(str));
-    kcal.push(s.kcal); p.push(s.p); c.push(s.c); f.push(s.f);
+    kcal.push(s.kcal);
   }
   const tgt = days.map(()=>profile.targetKcal||2500);
 
@@ -2596,6 +3047,86 @@ $('import-file-input').addEventListener('change', async (e)=>{
   } catch(err){ showToast('Archivo JSON inválido', true); }
 });
 
+// =========================================
+// 🧪 TESTS BÁSICOS (punto 11)
+// =========================================
+// No hay infraestructura de test runner (Jest/etc.) en esta arquitectura de
+// archivo único sin build step, así que esto es un arnés ligero ejecutable
+// a mano desde la consola del navegador: abre la app → F12 → consola →
+// escribe `runSelfTests()` y pulsa Enter. Cubre las funciones de cálculo
+// puras (fáciles de testear de forma determinista) y un roundtrip real de
+// persistencia. No sustituye a un test runner de verdad, pero da cobertura
+// básica sin añadir dependencias ni complejidad de build.
+window.runSelfTests = async function(){
+  const results = [];
+  const check = (name, cond, detail='') => results.push({ name, pass: !!cond, detail });
+  const approx = (a,b,tol=0.5) => Math.abs(a-b) <= tol;
+
+  // --- Persistencia: roundtrip real contra localStorage ---
+  try {
+    const testKey = '__selftest_key__';
+    await safeSet(testKey, { a: 1, b: 'x' });
+    const back = await safeGet(testKey);
+    check('Persistencia: roundtrip set/get', back && back.a === 1 && back.b === 'x');
+    localStorage.removeItem(testKey);
+  } catch(e){ check('Persistencia: roundtrip set/get', false, e.message); }
+
+  // --- IMC ---
+  check('IMC: 80kg/180cm ≈ 24.7', approx(bmiOf(80,180), 24.69, 0.05));
+
+  // --- FFMI ---
+  const ffmiRes = ffmiOf(70, 180); // 70kg masa magra, 180cm
+  check('FFMI: valor base coherente (70kg/1.8m ≈ 21.6)', approx(ffmiRes.ffmi, 21.6, 0.1));
+  check('FFMI: normalizado añade el ajuste por altura', approx(ffmiRes.normalized, ffmiRes.ffmi + 6.1*(1.8-1.8), 0.01));
+
+  // --- Masa grasa / masa libre de grasa ---
+  const weight = 80, bf = 15;
+  const fatMass = weight * (bf/100), leanMass = weight - fatMass;
+  check('Masa grasa: 80kg @15% = 12kg', approx(fatMass, 12, 0.01));
+  check('Masa libre de grasa: 80kg @15% = 68kg', approx(leanMass, 68, 0.01));
+
+  // --- Deurenberg (debe existir pero NO ser el consenso por defecto) ---
+  const deuren = deurenbergBodyFat(24.7, 30, 'm');
+  check('Deurenberg: devuelve un valor plausible en rango 2-60', deuren >= 2 && deuren <= 60);
+
+  // --- Navy: debe rechazar diferencias cuello/cintura demasiado pequeñas (bug original) ---
+  const navyExtreme = navyBodyFat({ neck: 42, waist: 46, hip: null, heightCm: 180, sex: 'm' }); // diff=4, límite
+  check('Navy: diferencia cuello/cintura pequeña se descarta (evita el bug de %grasa ~4%)', navyExtreme === null);
+  const navyNormal = navyBodyFat({ neck: 38, waist: 85, hip: null, heightCm: 180, sex: 'm' });
+  check('Navy: con diferencia razonable devuelve un valor en rango', navyNormal !== null && navyNormal >= 2 && navyNormal <= 60);
+
+  // --- RFM y YMCA: deben devolver valores plausibles con inputs mínimos ---
+  const rfm = rfmBodyFat({ heightCm: 180, waistCm: 85, sex: 'm' });
+  check('RFM: valor en rango plausible', rfm !== null && rfm >= 2 && rfm <= 60);
+  const ymca = ymcaBodyFat({ waistCm: 85, weightKg: 80, sex: 'm' });
+  check('YMCA: valor en rango plausible', ymca !== null && ymca >= 2 && ymca <= 60);
+
+  // --- CUN-BAE ---
+  const cunbae = cunBaeBodyFat(24.7, 30, 'm');
+  check('CUN-BAE: valor en rango plausible', cunbae >= 2 && cunbae <= 60);
+
+  // --- Consenso: detección de outlier implausible (el bug original: ~4%) ---
+  const consensusBug = computeBodyFatConsensus({ weightKg:80, heightCm:180, age:28, sex:'m', neck:44, waist:47, hip:null });
+  check('Consenso: marca implausible el caso que reproducía el bug (~4%)', consensusBug.anyImplausible === true);
+  const consensusNormal = computeBodyFatConsensus({ weightKg:80, heightCm:180, age:28, sex:'m', neck:38, waist:85, hip:null });
+  check('Consenso: caso normal da un recomendado dentro de min/max', consensusNormal.recommended >= consensusNormal.min && consensusNormal.recommended <= consensusNormal.max);
+
+  // --- Sincronización menú/compra (fuente única de verdad) ---
+  const fakePlan = { days: [
+    { day:'Lunes', training:false, meals:[ { name:'Comida', type:'batch', items:[ {food:'Pollo', grams:200}, {food:'Arroz', grams:100} ] } ] },
+    { day:'Martes', training:false, meals:[ { name:'Comida', type:'batch', items:[ {food:'Pollo', grams:150} ] } ] }
+  ]};
+  const shopping = recomputeShoppingList(fakePlan);
+  const pollo = shopping.find(s => s.item === 'Pollo');
+  check('Sincronización menú↔compra: suma correctamente entre días (200+150=350g)', pollo && pollo.qty === '350 g');
+
+  // --- Reporte ---
+  const passed = results.filter(r=>r.pass).length;
+  console.log(`%c🧪 Tests: ${passed}/${results.length} pasados`, `color:${passed===results.length?'#10b981':'#ef4444'};font-weight:bold;font-size:14px;`);
+  results.forEach(r => console[r.pass ? 'log' : 'error'](`${r.pass ? '✅' : '❌'} ${r.name}${r.detail ? ' — ' + r.detail : ''}`));
+  return results;
+};
+
 // INIT
 window.onload = async () => {
   syncUid = getOrCreateSyncUid();
@@ -2619,6 +3150,8 @@ window.onload = async () => {
   
   const lp = await safeGet('lastPlan'); if(lp && lp.plan) renderPlanObject(lp.plan, new Date(lp.generatedAt).toLocaleString('es-ES'));
   renderSyncStatus();
+  renderNoSyncBanner();
+  await pruneOldCaches();
   
   await adjustWeeklyTarget(); updateBodyStats(); await updateDashboardUI(); await renderWeekInsights(); await renderWeightDayList();
   await checkBackupReminder();
@@ -2642,6 +3175,7 @@ def get_injected_html():
     html = html.replace("__MODEL_PLAN__", GEMINI_MODEL_PLAN)
     html = html.replace("__FILLER__", FILLER_FOODS)
     html = html.replace("__FIREBASE_DB_URL__", FIREBASE_DB_URL)
+    html = html.replace("__OFF_API_BASE__", OFF_API_BASE)
     return html
 
 def write_index():
