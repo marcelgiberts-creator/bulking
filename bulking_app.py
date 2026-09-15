@@ -196,6 +196,30 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .over-limit { background: var(--red) !important; }
 
   /* =========================================
+     🏆 RACHA, FAVORITOS, SCORE Y FOTOS (nuevos)
+     ========================================= */
+  .glass-card.card-hero { border-color: rgba(246,183,60,0.28); box-shadow: 0 18px 55px rgba(0,0,0,0.32), 0 0 0 1px rgba(246,183,60,0.06) inset; }
+
+  .streak-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; background:rgba(246,183,60,0.12); border:1px solid rgba(246,183,60,0.35); color:var(--accent); font-size:0.75rem; font-weight:700; white-space:nowrap; }
+
+  .favorites-row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .favorite-chip { position:relative; display:inline-flex; align-items:center; gap:6px; padding:8px 12px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid var(--glass-border); font-size:0.78rem; font-weight:600; cursor:pointer; }
+  .favorite-chip:hover { border-color: var(--accent); }
+  .favorite-chip .chip-remove { opacity:0.5; font-size:0.7rem; margin-left:2px; }
+  .favorite-chip .chip-remove:hover { opacity:1; color: var(--red); }
+
+  .quality-score-badge { display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); }
+  .quality-score-num { font-family:'Space Grotesk', sans-serif; font-weight:800; font-size:2.2rem; line-height:1; }
+
+  .photo-gallery { display:flex; gap:10px; overflow-x:auto; padding-bottom:6px; }
+  .photo-thumb { flex-shrink:0; width:88px; text-align:center; }
+  .photo-thumb img { width:88px; height:110px; object-fit:cover; border-radius:10px; border:1px solid var(--glass-border); }
+  .photo-thumb-date { font-size:0.62rem; color:var(--text-dim); margin-top:4px; }
+  .photo-thumb-del { font-size:0.62rem; color:var(--red); cursor:pointer; margin-top:2px; }
+  .photo-compare-view { display:flex; gap:10px; }
+  .photo-compare-view img { width:50%; border-radius:10px; border:1px solid var(--glass-border); object-fit:cover; }
+
+  /* =========================================
      🎙️ INPUT IA (MICRÓFONO Y CHAT)
      ========================================= */
   .mic-container { text-align: center; padding: 20px 10px; }
@@ -351,6 +375,31 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .slider:before { position:absolute; content:""; height:20px; width:20px; left:3px; bottom:3px; background:white; border-radius:50%; transition:0.3s; }
   input:checked + .slider { background: var(--accent); }
   input:checked + .slider:before { transform: translateX(20px); }
+
+  /* =========================================
+     ✨ REFINAMIENTO VISUAL (Fase 3 — premium, aditivo)
+     Solo interacciones/microanimaciones nuevas sobre componentes ya
+     existentes. No se renombra ninguna clase ni id: cero riesgo para el
+     JS o los datos ya guardados.
+     ========================================= */
+  @media (hover: hover) and (pointer: fine) {
+    .glass-card { transition: box-shadow 0.35s ease, transform 0.35s ease, border-color 0.35s ease; }
+    .glass-card:hover { transform: translateY(-2px); box-shadow: 0 22px 55px rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.16); }
+    .glass-card.card-hero:hover { border-color: rgba(246,183,60,0.4); }
+    button.primary:hover:not(:disabled) { box-shadow: 0 8px 28px var(--accent-glow); filter: brightness(1.06); }
+    button.secondary:hover:not(:disabled) { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+    .favorite-chip:hover { transform: translateY(-1px); }
+    .nav-item:hover:not(.active) { color: #cbd5e1; }
+  }
+  .main-progress-fill, .macro-bar-fill { transition: width 0.9s cubic-bezier(0.16, 1, 0.3, 1); }
+  .log-item { animation: itemIn 0.35s ease both; }
+  @keyframes itemIn { from { opacity:0; transform: translateX(-6px); } to { opacity:1; transform:none; } }
+  .kcal-number, .quality-score-num, .stat-val { transition: color 0.3s ease; }
+
+  /* Anchura útil algo mayor en escritorio ancho, sin tocar el grid mobile */
+  @media (min-width: 1400px) {
+    .app-container { max-width: 1320px; }
+  }
 </style>
 </head>
 <body>
@@ -366,11 +415,12 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <h2>Resumen <span class="subtitle" id="date-display"></span></h2>
     <div id="no-sync-banner" class="alert warn" style="display:none;"></div>
     <div id="adjust-alert" class="alert" style="display:none;"></div>
+    <div id="favorite-suggestion" class="alert" style="display:none;"></div>
     <div id="backup-reminder" class="alert" style="display:none;"></div>
     <div id="daily-assistant" class="daily-assistant" style="display:none;"></div>
 
     <div class="dashboard-grid">
-    <div class="glass-card" style="padding-top: 30px;">
+    <div class="glass-card card-hero" style="padding-top: 30px;">
       <div class="kcal-main">
         <div>
           <div class="kcal-number" id="ui-kcal-consumed">0</div>
@@ -381,7 +431,10 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
           <div class="kcal-target" id="ui-kcal-status">Restantes</div>
         </div>
       </div>
-      <div style="font-size:0.78rem; color: var(--text-dim); margin-bottom:14px;">Objetivo del día: <b style="color:#fff;" id="ui-kcal-target">--</b> kcal</div>
+      <div style="font-size:0.78rem; color: var(--text-dim); margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span>Objetivo del día: <b style="color:#fff;" id="ui-kcal-target">--</b> kcal</span>
+        <span class="streak-badge" id="streak-badge" style="display:none;"></span>
+      </div>
       <div class="main-progress"><div class="main-progress-fill" id="ui-progress"></div></div>
       <div style="font-size:0.8rem; color: var(--green); margin-bottom:16px; font-weight:600; display:none;" id="ui-override-note"></div>
       <div class="quick-adjust" aria-label="Ajuste rapido del objetivo">
@@ -431,6 +484,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="glass-card mic-container">
       <button class="mic-btn" id="btn-mic">🎙️</button>
       <div class="ai-status" id="ai-status">Toca para dictar qué has comido</div>
+      <div id="favorites-row" class="favorites-row" style="display:none; margin-top:18px;"></div>
       <div style="display:flex; gap:10px; margin-top:24px;">
         <input type="text" id="manual-text" placeholder="o escríbelo aquí..." style="margin-bottom:0;">
         <button class="secondary" id="btn-send-text" onclick="processText()">Enviar</button>
@@ -588,10 +642,46 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div id="measure-day-list"></div>
     </div>
 
+    <!-- ENTRENAMIENTO Y CORRELACIÓN CON EL PROGRESO -->
+    <div class="glass-card">
+      <h3>🏋️ Entrenamiento y progreso</h3>
+      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:14px;">Registra si entrenaste cada día. Con varias semanas de datos, se correlaciona con tu cambio de peso real para explicar variabilidad que la dieta sola no explica.</p>
+      <div class="form-row" style="margin-bottom: 12px;">
+        <div class="form-group"><label>Fecha</label><input type="date" id="input-training-date" style="margin-bottom:0;"></div>
+        <div class="form-group"><label>Sets totales (opcional)</label><input type="number" min="0" id="input-training-volume" placeholder="Ej: 18" style="margin-bottom:0;"></div>
+      </div>
+      <div class="toggle-row" style="margin-bottom:14px;">
+        <div style="font-size:0.9rem; font-weight:500;">¿Entrenaste ese día?</div>
+        <label class="switch"><input type="checkbox" id="input-trained"><span class="slider"></span></label>
+      </div>
+      <button class="secondary" onclick="saveTrainingEntry()" style="width:100%; margin-bottom:16px;">Guardar</button>
+      <div id="training-week-summary"></div>
+      <div id="training-correlation-content" style="margin-top:14px;"></div>
+    </div>
+
+    <!-- FOTOS DE PROGRESO -->
+    <div class="glass-card">
+      <h3>📸 Fotos de progreso</h3>
+      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:14px;">Una foto por día (se comprime automáticamente). Útil para ver cambios que la báscula no siempre refleja.</p>
+      <input type="file" accept="image/*" capture="environment" id="input-photo" style="margin-bottom:12px;">
+      <button class="secondary" onclick="addProgressPhoto()" style="width:100%; margin-bottom:16px;">Guardar foto de hoy</button>
+      <div id="photo-gallery" class="photo-gallery"></div>
+      <div id="photo-compare-controls" style="display:none; margin-top:16px;">
+        <div class="form-row" style="margin-bottom:12px;">
+          <div class="form-group"><label>Antes</label><select id="photo-compare-a" onchange="renderPhotoCompare()" style="margin-bottom:0;"></select></div>
+          <div class="form-group"><label>Después</label><select id="photo-compare-b" onchange="renderPhotoCompare()" style="margin-bottom:0;"></select></div>
+        </div>
+        <div id="photo-compare-view" class="photo-compare-view"></div>
+      </div>
+    </div>
+
     <!-- TENDENCIAS SEMANALES -->
     <div class="glass-card">
       <h3>📊 Adherencia y tendencia</h3>
+      <div id="quality-score-card" style="margin-bottom:16px;"></div>
       <div id="insights-card" style="display:flex; flex-direction:column; gap:12px; font-size:0.9rem; margin-bottom:16px;"></div>
+      <button class="secondary" id="btn-weekly-summary" onclick="generateWeeklySummary()" style="width:100%; margin-bottom:16px;">🧠 Generar resumen semanal con IA</button>
+      <div id="weekly-summary-output" style="display:none; margin-bottom:16px;"></div>
       <div class="chart-container"><canvas id="kcalTrendChart"></canvas></div>
     </div>
 
@@ -1530,6 +1620,8 @@ async function updateDashboardUI(){
       </div>
     `).join('');
   }
+  await renderFavoritesQuickAdd();
+  await renderStreakBadge();
 }
 window.delLog = async (id) => {
   await setLog(selectedLogDate, (await getLog(selectedLogDate)).filter(e=>e.id!==id));
@@ -1804,6 +1896,7 @@ window.confirmFoodReview = async () => {
     entries.push(loggedEntry);
     await setLog(selectedLogDate, entries);
     showToast(`+${Math.round(entry.kcal)} kcal registradas (${formatDateLabel(selectedLogDate).toLowerCase()})`);
+    await checkFavoriteSuggestion(loggedEntry);
   }
   cancelFoodReview();
   await updateDashboardUI(); await renderWeekInsights(); await renderTrendCharts();
@@ -2979,6 +3072,99 @@ async function computeWeekInsights(){
   return { avgWeight, kcalDays, proteinDays, completeDays, avgKcal, targetKcal, targetProtein };
 }
 
+// =========================================
+// 🏋️ ENTRENAMIENTO Y CORRELACIÓN CON EL PROGRESO
+// =========================================
+// Dato adicional puramente aditivo (nueva clave 'training:{fecha}', no toca
+// ningún dato existente). Correlaciona días de entrenamiento por semana con
+// el cambio de peso real (EMA semana a semana) usando el mismo
+// getAverageWeight() que ya usa el modelo de mantenimiento dinámico.
+async function getTrainingEntry(date){ return (await safeGet('training:'+date)) || null; }
+async function setTrainingEntry(date, data){ await safeSet('training:'+date, data); }
+
+window.saveTrainingEntry = async () => {
+  const date = $('input-training-date').value || todayStr();
+  const trained = $('input-trained').checked;
+  const volumeRaw = $('input-training-volume').value;
+  const volume = volumeRaw !== '' ? Number(volumeRaw) : null;
+  await setTrainingEntry(date, { trained, volume });
+  showToast(trained ? `Entrenamiento guardado (${formatDateLabel(date).toLowerCase()})` : `Descanso guardado (${formatDateLabel(date).toLowerCase()})`);
+  $('input-training-volume').value = '';
+  await renderTrainingCard();
+};
+
+async function computeWeeklyTrainingStats(){
+  let days = 0, totalVolume = 0, volumeDays = 0;
+  for(let i = 0; i < 7; i++){
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const t = await getTrainingEntry(dateKey(d));
+    if(t && t.trained){
+      days++;
+      if(Number.isFinite(t.volume)){ totalVolume += t.volume; volumeDays++; }
+    }
+  }
+  return { days, avgVolume: volumeDays ? Math.round(totalVolume / volumeDays) : null };
+}
+
+// Correlación de Pearson entre días entrenados/semana y cambio de peso esa
+// misma semana, sobre hasta 8 semanas hacia atrás. Requiere al menos 4
+// semanas con AMBOS datos (pesajes suficientes + algún entrenamiento
+// registrado) para no sacar conclusiones de una muestra minúscula.
+async function computeTrainingCorrelation(weeksBack = 8){
+  const weeklyPoints = [];
+  for(let w = 0; w < weeksBack; w++){
+    const startDay = w * 7;
+    const avgThis = await getAverageWeight(startDay, 7);
+    const avgPrev = await getAverageWeight(startDay + 7, 7);
+    if(avgThis === null || avgPrev === null) continue;
+    let trainingDays = 0;
+    for(let i = startDay; i < startDay + 7; i++){
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const t = await getTrainingEntry(dateKey(d));
+      if(t && t.trained) trainingDays++;
+    }
+    weeklyPoints.push({ trainingDays, weightChange: avgThis - avgPrev });
+  }
+  if(weeklyPoints.length < 4) return { status: 'cold', weeks: weeklyPoints.length };
+
+  const n = weeklyPoints.length;
+  const meanX = weeklyPoints.reduce((a,p)=>a+p.trainingDays,0) / n;
+  const meanY = weeklyPoints.reduce((a,p)=>a+p.weightChange,0) / n;
+  let num = 0, denX = 0, denY = 0;
+  for(const p of weeklyPoints){
+    const dx = p.trainingDays - meanX, dy = p.weightChange - meanY;
+    num += dx*dy; denX += dx*dx; denY += dy*dy;
+  }
+  const r = (denX > 0 && denY > 0) ? num / Math.sqrt(denX * denY) : null;
+  return { status: 'ok', weeks: n, r };
+}
+
+async function renderTrainingCard(){
+  const dateInput = $('input-training-date');
+  if(dateInput && !dateInput.value) dateInput.value = todayStr();
+
+  const summaryEl = $('training-week-summary');
+  if(summaryEl){
+    const stats = await computeWeeklyTrainingStats();
+    summaryEl.innerHTML = `<div style="display:flex; justify-content:space-between; font-size:0.9rem; padding:10px 0; border-top:1px solid var(--glass-border);"><span>Días entrenados (7 días):</span><b>${stats.days}/7</b></div>${stats.avgVolume !== null ? `<div style="display:flex; justify-content:space-between; font-size:0.9rem; padding-top:6px;"><span>Media de sets/sesión:</span><b>${stats.avgVolume}</b></div>` : ''}`;
+  }
+
+  const corrEl = $('training-correlation-content');
+  if(!corrEl) return;
+  const corr = await computeTrainingCorrelation();
+  if(corr.status === 'cold'){
+    corrEl.innerHTML = `<div class="chat-empty">Necesitas al menos 4 semanas con pesajes y entrenamientos registrados para ver la correlación (llevas ${corr.weeks}).</div>`;
+    return;
+  }
+  const r = corr.r;
+  let text;
+  if(r === null) text = 'Sin variación suficiente en los datos para calcular una correlación fiable todavía.';
+  else if(r > 0.3) text = `En tus últimas ${corr.weeks} semanas, entrenar más días se asocia con más ganancia de peso esa semana (r=${r.toFixed(2)}).`;
+  else if(r < -0.3) text = `En tus últimas ${corr.weeks} semanas, más días de entrenamiento tienden a coincidir con menos ganancia de peso, probablemente por mayor gasto energético (r=${r.toFixed(2)}).`;
+  else text = `No se observa una relación clara entre tus días de entrenamiento y el cambio de peso semanal todavía (r=${r.toFixed(2)}).`;
+  corrEl.innerHTML = `<div style="font-size:0.85rem; line-height:1.6; padding:12px 14px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.04); border:1px solid var(--glass-border);">${text}<div style="font-size:0.7rem; color:var(--text-dim); margin-top:6px;">Correlación, no causalidad — con ${corr.weeks} semanas de datos es una señal orientativa, no una conclusión estadística fuerte.</div></div>`;
+}
+
 async function renderWeekInsights(){
   const ins = await computeWeekInsights();
   const html = `<div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--glass-border); padding-bottom:8px;"><span>Meta diaria:</span><b style="color:var(--accent);">${Math.round(ins.targetKcal)} kcal</b></div>
@@ -2988,7 +3174,295 @@ async function renderWeekInsights(){
                 <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Media ingerida:</span><b>${ins.avgKcal ? ins.avgKcal+' kcal' : 'Sin registros'}</b></div>
                 <div style="display:flex; justify-content:space-between; padding-top:8px;"><span>Ajuste automático:</span><b>${profile.adjustmentPaused?'Pausado':'Activo'}</b></div>`;
   $('insights-card').innerHTML = html;
+  await renderQualityScoreCard();
 }
+
+// =========================================
+// ⭐ FAVORITOS (guardado rápido de comidas repetidas)
+// =========================================
+// Punto 1 de la especificación: tras registrar el mismo texto 3+ veces en
+// 14 días, se ofrece guardarlo como favorito para añadirlo en 1 toque sin
+// pasar por la IA (usa el mismo `normalizeFoodKey` que ya usa el caché de
+// estimación, para detectar "lo mismo de siempre" aunque cambie mayúsculas
+// o acentos).
+async function getFavorites(){ return (await safeGet('favorites')) || []; }
+async function setFavorites(list){ await safeSet('favorites', list); }
+
+async function checkFavoriteSuggestion(entry){
+  if(!entry.originalText) return;
+  const key = normalizeFoodKey(entry.originalText);
+  if(!key) return;
+  const favorites = await getFavorites();
+  if(favorites.some(f => f.key === key)) return;
+
+  let count = 0;
+  for(let i = 0; i < 14; i++){
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const logs = await getLog(dateKey(d));
+    if(logs.some(e => e.originalText && normalizeFoodKey(e.originalText) === key)) count++;
+  }
+  if(count < 3) return;
+
+  const el = $('favorite-suggestion');
+  if(!el) return;
+  el.style.display = 'block';
+  el.innerHTML = `⭐ Has registrado "<b>${entry.label}</b>" ${count} veces en 14 días. ¿La guardo como favorita para añadirla en 1 toque?
+    <div style="display:flex; gap:8px; margin-top:10px;">
+      <button class="secondary" style="padding:8px 14px; font-size:.8rem;" onclick="saveFavoriteFromSuggestion('${key}')">Guardar favorita</button>
+      <button class="secondary" style="padding:8px 14px; font-size:.8rem;" onclick="$('favorite-suggestion').style.display='none'">Ahora no</button>
+    </div>`;
+  window.__pendingFavoriteEntry = entry;
+  window.__pendingFavoriteKey = key;
+}
+
+window.saveFavoriteFromSuggestion = async (key) => {
+  const entry = window.__pendingFavoriteEntry;
+  if(!entry || key !== window.__pendingFavoriteKey) return;
+  const favorites = await getFavorites();
+  favorites.push({ id: Date.now().toString(36), key, label: entry.label, kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f, s: entry.s || 0 });
+  await setFavorites(favorites);
+  $('favorite-suggestion').style.display = 'none';
+  showToast('Guardada en favoritas');
+  await renderFavoritesQuickAdd();
+};
+
+async function renderFavoritesQuickAdd(){
+  const row = $('favorites-row');
+  if(!row) return;
+  const favorites = await getFavorites();
+  if(!favorites.length){ row.style.display = 'none'; row.innerHTML = ''; return; }
+  row.style.display = 'flex';
+  row.innerHTML = favorites.map(f => `<span class="favorite-chip" onclick="addFavoriteQuick('${f.id}')">⭐ ${f.label} <span class="chip-remove" onclick="event.stopPropagation(); removeFavorite('${f.id}')">✕</span></span>`).join('');
+}
+
+window.addFavoriteQuick = async (id) => {
+  const favorites = await getFavorites();
+  const fav = favorites.find(x => x.id === id);
+  if(!fav) return;
+  const entries = await getLog(selectedLogDate);
+  entries.push({ id: Date.now().toString(36), time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), label: fav.label, kcal: fav.kcal, p: fav.p, c: fav.c, f: fav.f, s: fav.s || 0, source: '⚡ Favorita (sin pasar por IA)' });
+  await setLog(selectedLogDate, entries);
+  showToast(`+${Math.round(fav.kcal)} kcal registradas (${fav.label})`);
+  await updateDashboardUI(); await renderWeekInsights(); await renderTrendCharts();
+};
+
+window.removeFavorite = async (id) => {
+  const favorites = (await getFavorites()).filter(f => f.id !== id);
+  await setFavorites(favorites);
+  await renderFavoritesQuickAdd();
+};
+
+// =========================================
+// 🔥 RACHA DE DÍAS REGISTRADOS
+// =========================================
+async function computeStreak(){
+  let streak = 0;
+  for(let i = 0; i < 90; i++){
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const logs = await getLog(dateKey(d));
+    if(logs.length > 0){ streak++; }
+    else if(i === 0){ continue; } // hoy sin registrar todavía no rompe la racha
+    else { break; }
+  }
+  return streak;
+}
+async function renderStreakBadge(){
+  const el = $('streak-badge');
+  if(!el) return;
+  const streak = await computeStreak();
+  if(streak < 2){ el.style.display = 'none'; return; }
+  el.style.display = 'inline-flex';
+  el.innerText = `🔥 ${streak} días seguidos`;
+}
+
+// =========================================
+// 🏆 SCORE DE CALIDAD DE DIETA (semanal, determinista, sin IA)
+// =========================================
+// Combina señales ya presentes en los datos reales de la semana:
+// consistencia de registro, adherencia calórica, adherencia proteica,
+// control de azúcar y variedad de comidas. No sustituye un análisis
+// nutricional completo (no hay fibra ni micronutrientes en el modelo de
+// datos actual), pero da una señal rápida y explicable sin gastar una
+// llamada a la IA en cada carga del dashboard.
+async function computeDietQualityScore(){
+  if(!profile) return null;
+  const targetKcal = Number(profile.targetKcal || 2500);
+  const targetProtein = Number(profile.targetProtein || (profile.weight * 2) || 130);
+  const targetSugar = calcSugarTargetG(targetKcal);
+  let loggedDays = 0, kcalOnTarget = 0, proteinOnTarget = 0, sugarOverDays = 0;
+  const labels = new Set();
+  for(let i = 0; i < 7; i++){
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const logs = await getLog(dateKey(d));
+    if(!logs.length) continue;
+    loggedDays++;
+    logs.forEach(e => labels.add(normalizeFoodKey(e.label || '')));
+    const sums = sumEntries(logs);
+    if(sums.kcal >= targetKcal * 0.9 && sums.kcal <= targetKcal * 1.15) kcalOnTarget++;
+    if(sums.p >= targetProtein * 0.9) proteinOnTarget++;
+    if(sums.s > targetSugar * 1.15) sugarOverDays++;
+  }
+  if(loggedDays === 0) return null;
+
+  const consistency = (loggedDays / 7) * 100;
+  const kcalAdherence = (kcalOnTarget / loggedDays) * 100;
+  const proteinAdherence = (proteinOnTarget / loggedDays) * 100;
+  const sugarControl = 100 - (sugarOverDays / loggedDays) * 100;
+  const variety = Math.min(100, (labels.size / Math.max(loggedDays * 2, 1)) * 100);
+
+  const score = Math.round(consistency * 0.3 + kcalAdherence * 0.25 + proteinAdherence * 0.25 + sugarControl * 0.1 + variety * 0.1);
+  return { score, consistency, kcalAdherence, proteinAdherence, sugarControl, variety, loggedDays };
+}
+
+async function renderQualityScoreCard(){
+  const el = $('quality-score-card');
+  if(!el) return;
+  const q = await computeDietQualityScore();
+  if(!q){ el.innerHTML = '<div class="chat-empty">Registra al menos un día esta semana para ver tu score.</div>'; return; }
+  const color = q.score >= 80 ? 'var(--green)' : q.score >= 60 ? 'var(--accent)' : 'var(--red)';
+  const label = q.score >= 80 ? 'Excelente' : q.score >= 60 ? 'Aceptable' : 'Mejorable';
+  el.innerHTML = `<div class="quality-score-badge">
+      <div class="quality-score-num" style="color:${color};">${q.score}</div>
+      <div>
+        <div style="font-weight:700; color:${color};">${label}</div>
+        <div style="font-size:0.75rem; color:var(--text-dim); margin-top:2px;">Consistencia ${Math.round(q.consistency)}% · Kcal ${Math.round(q.kcalAdherence)}% · Proteína ${Math.round(q.proteinAdherence)}% · Control azúcar ${Math.round(q.sugarControl)}%</div>
+      </div>
+    </div>`;
+}
+
+// =========================================
+// 🧠 RESUMEN SEMANAL EN LENGUAJE NATURAL (IA)
+// =========================================
+// Reutiliza el mismo pipeline de Gemini que el resumen clínico corporal,
+// pero con foco en la semana: nada de JSON, texto plano corto y directo.
+async function generateWeeklySummary(){
+  const btn = $('btn-weekly-summary');
+  const out = $('weekly-summary-output');
+  btn.disabled = true; btn.innerText = 'Generando...';
+
+  const ins = await computeWeekInsights();
+  const q = await computeDietQualityScore();
+  const streak = await computeStreak();
+  const trend = await computeWeightProjection();
+  const trainingStats = await computeWeeklyTrainingStats();
+  const targetHist = ((await safeGet('targetHistory')) || []).slice(-1)[0];
+
+  const prompt = `Actúa como coach de nutrición deportiva. Con estos datos reales de la última semana de un usuario en fase de volumen, escribe un resumen semanal breve, directo y en español, en 3-5 frases, en lenguaje natural (nunca JSON, nunca listas), como si se lo dijeras en persona. Sé concreto con los números que te doy, no inventes ninguno que no esté aquí.
+- Días registrados: ${ins.completeDays || 0}/7. Racha actual: ${streak} días.
+- Media kcal ingeridas: ${ins.avgKcal || 'sin datos'} (objetivo ${Math.round(ins.targetKcal)} kcal).
+- Adherencia kcal: ${ins.kcalDays}/${ins.completeDays || 7} días. Adherencia proteína: ${ins.proteinDays}/${ins.completeDays || 7} días.
+- Media de peso 7 días: ${ins.avgWeight === null ? 'sin pesajes suficientes' : ins.avgWeight.toFixed(1) + ' kg'}.
+${trend.status === 'ok' ? `- Ritmo real de cambio de peso: ${trend.ratePerWeek >= 0 ? '+' : ''}${trend.ratePerWeek.toFixed(2)} kg/semana.` : '- Sin tendencia de peso fiable todavía.'}
+- Días entrenados esta semana: ${trainingStats.days}/7${trainingStats.avgVolume !== null ? ` (media ${trainingStats.avgVolume} sets/sesión)` : ''}.
+${q ? `- Score de calidad de dieta: ${q.score}/100.` : ''}
+${targetHist ? `- Último ajuste de objetivo: semana ${targetHist.week}, ${Math.round(targetHist.prevTarget)}→${Math.round(targetHist.newTarget)} kcal.` : ''}
+- Ajuste automático: ${profile.adjustmentPaused ? 'pausado' : 'activo'}.
+
+Empieza directamente con la valoración, sin saludos ni introducciones tipo "Aquí tienes tu resumen".`;
+
+  const res = await callGemini(prompt, false, GEMINI_MODEL_PLAN);
+  btn.disabled = false; btn.innerText = '🧠 Generar resumen semanal con IA';
+  if(!res){ showToast('No se pudo generar el resumen ahora mismo.', true); return; }
+  out.style.display = 'block';
+  out.innerHTML = `<div style="font-size:0.9rem; line-height:1.6; padding:14px 16px; border-radius:var(--radius-sm); background:rgba(255,255,255,0.04); border:1px solid var(--glass-border);">${res}</div>`;
+}
+
+// =========================================
+// 📸 FOTOS DE PROGRESO
+// =========================================
+// Una foto por fecha (si guardas dos veces el mismo día, la segunda
+// sobrescribe la primera). Se comprime a un ancho máximo de 480px y
+// calidad JPEG 0.6 antes de guardar: esto entra en el mismo blob de
+// localStorage que se sincroniza entero a Firebase en cada cambio (ver
+// dumpLocalStorage), así que mantener el peso bajo es importante para no
+// disparar el tamaño del payload de sync.
+function resizeImageFile(file, maxWidth = 480, quality = 0.6){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function getPhotoDates(){
+  const dates = [];
+  for(let i = 0; i < localStorage.length; i++){
+    const k = localStorage.key(i);
+    if(k && k.startsWith('photo:')) dates.push(k.slice('photo:'.length));
+  }
+  return dates.sort();
+}
+
+window.addProgressPhoto = async () => {
+  const input = $('input-photo');
+  const file = input.files && input.files[0];
+  if(!file){ showToast('Selecciona una foto primero', true); return; }
+  try {
+    const dataUrl = await resizeImageFile(file);
+    localStorage.setItem('photo:' + todayStr(), dataUrl);
+    scheduleCloudPush();
+    input.value = '';
+    showToast('Foto guardada');
+    await renderPhotoGallery();
+  } catch(e){ console.error(e); showToast('No se pudo procesar la foto', true); }
+};
+
+window.deletePhoto = async (date) => {
+  if(!confirm('¿Borrar esta foto?')) return;
+  localStorage.removeItem('photo:' + date);
+  scheduleCloudPush();
+  await renderPhotoGallery();
+};
+
+async function renderPhotoGallery(){
+  const gallery = $('photo-gallery');
+  const controls = $('photo-compare-controls');
+  if(!gallery) return;
+  const dates = await getPhotoDates();
+  if(!dates.length){
+    gallery.innerHTML = '<div class="chat-empty">Aún no has guardado ninguna foto.</div>';
+    if(controls) controls.style.display = 'none';
+    return;
+  }
+  gallery.innerHTML = dates.slice().reverse().map(d => `
+    <div class="photo-thumb">
+      <img src="${localStorage.getItem('photo:'+d)}" alt="Foto ${d}">
+      <div class="photo-thumb-date">${d}</div>
+      <div class="photo-thumb-del" onclick="deletePhoto('${d}')">Borrar</div>
+    </div>`).join('');
+
+  if(dates.length >= 2 && controls){
+    controls.style.display = 'block';
+    const opts = dates.map(d => `<option value="${d}">${d}</option>`).join('');
+    const selA = $('photo-compare-a'), selB = $('photo-compare-b');
+    selA.innerHTML = opts; selB.innerHTML = opts;
+    selA.value = dates[0]; selB.value = dates[dates.length-1];
+    renderPhotoCompare();
+  } else if(controls){
+    controls.style.display = 'none';
+  }
+}
+
+window.renderPhotoCompare = () => {
+  const a = $('photo-compare-a').value, b = $('photo-compare-b').value;
+  const view = $('photo-compare-view');
+  if(!view || !a || !b) return;
+  view.innerHTML = `<img src="${localStorage.getItem('photo:'+a)}" alt="Antes"><img src="${localStorage.getItem('photo:'+b)}" alt="Después">`;
+};
 
 // NAVEGACIÓN
 function nav(tab){
@@ -2996,7 +3470,7 @@ function nav(tab){
   document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
   $('tab-'+tab).classList.add('active');
   document.querySelector(`.nav-item[data-tab="${tab}"]`).classList.add('active');
-  if(tab==='body'){ renderWeightChart(); renderTrendCharts(); renderGoalProjection(); renderDynamicModelStatus(); renderBodyMeasureDayList(); renderBodyComposition(); renderBodyCompositionChart(); renderTargetHistory(); }
+  if(tab==='body'){ renderWeightChart(); renderTrendCharts(); renderGoalProjection(); renderDynamicModelStatus(); renderBodyMeasureDayList(); renderBodyComposition(); renderBodyCompositionChart(); renderTargetHistory(); renderPhotoGallery(); renderTrainingCard(); }
 }
 
 // BACKUP IMPORT/EXPORT
