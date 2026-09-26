@@ -26,14 +26,11 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 #    Google Cloud → Credenciales: referentes HTTP (tu dominio + localhost) y SOLO
 #    "Generative Language API". Si alguna vez salió en un export, rótala.
 GEMINI_API_KEY_B64 = "QVEuQWI4Uk42S2szdjJuZS1ONE9qZWVwR0FtNmVOOHZnRGgxUENFOXBTZ1VRQng5TkJ0ZXc="
-# Modelo rápido/barato para tareas cortas (loguear comidas, chat, sustituciones).
+# Todo a un único modelo (rápido/barato) por decisión explícita: registro de
+# comidas, chat, sustituciones, plan semanal y asistente diario.
 GEMINI_MODEL = "gemini-3.5-flash-lite"
-# Modelo más capaz para la generación del plan semanal completo, el resumen
-# clínico y la re-estimación (tareas que se benefician de más razonamiento).
-GEMINI_MODEL_PLAN = "gemini-3.5-flash"
-# Modelo para estimar comidas: la precisión aquí alimenta TODO el cálculo de
-# mantenimiento, así que usa el modelo capaz (temperatura 0, JSON desglosado).
-GEMINI_MODEL_FOOD = "gemini-3.5-flash"
+GEMINI_MODEL_PLAN = "gemini-3.5-flash-lite"
+GEMINI_MODEL_FOOD = "gemini-3.5-flash-lite"
 
 # 🔗 SINCRONIZACIÓN EN LA NUBE (Firebase Realtime Database)
 # Permite que tus datos (comidas, pesos, perfil...) viajen contigo entre PC,
