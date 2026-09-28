@@ -26,11 +26,11 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 #    Google Cloud → Credenciales: referentes HTTP (tu dominio + localhost) y SOLO
 #    "Generative Language API". Si alguna vez salió en un export, rótala.
 GEMINI_API_KEY_B64 = "QVEuQWI4Uk42S2szdjJuZS1ONE9qZWVwR0FtNmVOOHZnRGgxUENFOXBTZ1VRQng5TkJ0ZXc="
-# Todo a un único modelo (rápido/barato) por decisión explícita: registro de
-# comidas, chat, sustituciones, plan semanal y asistente diario.
-GEMINI_MODEL = "gemini-3.5-flash-lite"
-GEMINI_MODEL_PLAN = "gemini-3.5-flash-lite"
+# Un único modelo (rápido/barato) por decisión explícita:
+#   · FOOD    → estimación de kcal y macros al registrar comidas
+#   · SUMMARY → asistente diario y resúmenes (semanal y de composición corporal)
 GEMINI_MODEL_FOOD = "gemini-3.5-flash-lite"
+GEMINI_MODEL_SUMMARY = "gemini-3.5-flash-lite"
 
 # 🔗 SINCRONIZACIÓN EN LA NUBE (Firebase Realtime Database)
 # Permite que tus datos (comidas, pesos, perfil...) viajen contigo entre PC,
@@ -160,7 +160,10 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     text-transform: uppercase; letter-spacing: 0.07em;
     color: var(--text-mid); margin-bottom: 20px;
   }
-  .subtitle { font-size: 0.8rem; color: var(--text-dim); font-weight: 500; letter-spacing: 0; }
+  /* Títulos de bloque dentro de cada pestaña */
+  .group-title { display:flex; align-items:center; gap:14px; margin:38px 0 18px; font-family:'Space Grotesk', sans-serif; font-size:.72rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text-dim); }
+  .group-title::after { content:''; flex:1; height:1px; background:var(--glass-border); }
+  h2 + .group-title, .alert + .group-title { margin-top:0; }
   .section-kicker { color: var(--text-dim); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
 
   /* =========================================
@@ -248,11 +251,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .main-progress-fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.85s var(--ease); }
   .surplus { background: var(--green) !important; }
 
-  /* Tira de métricas clave (peso, tendencia, proteína) */
-  .metric-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--glass-border); border: 1px solid var(--glass-border); border-radius: var(--radius-md); overflow: hidden; margin-bottom: 24px; }
-  .metric-cell { background: var(--bg-elev); padding: 16px 14px; text-align: center; }
-  .metric-cell-val { font-family: 'Space Grotesk', sans-serif; font-size: 1.28rem; font-weight: 600; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; line-height: 1.15; }
-  .metric-cell-label { font-size: 0.64rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; margin-top: 6px; }
 
   .macro-row { margin-bottom: 20px; }
   .macro-row:last-child { margin-bottom: 0; }
@@ -372,39 +370,17 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .date-nav-label strong { font-family:'Space Grotesk', sans-serif; font-size:0.92rem; font-weight:600; letter-spacing:-0.02em; }
 
   /* =========================================
-     📅 MENÚ SEMANAL Y TABLAS
+     📋 TABLAS
      ========================================= */
-  .plan-table { width:100%; border-collapse:collapse; margin-top:8px; }
-  .plan-table th { color:var(--text-dim); font-size:0.66rem; text-align:left; padding:12px 10px; border-bottom:1px solid var(--glass-border); text-transform:uppercase; letter-spacing:0.07em; font-weight:600; }
-  .plan-table td { padding:13px 10px; font-size:0.85rem; vertical-align:top; border-bottom:1px solid var(--glass-border); color:var(--text-mid); }
-  .day-card { margin-top:14px; padding:24px 26px; border-radius:var(--radius-md); background:var(--glass-bg); border:1px solid var(--glass-border); }
-  .day-card h3 { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-  .meal-row { display:grid; grid-template-columns:130px minmax(0, 1fr) 76px; gap:18px; align-items:center; padding:16px 0; border-top:1px solid var(--glass-border); }
-  .meal-name { font-weight:600; color:var(--text); font-size:0.88rem; }
-  .meal-items { color:var(--text-mid); font-size:.85rem; line-height:1.65; }
-  .meal-alternatives { display:block; color:var(--text-dim); font-size:.74rem; margin-top:6px; line-height:1.5; }
-  .meal-kcal { text-align:right; color:var(--text); font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:.95rem; font-variant-numeric: tabular-nums; }
-  .meal-kcal small { display:block; color:var(--text-dim); font-family:'Manrope'; font-weight:500; font-size:.66rem; margin-top:3px; }
-  .plan-summary-bar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:18px 20px; background:var(--glass-bg-raised); border:1px solid var(--glass-border); border-radius:var(--radius-md); }
-  .plan-meta { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
-  .meta-pill { padding:8px 13px; border-radius:99px; background:var(--glass-bg-raised); border:1px solid var(--glass-border); color:var(--text-dim); font-size:.72rem; font-weight:500; }
-  .meta-pill b { color:var(--text); font-weight:600; }
-  .day-total { margin-top:16px; padding:16px 18px; border-radius:var(--radius-sm); background:var(--accent-soft); border:1px solid var(--accent-line); line-height:1.7; font-size:0.86rem; color:var(--text-mid); }
-  .day-total b { color:var(--accent); font-weight:600; }
+  .data-table { width:100%; border-collapse:collapse; margin-top:8px; }
+  .data-table th { color:var(--text-dim); font-size:0.66rem; text-align:left; padding:12px 10px; border-bottom:1px solid var(--glass-border); text-transform:uppercase; letter-spacing:0.07em; font-weight:600; }
+  .data-table td { padding:13px 10px; font-size:0.85rem; vertical-align:top; border-bottom:1px solid var(--glass-border); color:var(--text-mid); }
 
-  .badge { display:inline-block; padding:4px 10px; border-radius:99px; font-size:0.62rem; font-weight:700; letter-spacing: 0.06em; text-transform: uppercase; }
-  .badge-batch { background: rgba(138,162,200,0.12); color: var(--pro-color); border: 1px solid rgba(138,162,200,0.24); }
-  .badge-fresh { background: rgba(127,174,148,0.12); color: var(--green); border: 1px solid rgba(127,174,148,0.24); }
 
   /* =========================================
-     💬 CHAT Y AVISOS
+     🔔 AVISOS
      ========================================= */
-  .chat-window { display:flex; flex-direction:column; gap:14px; max-height:56vh; overflow-y:auto; padding:6px 2px 14px; margin-bottom:16px; scroll-behavior: smooth; }
-  .chat-bubble { max-width:82%; padding:14px 18px; border-radius:18px; font-size:0.9rem; line-height:1.6; animation: itemIn 0.28s var(--ease) both; }
-  .chat-bubble.user { align-self:flex-end; background: var(--accent); color:#17130c; font-weight:500; border-bottom-right-radius:5px; }
-  .chat-bubble.ai { align-self:flex-start; background: var(--glass-bg-raised); border:1px solid var(--glass-border); color: var(--text-mid); border-bottom-left-radius:5px; }
-  .chat-empty { color:var(--text-dim); text-align:center; padding:36px 20px; font-size:0.86rem; line-height: 1.6; }
-  .chat-action-btn { margin-top:12px; background: var(--accent-soft); border:1px solid var(--accent-line); color:var(--accent); border-radius:var(--radius-sm); padding:11px 16px; font-weight:600; cursor:pointer; font-size:0.84rem; width: 100%; }
+  .empty-state { color:var(--text-dim); text-align:center; padding:36px 20px; font-size:0.86rem; line-height: 1.6; }
 
   .alert { background: var(--accent-soft); border: 1px solid var(--accent-line); padding: 16px 18px; border-radius: var(--radius-md); font-size: 0.86rem; margin-bottom: 16px; color: var(--text-mid); line-height: 1.6; }
   .alert.warn { background: rgba(197,131,122,0.07); border-color: rgba(197,131,122,0.24); }
@@ -432,8 +408,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .food-review-grid { display:grid; grid-template-columns:2fr repeat(5, minmax(50px, 1fr)); gap:8px; margin:14px 0; }
   .food-review-grid input { margin-bottom:0; padding:11px 8px; font-size:0.85rem; text-align:center; }
   .food-review-grid input:first-child { text-align:left; }
-  .ingredient-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  .ingredient-row button { padding:5px 10px; font-size:.68rem; }
 
   /* Toasts */
   #toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 1000; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 380px; pointer-events: none; }
@@ -497,10 +471,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     details.glass-card { padding: 18px 20px; }
     h2 { margin-bottom: 22px; padding-bottom: 16px; }
     .dashboard-grid { grid-template-columns: 1fr; gap: 14px; }
-    .meal-row { grid-template-columns: 1fr auto; gap: 8px 12px; }
-    .meal-row > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
-    .meal-kcal { grid-column: 2; grid-row: 1; }
-    .day-card { padding: 20px 16px; }
     .form-row { flex-direction: column; gap: 0; }
     .food-review-grid { grid-template-columns: 1fr 1fr 1fr; }
     .food-review-grid input:first-child { grid-column: 1 / -1; }
@@ -508,7 +478,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     input, select, textarea { padding: 16px; font-size: 16px; }
     button.primary { padding: 17px; }
     button.secondary { padding: 14px 18px; }
-    .chat-bubble { max-width: 90%; }
   }
 
   @media (min-width: 1400px) {
@@ -553,7 +522,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .q-head { display:flex; align-items:baseline; gap:10px; } .q-text { flex:1; font-size:.86rem; font-weight:600; }
   .q-val { font-size:.84rem; color:var(--tone); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .q-dot { display:none; } .q-ans { font-size:.78rem; color:var(--text-mid); margin-top:6px; line-height:1.5; }
-  details.insights-details > summary, .card-summary { cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.02rem; }
+  .card-summary { cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.02rem; }
   .pred-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .pred-card { padding:14px; border-radius:var(--radius-sm); background:rgba(255,255,255,.03); border:1px solid var(--glass-border); }
   .pred-lbl { font-size:.66rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
@@ -567,7 +536,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .dq-list { display:flex; flex-direction:column; gap:8px; margin-top:12px; }
   .dq-item { font-size:.78rem; line-height:1.5; color:var(--text-mid); padding:10px 12px; border-radius:var(--radius-sm); background:rgba(255,255,255,.03); border:1px solid var(--glass-border); }
   .table-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
-  .plan-table.audit { font-size:.74rem; white-space:nowrap; } .plan-table.audit th { text-align:left; color:var(--text-dim); font-weight:600; padding:6px 8px; } .plan-table.audit td { padding:6px 8px; }
+  .data-table.audit { font-size:.74rem; white-space:nowrap; } .data-table.audit th { text-align:left; color:var(--text-dim); font-weight:600; padding:6px 8px; } .data-table.audit td { padding:6px 8px; }
   .decision-item { border-bottom:1px solid var(--glass-border); padding:8px 0; font-size:.8rem; }
   .decision-item summary { cursor:pointer; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .decision-reason { color:var(--text-mid); line-height:1.5; margin:8px 0; }
@@ -595,18 +564,28 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div class="app-container">
 
   <!-- ========================================================================= -->
-  <!-- 📊 TAB 1: DASHBOARD Y REGISTRO DIARIO                                     -->
+  <!-- 📊 HOY · registrar y ejecutar el día                                    -->
   <!-- ========================================================================= -->
   <div id="tab-dash" class="section active">
-    <h2>Resumen <span class="subtitle" id="date-display"></span></h2>
+    <h2>Hoy</h2>
     <div id="no-sync-banner" class="alert warn" style="display:none;"></div>
     <div id="adjust-alert" class="alert" style="display:none;"></div>
     <div id="day-flag-banner" class="alert warn" style="display:none;"></div>
     <div id="favorite-suggestion" class="alert" style="display:none;"></div>
     <div id="backup-reminder" class="alert" style="display:none;"></div>
     <div id="measure-reminder" class="alert" style="display:none;"></div>
+
+    <div class="glass-card date-nav">
+      <button class="secondary" onclick="navDay(-1)">◀</button>
+      <div class="date-nav-label">
+        <strong id="log-date-label">Hoy</strong>
+        <div id="log-date-jump" style="display:none; margin-top:6px;"><button class="secondary" style="padding:6px 12px; font-size:.75rem;" onclick="jumpToday()">Volver a hoy</button></div>
+        <div id="day-status-row" class="day-status-row"></div>
+      </div>
+      <button class="secondary" id="btn-next-day" onclick="navDay(1)">▶</button>
+    </div>
+
     <div id="daily-assistant" class="daily-assistant" style="display:none;"></div>
-    <div id="missing-today" class="glass-card missing-card" style="display:none;"></div>
 
     <div class="dashboard-grid">
     <div class="glass-card card-hero" style="padding-top: 30px;">
@@ -625,11 +604,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <span class="streak-badge" id="streak-badge" style="display:none;"></span>
       </div>
       <div class="main-progress"><div class="main-progress-fill" id="ui-progress"></div></div>
-      <div class="metric-strip" id="ui-metric-strip">
-        <div class="metric-cell"><div class="metric-cell-val" id="ui-strip-weight">--</div><div class="metric-cell-label">Peso</div></div>
-        <div class="metric-cell"><div class="metric-cell-val" id="ui-strip-trend">--</div><div class="metric-cell-label">Tendencia</div></div>
-        <div class="metric-cell"><div class="metric-cell-val" id="ui-strip-goal">--</div><div class="metric-cell-label">Objetivo</div></div>
-      </div>
       <div style="font-size:0.78rem; color: var(--green); margin-bottom:16px; font-weight:600; display:none;" id="ui-override-note"></div>
       <div class="macro-row">
         <div class="macro-values">
@@ -660,13 +634,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="macro-bar-bg"><div class="macro-bar-fill sugar-fill" id="bar-sugar"></div></div>
       </div>
 
-      <div class="quick-adjust steps-row" aria-label="Pasos del día">
-        <span>👟 Pasos</span>
-        <div class="quick-adjust-controls">
-          <input type="number" id="input-steps" min="0" step="100" placeholder="0" style="margin:0; width:110px; padding:9px 12px;">
-          <button class="secondary" onclick="saveSteps()">Guardar</button>
-        </div>
-      </div>
       <div class="quick-adjust" aria-label="Ajuste rapido del objetivo">
         <span>Ajustar hoy</span>
         <div class="quick-adjust-controls">
@@ -677,7 +644,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- WIDGET DE ENTRADA POR VOZ / TEXTO -->
+    <!-- REGISTRAR COMIDA (voz / texto) -->
     <div class="glass-card mic-container">
       <button class="mic-btn" id="btn-mic">🎙️</button>
       <div class="ai-status" id="ai-status">Toca para dictar qué has comido</div>
@@ -690,81 +657,27 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     </div>
 
-    <!-- ESTADO DEL BULK (motor v2) -->
-    <div class="glass-card">
-      <h3>Estado del bulk</h3>
-      <div id="bulk-status-content"></div>
-    </div>
-    <div class="glass-card">
-      <div id="why-target-dash"></div>
-      <details class="insights-details" style="margin-top:18px;">
-        <summary>Diagnóstico completo</summary>
-        <div id="insights-dash" class="q-list" style="margin-top:14px;"></div>
-      </details>
-    </div>
+    <div id="missing-today" class="glass-card missing-card" style="display:none;"></div>
 
-    <div class="glass-card date-nav">
-      <button class="secondary" onclick="navDay(-1)">◀</button>
-      <div class="date-nav-label">
-        <strong id="log-date-label">Hoy</strong>
-        <div id="log-date-jump" style="display:none; margin-top:6px;"><button class="secondary" style="padding:6px 12px; font-size:.75rem;" onclick="jumpToday()">Volver a hoy</button></div>
-        <div id="day-status-row" class="day-status-row"></div>
-      </div>
-      <button class="secondary" id="btn-next-day" onclick="navDay(1)">▶</button>
-    </div>
-
-    <h3>Historial</h3>
+    <h3>Comidas del día</h3>
     <div class="glass-card" id="log-list" style="padding: 10px 24px;"></div>
   </div>
 
   <!-- ========================================================================= -->
-  <!-- 🛒 TAB 2: MENÚ SEMANAL GENERATIVO                                         -->
-  <!-- ========================================================================= -->
-  <div id="tab-plan" class="section">
-    <h2>Menú semanal</h2>
-    <div class="glass-card">
-      <div class="plan-meta" style="margin: 0 0 22px;">
-        <span class="meta-pill"><span class="badge badge-batch">batch</span> &nbsp;Desayuno · Comida</span>
-        <span class="meta-pill"><span class="badge badge-fresh">fresh</span> &nbsp;Levantarse · Merienda · Cena</span>
-        <span class="meta-pill">Generar <b>jue</b> · Comprar <b>vie</b> · Cocinar <b>dom</b></span>
-      </div>
-      <button class="primary" id="btn-generate-plan" onclick="generatePlan()">Generar plan semanal</button>
-      <div id="plan-validation" class="alert" style="display:none; margin-top:16px;"></div>
-      <div id="plan-loading" style="display:none; text-align:center; padding:20px; color:var(--accent); font-weight: 600;">
-        🧠 Diseñando estructura clínica nutricional...
-      </div>
-    </div>
-    <div class="glass-card" style="display:none; background: transparent; border:none; box-shadow:none; padding:0;" id="plan-container">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-        <span style="font-size:0.8rem; color:var(--text-dim);" id="plan-date"></span>
-        <button class="secondary" onclick="generatePlan()" style="padding:8px 16px; font-size:0.85rem;">Regenerar</button>
-      </div>
-      <div id="plan-output"></div>
-    </div>
-  </div>
-
-  <!-- ========================================================================= -->
-  <!-- 💬 TAB 3: COACH IA CHAT                                                   -->
-  <!-- ========================================================================= -->
-  <div id="tab-chat" class="section">
-    <h2>Coach</h2>
-    <div class="glass-card">
-
-      <div class="chat-window" id="chat-window"></div>
-      <div style="display:flex; gap:10px;">
-        <input type="text" id="chat-input" placeholder="Escribe tu mensaje..." style="margin-bottom:0;">
-        <button class="secondary" id="btn-chat-send" onclick="sendChatMessage()">Enviar</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ========================================================================= -->
-  <!-- 🧬 TAB 4: PERFIL, PESO Y TENDENCIAS                                       -->
+  <!-- 📈 PROGRESO · cómo evolucionas (peso, ingesta, motor y cuerpo)          -->
   <!-- ========================================================================= -->
   <div id="tab-body" class="section">
     <h2>Progreso</h2>
 
-    <!-- PESO -->
+    <div class="group-title">Bulk</div>
+    <div class="glass-card">
+      <h3>Estado del bulk</h3>
+      <div id="bulk-status-body"></div>
+      <div class="sub-title" style="margin-top:22px;">¿Cuándo llego a mi objetivo?</div>
+      <div class="form-group" style="margin-bottom:10px;"><label>Peso objetivo (kg)</label><input type="number" step="0.1" id="input-goal-weight" placeholder="Ej: 60" style="margin-bottom:0;"></div>
+      <button class="secondary" onclick="saveGoalWeight()" style="width:100%; margin-bottom:16px;">Guardar peso objetivo</button>
+      <div id="goal-projection-content"></div>
+    </div>
     <div class="glass-card">
       <h3>Peso</h3>
       <div class="form-row" style="margin-bottom: 12px;">
@@ -777,68 +690,26 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="muted-line" id="weight-chart-caption"></div>
     </div>
 
-    <!-- ESTADO DEL BULK + PREDICCIÓN -->
+    <div class="group-title">Nutrición</div>
     <div class="glass-card">
-      <h3>Estado del bulk</h3>
-      <div id="bulk-status-body"></div>
-      <div class="sub-title" style="margin-top:22px;">¿Cuándo llego a mi objetivo?</div>
-      <div class="form-group" style="margin-bottom:10px;"><label>Peso objetivo (kg)</label><input type="number" step="0.1" id="input-goal-weight" placeholder="Ej: 60" style="margin-bottom:0;"></div>
-      <button class="secondary" onclick="saveGoalWeight()" style="width:100%; margin-bottom:16px;">Guardar peso objetivo</button>
-      <div id="goal-projection-content"></div>
+      <h3>Nutrición real vs objetivo</h3>
+      <div class="chart-container"><canvas id="kcalTrendChart"></canvas></div>
+      <div id="nutrition-stats" style="margin-top:14px;"></div>
+      <div id="insights-nutrition" class="q-list" style="margin-top:14px;"></div>
+      <button class="secondary" id="btn-weekly-summary" onclick="generateWeeklySummary()" style="width:100%; margin-top:16px;">Resumen semanal con IA</button>
+      <div id="weekly-summary-output" style="display:none; margin-top:16px;"></div>
     </div>
 
-    <!-- MOTOR DE KCAL -->
+    <div class="group-title">Objetivo de kcal</div>
     <div class="glass-card">
-      <h3>Motor de kcal</h3>
       <div id="why-target-body"></div>
       <div class="sub-title" style="margin-top:20px;">Mantenimiento estimado y objetivo en el tiempo</div>
       <div class="chart-container"><canvas id="modelChart"></canvas></div>
       <div class="muted-line">Cada punto es lo que el motor estimaba ESE día con los datos disponibles hasta entonces (sin mirar al futuro).</div>
     </div>
 
-    <!-- DIAGNÓSTICO -->
+    <div class="group-title">Cuerpo</div>
     <div class="glass-card">
-      <h3>Diagnóstico</h3>
-      <div id="insights-body" class="q-list"></div>
-    </div>
-
-    <!-- NUTRICIÓN REAL VS OBJETIVO -->
-    <div class="glass-card">
-      <h3>Nutrición real vs objetivo</h3>
-      <div class="chart-container"><canvas id="kcalTrendChart"></canvas></div>
-      <div id="nutrition-stats" style="margin-top:14px;"></div>
-      <button class="secondary" id="btn-weekly-summary" onclick="generateWeeklySummary()" style="width:100%; margin-top:16px;">Resumen semanal con IA</button>
-      <div id="weekly-summary-output" style="display:none; margin-top:16px;"></div>
-    </div>
-
-    <!-- AUDITORÍA -->
-    <details class="glass-card">
-      <summary class="card-summary">🧹 Calidad de datos</summary>
-      <div id="dq-content" style="margin-top:16px;"></div>
-    </details>
-    <details class="glass-card">
-      <summary class="card-summary">🤖 IA de comidas: precisión y correcciones</summary>
-      <div id="ai-stats-content" style="margin-top:16px;"></div>
-    </details>
-    <details class="glass-card">
-      <summary class="card-summary">🕘 Historial de decisiones (auditoría)</summary>
-      <div id="decision-log-content" style="margin-top:16px;"></div>
-    </details>
-    <details class="glass-card">
-      <summary class="card-summary">🧪 Backtest: algoritmo anterior vs nuevo</summary>
-      <button class="secondary" onclick="runBacktestUI()" style="width:100%; margin-top:16px;">Ejecutar backtest con mis datos</button>
-      <div id="backtest-content" style="margin-top:16px;"></div>
-    </details>
-
-    <!-- RESUMEN CLÍNICO IA -->
-    <div class="glass-card">
-      <h3>Resumen con IA</h3>
-      <button class="primary" id="btn-ai-summary" onclick="generateBodySummary()">Generar resumen</button>
-      <div id="ai-body-summary-output" style="display:none; margin-top:18px;"></div>
-    </div>
-
-    <!-- COMPOSICIÓN CORPORAL -->
-<div class="glass-card">
       <h3>Composición corporal</h3>
       <div id="body-comp-content"></div>
       <div id="body-comp-chart-wrap" style="display:none; margin-top:20px;">
@@ -855,10 +726,11 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         </div>
         <div class="chart-container"><canvas id="bodyCompChart"></canvas></div>
       </div>
+      <div class="sub-title" style="margin-top:22px;">Lectura con IA</div>
+      <button class="secondary" id="btn-ai-summary" onclick="generateBodySummary()" style="width:100%;">Generar resumen de composición</button>
+      <div id="ai-body-summary-output" style="display:none; margin-top:18px;"></div>
     </div>
-
-    <!-- MEDIDAS CORPORALES (OPCIONAL) -->
-<div class="glass-card">
+    <div class="glass-card">
       <h3>Medidas corporales</h3>
       <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:16px;">Cuello y cintura desbloquean el % de grasa medido. Brazo, muslo y pecho sirven para ver si el peso que subes es músculo. Una vez por semana, siempre igual.</p>
       <div class="form-row" style="margin-bottom: 12px;">
@@ -879,17 +751,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="sub-title" style="margin-top:22px;">Tendencia de medidas (¿músculo o grasa?)</div>
       <div id="measure-trends"></div>
     </div>
-
-    <!-- ACTIVIDAD (PASOS / NEAT) -->
     <div class="glass-card">
-      <h3>Actividad · pasos</h3>
-      <div id="steps-summary"></div>
-      <div class="chart-container"><canvas id="stepsChart"></canvas></div>
-      <div class="muted-line">Los pasos se registran en la pestaña Hoy (fila «Pasos», para el día que estés viendo). Solo informan: no cambian el objetivo de kcal, pero el motor avisa si caen con el bulk (menos NEAT).</div>
-    </div>
-
-    <!-- FOTOS DE PROGRESO -->
-<div class="glass-card">
       <h3>Fotos de progreso</h3>
       <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:16px;">Una por día. Se comprime automáticamente.</p>
       <input type="file" accept="image/*" capture="environment" id="input-photo" style="margin-bottom:12px;">
@@ -903,21 +765,56 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div id="photo-compare-view" class="photo-compare-view"></div>
       </div>
     </div>
+  </div>
 
-    <div class="stats-grid">
-      <div class="stat-box">
-        <div class="stat-title">Mantenimiento</div>
-        <div class="stat-val" id="ui-tdee" style="color:var(--pro-color);">--</div>
-        <div style="font-size:0.8rem; color:var(--text-dim);" id="ui-tdee-sub">kcal / día</div>
+  <!-- ========================================================================= -->
+  <!-- 🏋️ GYM · actividad y (próximamente) entrenamiento                      -->
+  <!-- ========================================================================= -->
+  <!-- Módulo de entrenamiento AÚN SIN DESARROLLAR. Convención reservada:
+       · claves de almacenamiento con prefijo `gym:` (p. ej. `gym:session:YYYY-MM-DD`, `gym:exercises`, `gym:routines`)
+         → entran solas en el export/import JSON y en la sincronización, sin tocar el motor de kcal.
+       · los pasos ya viven aquí (`steps:YYYY-MM-DD`).
+       · el cruce con nutrición se hará leyendo getEngineState() (kcal, peso tendencia, superávit) en modo solo lectura. -->
+  <div id="tab-gym" class="section">
+    <h2>Gym</h2>
+
+    <div class="group-title">Actividad</div>
+    <div class="glass-card">
+      <h3>Pasos</h3>
+      <div class="form-row" style="margin-bottom: 12px;">
+        <div class="form-group"><label>Fecha</label><input type="date" id="input-steps-date" style="margin-bottom:0;"></div>
+        <div class="form-group"><label>Pasos del día</label><input type="number" id="input-steps" min="0" step="100" placeholder="Ej: 9000" style="margin-bottom:0;"></div>
       </div>
-      <div class="stat-box">
-        <div class="stat-title">IMC</div>
-        <div class="stat-val" id="ui-bmi">--</div>
-        <div style="font-size:0.8rem; font-weight:600;" id="ui-bmi-label">--</div>
-      </div>
+      <button class="secondary" onclick="saveSteps()" style="width:100%; margin-bottom:16px;">Guardar pasos</button>
+      <div id="steps-summary"></div>
+      <div class="chart-container"><canvas id="stepsChart"></canvas></div>
+      <div id="steps-insight" class="q-list" style="margin-top:14px;"></div>
+      <div class="muted-line">Informativo: los pasos no cambian el objetivo de kcal, pero el motor avisa si caen durante el bulk (menos gasto por movimiento, NEAT).</div>
     </div>
 
-    <!-- PERFIL -->
+    <div class="group-title">Entrenamiento</div>
+    <div class="glass-card">
+      <div class="section-kicker">Próximamente</div>
+      <h3>Miniapp de entrenamiento</h3>
+      <p style="font-size:.9rem; color:var(--text-mid); margin-bottom:16px;">Módulo propio dentro de Bulking OS para registrar tu entrenamiento y cruzarlo con la nutrición y el peso. Todavía no está desarrollado.</p>
+      <div class="q-list">
+        <div class="kv-row"><span>Registro</span><b>Sesiones · ejercicios · series · kg · repeticiones · RIR</b></div>
+        <div class="kv-row"><span>Volumen</span><b>Series efectivas por grupo muscular y semana</b></div>
+        <div class="kv-row"><span>Fuerza</span><b>1RM estimado y progresión por ejercicio</b></div>
+        <div class="kv-row"><span>Cruce con comida</span><b>Kcal, proteína y peso tendencia vs. rendimiento</b></div>
+        <div class="kv-row"><span>IA</span><b>Resúmenes semanales y detección de estancamientos</b></div>
+      </div>
+      <p class="muted-line" style="margin-top:14px;">Diseño previsto: datos con prefijo <code>gym:</code>, incluidos en la copia de seguridad y en la sincronización, sin tocar el motor de kcal.</p>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- ⚙️ AJUSTES · perfil, datos, auditoría y herramientas                   -->
+  <!-- ========================================================================= -->
+  <div id="tab-settings" class="section">
+    <h2>Ajustes</h2>
+
+    <div class="group-title">Perfil y objetivo</div>
     <div class="glass-card">
       <h3>Perfil</h3>
       <div class="form-row">
@@ -946,58 +843,30 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="form-group"><label>Inicio del bulk</label><input type="date" id="prof-bulk-start"></div>
         <div class="form-group"><label>Comidas al día</label><input type="number" min="3" max="8" id="prof-meals" placeholder="5"></div>
       </div>
+      <div class="form-group" style="margin-bottom:16px;"><label>Preferencias y restricciones</label><textarea id="prof-preferences" rows="2" placeholder="Ej: sin lactosa, económico, no pescado..."></textarea></div>
+      <p class="muted-line" style="margin:0 0 8px;">El peso de referencia se actualiza solo con tus pesajes; solo se usa si aún no hay tendencia. Los días de entreno fijan el mantenimiento inicial (1,2 + 0,075 × días); después manda tu balance real.</p>
+      <button class="secondary" onclick="saveProfile()" style="width:100%; margin-top:8px;">Guardar perfil</button>
+    </div>
+    <div class="glass-card">
+      <h3>Objetivo de kcal y macros</h3>
+      <div id="objective-summary" style="margin-bottom:16px;"></div>
       <div class="form-row">
         <div class="form-group"><label>Proteína (g por kg de peso)</label><input type="number" step="0.1" min="1.2" max="3" id="prof-protein-kg" placeholder="2.0"></div>
         <div class="form-group"><label>Grasas (g por kg de peso)</label><input type="number" step="0.1" min="0.5" max="1.5" id="prof-fat-kg" placeholder="1.0"></div>
       </div>
       <p class="muted-line" id="macro-dyn-note" style="margin:0 0 12px;"></p>
-      <div class="form-group" style="margin-bottom:16px;"><label>Preferencias y restricciones</label><textarea id="prof-preferences" rows="2" placeholder="Ej: sin lactosa, económico, no pescado..."></textarea></div>
-      <p class="muted-line" style="margin:0 0 8px;">El peso de referencia se actualiza solo con tus pesajes; solo se usa si aún no hay tendencia. Los días de entreno fijan el mantenimiento inicial (1,2 + 0,075 × días); después manda tu balance real.</p>
-
       <div class="toggle-row">
         <div style="font-size:0.9rem; font-weight:500;">Pausar ajuste automático (vacaciones, lesión, enfermedad)</div>
         <label class="switch"><input type="checkbox" id="prof-pause"><span class="slider"></span></label>
       </div>
-
-      <button class="secondary" onclick="saveProfile()" style="width:100%; margin: 16px 0 10px;">Guardar perfil</button>
+      <button class="secondary" onclick="saveProfile()" style="width:100%; margin: 16px 0 10px;">Guardar objetivo</button>
       <div style="display:flex; gap:10px;">
         <button class="primary" style="flex:1;" onclick="recalcTargetFromModel()">Recalcular objetivo desde el modelo</button>
         <button class="secondary" onclick="setManualTarget()">Fijar a mano</button>
       </div>
     </div>
-  </div>
 
-  <!-- ========================================================================= -->
-  <!-- 💾 TAB 5: DATOS Y BACKUP                                                  -->
-  <!-- ========================================================================= -->
-  <!-- ========================================================================= -->
-  <!-- 🏋️ TAB GYM (RESERVADA: miniapp futura dentro de Bulking OS)                -->
-  <!-- ========================================================================= -->
-  <!-- Sin lógica todavía. Convención reservada para cuando se desarrolle:
-       · claves de almacenamiento con prefijo `gym:` (p. ej. `gym:session:YYYY-MM-DD`, `gym:exercises`, `gym:routines`)
-         → entran solas en el export/import JSON y en la sincronización, sin tocar el motor de kcal.
-       · los pasos ya existen (`steps:YYYY-MM-DD`) y se reutilizarán aquí.
-       · el cruce con nutrición se hará leyendo getEngineState() (kcal, peso tendencia, superávit) en modo solo lectura. -->
-  <div id="tab-gym" class="section">
-    <h2>Gym <span class="subtitle">próximamente</span></h2>
-    <div class="glass-card">
-      <div class="section-kicker">Miniapp en preparación</div>
-      <h3>Entrenamiento integrado con tu bulk</h3>
-      <p style="font-size:.9rem; color:var(--text-mid); margin-bottom:16px;">Esta pestaña será un módulo propio dentro de Bulking OS para registrar tu entrenamiento y cruzarlo con la nutrición y el peso. Todavía no está desarrollada.</p>
-      <div class="q-list">
-        <div class="kv-row"><span>Registro</span><b>Sesiones · ejercicios · series · kg · repeticiones · RIR</b></div>
-        <div class="kv-row"><span>Volumen</span><b>Series efectivas por grupo muscular y semana</b></div>
-        <div class="kv-row"><span>Fuerza</span><b>1RM estimado y progresión por ejercicio</b></div>
-        <div class="kv-row"><span>Actividad</span><b>Pasos y gasto de movimiento (ya tienes los pasos en Hoy)</b></div>
-        <div class="kv-row"><span>Cruce con comida</span><b>Kcal, proteína y peso tendencia vs. rendimiento</b></div>
-        <div class="kv-row"><span>IA</span><b>Resúmenes semanales y detección de estancamientos</b></div>
-      </div>
-      <p class="muted-line" style="margin-top:14px;">Diseño previsto: datos con prefijo <code>gym:</code>, incluidos en la copia de seguridad y en la sincronización, y sin tocar el motor de kcal.</p>
-    </div>
-  </div>
-
-  <div id="tab-data" class="section">
-    <h2>Datos</h2>
+    <div class="group-title">Datos</div>
     <div class="glass-card">
       <h3>Sincronización</h3>
       <div id="sync-status-content"></div>
@@ -1011,31 +880,51 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <input type="file" id="import-file-input" accept="application/json" style="display:none;">
       </label>
     </div>
+
+    <div class="group-title">Auditoría del motor</div>
+    <details class="glass-card">
+      <summary class="card-summary">🧹 Calidad de datos</summary>
+      <div id="dq-content" style="margin-top:16px;"></div>
+    </details>
+    <details class="glass-card">
+      <summary class="card-summary">🤖 IA de comidas: precisión y correcciones</summary>
+      <div id="ai-stats-content" style="margin-top:16px;"></div>
+    </details>
+    <details class="glass-card">
+      <summary class="card-summary">🕘 Historial de decisiones (auditoría)</summary>
+      <div id="decision-log-content" style="margin-top:16px;"></div>
+    </details>
+    <details class="glass-card">
+      <summary class="card-summary">🧪 Backtest: algoritmo anterior vs nuevo</summary>
+      <button class="secondary" onclick="runBacktestUI()" style="width:100%; margin-top:16px;">Ejecutar backtest con mis datos</button>
+      <div id="backtest-content" style="margin-top:16px;"></div>
+    </details>
+
+    <div class="group-title">Herramientas</div>
     <div class="glass-card">
       <h3>Diagnóstico técnico</h3>
-      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Informe completo para revisar tu evolución o pasárselo a una IA: datos observados, cálculos, estimaciones, predicciones, decisiones y backtest. Sin API keys, sin enlace de sincronización, sin fotos y sin chat.</p>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Informe completo para revisar tu evolución o pasárselo a una IA: datos observados, cálculos, estimaciones, predicciones, decisiones y backtest. Sin API keys, sin enlace de sincronización y sin fotos.</p>
       <button class="secondary diag-btn" onclick="exportDiagnostics('pdf')" style="width:100%; margin-bottom:10px;">📄 Informe PDF</button>
       <button class="secondary diag-btn" onclick="exportDiagnostics('json')" style="width:100%; margin-bottom:10px;">🧾 Datos JSON (etiquetados)</button>
       <button class="secondary diag-btn" onclick="exportDiagnostics('csv')" style="width:100%;">📊 Tablas CSV (ZIP)</button>
     </div>
     <div class="glass-card">
       <h3>Tests del motor</h3>
-      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Ejecuta en tu navegador la batería de tests de los cálculos (casos A–O y regresiones).</p>
+      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Ejecuta en tu navegador la batería de tests de los cálculos (casos A–S y regresiones).</p>
       <button class="secondary" onclick="runEngineTestsUI()" style="width:100%;">Ejecutar tests</button>
       <div id="tests-output" style="display:none; margin-top:14px;"></div>
     </div>
   </div>
+
 
 </div>
 
 <!-- BOTTOM NAVIGATION -->
 <div class="bottom-nav">
   <div class="nav-item active" data-tab="dash" onclick="nav('dash')"><span class="nav-icon">📊</span>Hoy</div>
-  <div class="nav-item" data-tab="plan" onclick="nav('plan')"><span class="nav-icon">🛒</span>Menú</div>
-  <div class="nav-item" data-tab="chat" onclick="nav('chat')"><span class="nav-icon">💬</span>Coach</div>
   <div class="nav-item" data-tab="body" onclick="nav('body')"><span class="nav-icon">📈</span>Progreso</div>
   <div class="nav-item" data-tab="gym" onclick="nav('gym')"><span class="nav-icon">🏋️</span>Gym</div>
-  <div class="nav-item" data-tab="data" onclick="nav('data')"><span class="nav-icon">💾</span>Datos</div>
+  <div class="nav-item" data-tab="settings" onclick="nav('settings')"><span class="nav-icon">⚙️</span>Ajustes</div>
 </div>
 
 <!-- ========================================================================= -->
@@ -1796,8 +1685,7 @@ if(typeof module !== 'undefined' && module.exports) module.exports = { runEngine
 <script>
 // VARIABLES INYECTADAS DESDE PYTHON
 const GEMINI_API_KEY = atob("__API_KEY_B64__");
-const GEMINI_MODEL = "__MODEL__";
-const GEMINI_MODEL_PLAN = "__MODEL_PLAN__";
+const GEMINI_MODEL_SUMMARY = "__MODEL_SUMMARY__";
 const GEMINI_MODEL_FOOD = "__MODEL_FOOD__";
 const FILLER_FOODS = "__FILLER__";
 const FIREBASE_DB_URL = "__FIREBASE_DB_URL__";
@@ -2024,7 +1912,7 @@ window.copySyncLink = () => {
 // origen (localhost vs tu URL de GitHub Pages) tiene su PROPIO localStorage
 // y nunca van a coincidir. Esto no es un fallo puntual, es cómo funciona
 // localStorage por diseño del navegador — por eso se avisa de forma
-// permanente en el dashboard, no solo en la pestaña de Datos.
+// permanente en Hoy, no solo en Ajustes.
 function renderNoSyncBanner(){
   const el = $('no-sync-banner');
   if(!el) return;
@@ -2087,11 +1975,6 @@ async function updateProfile(patch){
 // kcal por kg de cambio de peso: vive en BulkEngine.CONFIG.KCAL_PER_KG (una sola cifra para toda la app).
 const KCAL_PER_KG = BulkEngine.CONFIG.KCAL_PER_KG;
 
-// Mantenimiento TEÓRICO (solo punto de partida): Mifflin-St Jeor × factor
-// derivado de tus días de entreno (1,2 + 0,075·días). El motor lo combina con
-// tus datos reales en cuanto hay evidencia suficiente.
-function calcTDEE(p, weight){ return BulkEngine.mifflin(p, weight) * BulkEngine.activityFactor(p.trainingDays); }
-
 // OMS 2015 (azúcares libres): objetivo ideal <5 % de la energía. 1 g ≈ 4 kcal.
 function calcSugarTargetG(kcal){
   return (kcal * 0.05) / 4;
@@ -2145,12 +2028,6 @@ function getTargets(override=0){
   return { kcal, p: protein, c: Math.max(0, (kcal - protein*4 - fat*9)/4), f: fat, s: sugar };
 }
 
-// Un único objetivo diario (sin días "de entreno" / "de descanso": la app ya
-// no sabe ni necesita saber qué días entrenas).
-function getPlanTargets(){
-  return { average: getTargets() };
-}
-
 // =========================================
 // 📋 REGISTRO DE ALIMENTOS (borrado lógico + marcas de tiempo para auditoría)
 // =========================================
@@ -2170,7 +2047,6 @@ async function softDeleteLogEntry(date, id){
 const sumEntries = entries => entries.reduce((a,e)=>({kcal:a.kcal+(e.kcal||0),p:a.p+(e.p||0),c:a.c+(e.c||0),f:a.f+(e.f||0),s:a.s+(e.s||0)}),{kcal:0,p:0,c:0,f:0,s:0});
 
 // Estado del día: true = completo (confirmado por ti), false = incompleto, null = automático.
-async function getDayFlag(date){ const v = await safeGet('dayflag:'+date); return v === true || v === false ? v : null; }
 async function setDayFlag(date, val){ if(val === null) await safeRemove('dayflag:'+date); else await safeSet('dayflag:'+date, !!val); }
 
 async function getDailyOverride(date){ return (await safeGet('override:'+date)) || 0; }
@@ -2297,7 +2173,6 @@ function showAdjustAlert(msg, isWarn = false){
   el.innerText = msg;
   el.style.display = 'block';
 }
-function hideAdjustAlert(){ const el = $('adjust-alert'); if(el) el.style.display = 'none'; }
 
 // Traza completa de una evaluación (auditoría: nada de caja negra).
 function buildDecisionRecord(st, d){
@@ -2554,16 +2429,10 @@ function assistantStateKey(sums, target, logsCount, override){
   return [Math.round(sums.kcal), Math.round(sums.p), Math.round(sums.c), Math.round(sums.f), Math.round(sums.s), Math.round(target.kcal), logsCount, override].join('|');
 }
 
-// Construye el prompt con TODO el contexto real de hoy (hora, kcal/macros/azúcar
-// ingeridos y restantes, comidas ya registradas para no repetirlas, comidas que
-// faltan por horario, preferencias e histórico) y pide a la IA (modelo bueno,
-// el mismo que el plan semanal) que redacte la recomendación del asistente.
-// Bloque de contexto factual compartido: el estado real de un día concreto
-// (kcal/macros objetivo vs. ingeridos vs. restantes, comidas registradas,
-// hora del día y cuántas comidas quedan por delante, e histórico reciente).
-// Lo reutilizan tanto el asistente de la pestaña "Hoy" como el chat del
-// coach, para que AMBOS razonen sobre exactamente los mismos datos en vez
-// de que el chat solo vea el objetivo de kcal a secas.
+// Contexto factual del asistente de "Hoy": el estado real de un día concreto
+// (kcal/macros/azúcar objetivo vs. ingeridos vs. restantes, comidas ya
+// registradas para no repetirlas, hora del día y comidas que quedan por delante,
+// preferencias e histórico reciente). La IA redacta la recomendación; no calcula.
 async function buildDailyStatusText(sums, target, logs, date){
   const mealsTarget = Number(profile.mealsPerDay) || 5;
   const mealsRemainingCount = Math.max(1, mealsTarget - logs.length);
@@ -2605,7 +2474,7 @@ Instrucciones:
 - Si algún macro o el azúcar está cerca de su límite, avísalo y orienta hacia opciones bajas en ese macro.
 Máximo 2-3 frases en "body". Un solo emoji, solo en "title".`;
 
-  const res = await callGemini(prompt, true, GEMINI_MODEL_PLAN);
+  const res = await callGemini(prompt, true);
   if(res && typeof res.title === 'string' && typeof res.body === 'string' && res.title.trim() && res.body.trim()){
     return { title: res.title.trim(), body: res.body.trim() };
   }
@@ -2651,11 +2520,16 @@ async function renderDailyAssistant(sums, target, logsCount, date, logs){
 // 👟 PASOS / NEAT
 // =========================================
 async function getSteps(date){ const v = Number(await safeGet('steps:' + date)); return Number.isFinite(v) && v > 0 ? v : null; }
+async function loadStepsForDate(){
+  const el = $('input-steps'); if(!el) return;
+  const v = await getSteps($('input-steps-date').value || todayStr()); el.value = v || '';
+}
 window.saveSteps = async () => {
+  const date = $('input-steps-date').value || todayStr();
   const raw = String($('input-steps').value || '').replace(/[.,]/g, '').trim(), v = Number(raw);
-  if(!raw){ await safeRemove('steps:' + selectedLogDate); showToast('Pasos borrados'); }
+  if(!raw){ await safeRemove('steps:' + date); showToast('Pasos borrados'); }
   else if(!Number.isFinite(v) || v < 0 || v > 80000){ showToast('Pasos no válidos (0–80.000).', true); return; }
-  else { await safeSet('steps:' + selectedLogDate, Math.round(v)); showToast(`${Math.round(v).toLocaleString('es-ES')} pasos guardados (${formatDateLabel(selectedLogDate).toLowerCase()})`); }
+  else { await safeSet('steps:' + date, Math.round(v)); showToast(`${Math.round(v).toLocaleString('es-ES')} pasos guardados (${formatDateLabel(date).toLowerCase()})`); }
   __dataVersion++; __engineCache = null; await refreshInsights();
 };
 let stepsChartInstance = null;
@@ -2769,7 +2643,6 @@ async function updateDashboardUI(){
   $('log-date-label').innerText = formatDateLabel(t);
   $('log-date-jump').style.display = (t === todayStr()) ? 'none' : 'block';
   $('btn-next-day').disabled = (t === todayStr());
-  if(t === todayStr()) $('date-display').innerText = ''; else $('date-display').innerText = '';
 
   const noteEl = $('ui-override-note');
   if(override !== 0){ noteEl.style.display='block'; noteEl.innerText = `💡 Ajuste aplicado: ${override>0?'+':''}${override} kcal para ${formatDateLabel(t).toLowerCase()}.`; } 
@@ -2815,12 +2688,10 @@ async function updateDashboardUI(){
   bar(sums.p, tgt.p, 'bar-pro','txt-pro','rem-pro'); bar(sums.c, tgt.c, 'bar-car','txt-car','rem-car'); bar(sums.f, tgt.f, 'bar-fat','txt-fat','rem-fat'); bar(sums.s, tgt.s, 'bar-sugar','txt-sugar','rem-sugar');
   await renderDailyAssistant(sums, tgt, logs.length, t, logs);
   await renderMissingToday(sums, tgt, t, logs);
-  { const si = $('input-steps'); if(si && document.activeElement !== si){ const v = await getSteps(t); si.value = v || ''; } }
   checkMeasureReminder();
-  await renderMetricStrip();
 
   const list = $('log-list');
-  if(!logs.length) list.innerHTML = '<div class="chat-empty">Sin registros este día.</div>';
+  if(!logs.length) list.innerHTML = '<div class="empty-state">Sin registros este día.</div>';
   else {
     list.innerHTML = logs.slice().reverse().map(log=>`
       <div class="log-item">
@@ -2860,7 +2731,7 @@ window.editLog = async (id) => {
 // =========================================
 // 🤖 API GEMINI CON REINTENTOS Y MANEJO DE ERRORES
 // =========================================
-async function callGemini(prompt, isJson=false, model=GEMINI_MODEL, maxRetries=2, opts={}){
+async function callGemini(prompt, isJson=false, model=GEMINI_MODEL_SUMMARY, maxRetries=2, opts={}){
   if(!GEMINI_API_KEY || GEMINI_API_KEY.includes("TU_API_KEY_AQUI")){
     showToast("Error: API Key no configurada en el código fuente de Python.", true);
     return null;
@@ -3230,10 +3101,9 @@ $('btn-mic').onclick = ()=>{
 };
 
 // =========================================
-// 📅 GENERACIÓN DEL MENÚ (WORKFLOW SEMANAL)
+// 🗓️ HISTORIAL RECIENTE (contexto factual para el asistente diario)
 // =========================================
-// Resumen de las últimas 3 semanas de registros reales, para que el plan
-// generado no se diseñe en el vacío y tenga en cuenta lo que de verdad comes.
+// Resumen de los últimos días reales: media, adherencia y comidas que repites.
 async function buildRecentHistorySummary(days = 21){
   // Días CERRADOS (hoy no cuenta: está a medias) y solo días completos para las medias.
   const st = getEngineState();
@@ -3252,318 +3122,6 @@ async function buildRecentHistorySummary(days = 21){
   const within = complete.filter(d => d.targetEffective && Math.abs(d.intake - d.targetEffective) <= d.targetEffective * 0.1).length;
   return `Historial real de los últimos ${days} días (${complete.length} días completos): media ~${avg} kcal/día, ${within}/${complete.length} días dentro de ±10% del objetivo de ese día; necesario estimado para progresar ~${st.decision.needed} kcal.${topMeals.length ? ` Comidas que repite con frecuencia: ${topMeals.join(', ')}.` : ''}`;
 }
-
-async function generatePlan(){
-  $('btn-generate-plan').style.display='none';
-  $('plan-loading').style.display='block';
-  $('plan-container').style.display='none';
-  $('plan-validation').style.display='none';
-
-  const planTargets = getPlanTargets();
-  const t = planTargets.average;
-  const historySummary = await buildRecentHistorySummary(21);
-
-  const prompt = `Eres un Dietista-Nutricionista deportivo clínico. Diseña un plan de hipertrofia de 7 días exacto, basado en seguridad alimentaria (AESAN/FDA).
-Objetivo Diario Promedio: ${Math.round(t.kcal)} kcal (P:${Math.round(t.p)}g, C:${Math.round(t.c)}g, G:${Math.round(t.f)}g).
-Preferencias del usuario: ${profile.preferences || 'sin restricciones indicadas'}.
-${historySummary ? historySummary + ' Prioriza comidas de estilo similar a las que ya repite (si encajan con los objetivos y preferencias) y ten en cuenta su adherencia real al proponer cantidades, en vez de diseñar el plan en el vacío.' : 'Aún no hay histórico suficiente de registros reales; diseña el plan solo a partir del objetivo y las preferencias indicadas.'}\nComidas al dia: ${profile.mealsPerDay || 5}. Todos los días tienen el mismo objetivo de kcal y macros.
-Usa alimentos comodín de fácil asimilación si necesitas rellenar kcal: ${FILLER_FOODS}.
-
-ESTRUCTURA DE COMIDAS ESTRICTA (${profile.mealsPerDay || 5} comidas exactas por día):
-1. "Recién Levantado" (type:"fresh"): Al despertar. Alta digestibilidad, preparación en segundos sin ruido (sin electrodomésticos). Ej: yogur, batido manual (clear whey, maltodextrina), tortitas arroz.
-2. "Desayuno" (type:"batch"): Para llevar. Formato tupper/vaso hermético limpio y sin migas (ej. overnight oats, porridge). Preparado en masa el domingo.
-3. "Comida" (type:"batch"): Comida principal en tupper. Alto en CH complejos. Preparado el domingo.
-4. "Merienda" (type:"fresh"): Snack rápido de tarde.
-5. "Cena" (type:"fresh"): Comida final ligera y cocinada/montada al momento. Digestión amable para dormir.
-
-WORKFLOW DEL USUARIO (Logística):
-- Planifica HOY (Jueves).
-- Compra MAÑANA (Viernes).
-- Batch Cooking el DOMINGO para toda la semana. Divide en recipientes poco profundos y refrigera o congela inmediatamente; no dejes arroz o pasta cocidos enfriándose durante horas a temperatura ambiente.
-Aplica directrices de conservación: nevera máximo 3-4 días (hasta el miércoles). Lo de Jueves a Domingo va al congelador. Genera "storagePlan" y "foodSafetyNotes".
-
-RESTRICCIONES:
-- Los totales diarios deben ser la suma exacta de sus comidas, no una estimación independiente.
-- Los valores de cada comida deben ser la suma de todos sus ingredientes. Comprueba siempre que kcal sean coherentes con P, C y G (kcal aproximadas = P*4 + C*4 + G*9).
-- Mantén proteína entre el 98% y el 105% del objetivo diario, grasas entre el 90% y el 110% y kcal entre el 95% y el 105%.
-- Cada comida debe incluir cantidades y un campo "weightBasis" con "crudo" o "cocinado". Cada ingrediente debe incluir "food", "grams", "kcal", "p", "c" y "f". Para líquidos añade también "isLiquid":true y "ml".
-- No ocultes agua, leche ni ningún líquido en instrucciones, nombres o alternativas: deben aparecer como ingredientes dentro de "items" y sus kcal/macros deben estar incluidas. En overnight oats, porridge, cremas, batidos, harina de arroz o crema de arroz incluye siempre el líquido exacto (agua con kcal 0, o leche/bebida con sus kcal reales). Si se usa leche, inclúyela también en "shoppingList" con la cantidad semanal calculada.
-- La lista de compra debe sumar todos los ingredientes de los 7 días, incluidos líquidos con aporte nutricional. No cuentes las alternativas, solo la opción principal del plan.
-- Añade "alternatives" (dos sustituciones sencillas) por cada comida.
-- DEVUELVE SOLO UN JSON. SIN TEXTO EXTRA FUERA DEL JSON. SIN MARKDOWN.
-- Estructura exacta requerida: 
-{
- "days":[
-  {"day":"Lunes","meals":[
-    {"name":"Recién Levantado","type":"fresh","weightBasis":"crudo","items":[{"food":"Clear Whey","grams":30,"kcal":105,"p":25,"c":1,"f":0},{"food":"Agua","grams":300,"ml":300,"isLiquid":true,"kcal":0,"p":0,"c":0,"f":0}],"alternatives":["Yogur alto en proteína 200g","Leche sin lactosa 250ml"],"kcal":105,"p":25,"c":1,"f":0}
-  ],"totals":{"kcal":105,"p":25,"c":1,"f":0}}
- ],
- "shoppingList":[{"item":"Avena","qty":"1kg"}],
- "batchInstructions":["Domingo: Hervir..."],
- "storagePlan":[{"meal":"Comida-Jueves","consumeDay":"Jueves","storage":"Congelador","note":"Sacar a nevera la noche antes"}],
- "foodSafetyNotes":"Nota clínica de seguridad..."
-}`;
-
-  const res = await callGemini(prompt, true, GEMINI_MODEL_PLAN);
-  $('plan-loading').style.display='none';
-  $('btn-generate-plan').style.display='block';
-  
-  const validation = validatePlan(res, planTargets);
-  if(res && res.days && validation.ok){
-    syncPlanDerivedData(res); // fuente única de verdad desde el primer momento
-    await safeSet('lastPlan', { plan: res, generatedAt: new Date().toISOString() });
-    renderPlanObject(res, new Date().toLocaleString('es-ES'));
-    showToast("Menú semanal generado correctamente");
-  } else {
-    const message = validation.issues.length ? validation.issues.join(' ') : 'La IA no devolvió un plan válido.';
-    $('plan-validation').style.display='block'; $('plan-validation').innerText = message;
-    showToast("Plan rechazado: no cumple tus objetivos.", true);
-  }
-}
-
-// =========================================
-// 🔗 FUENTE ÚNICA DE VERDAD: MENÚ ↔ COMPRA ↔ BATCH (punto 9)
-// =========================================
-// La lista de la compra y el plan de conservación YA NO son texto fijo que
-// la IA entrega una vez y puede quedar obsoleto: se recalculan aquí a
-// partir de plan.days cada vez que el plan cambia (generación inicial,
-// sustituir ingrediente, sustituir comida). Así nunca pueden desincronizarse
-// del menú real, sin duplicar la lógica en tres sitios distintos.
-function recomputeShoppingList(plan){
-  const totals = new Map();
-  plan.days.forEach(day => {
-    (day.meals || []).forEach(meal => {
-      (meal.items || []).forEach(item => {
-        const key = normalizeFoodKey(item.food || '');
-        if(!key) return;
-        const prev = totals.get(key) || { food: item.food, grams: 0, ml: 0, isLiquid: !!item.isLiquid };
-        prev.grams += Number(item.grams) || 0;
-        if(item.isLiquid) prev.ml += Number(item.ml || item.grams) || 0;
-        totals.set(key, prev);
-      });
-    });
-  });
-  return [...totals.values()].map(t => ({ item: t.food, qty: t.isLiquid ? `${Math.round(t.ml)} ml` : `${Math.round(t.grams)} g` }));
-}
-
-function recomputeStoragePlan(plan){
-  // Regla fija AESAN/FDA ya usada en el prompt original: nevera máx 3-4 días
-  // desde el domingo de batch cooking; de ahí en adelante, congelador.
-  // Se deriva del orden REAL de los días del plan, no de una tabla aparte.
-  const dayOrder = plan.days.map(d => d.day);
-  const sundayIdx = dayOrder.findIndex(d => /domingo/i.test(d));
-  const storagePlan = [];
-  plan.days.forEach((day, idx) => {
-    (day.meals || []).forEach(meal => {
-      if(meal.type !== 'batch') return;
-      const distanceFromSunday = sundayIdx === -1 ? idx : ((idx - sundayIdx) + 7) % 7;
-      const storage = distanceFromSunday <= 3 ? 'Nevera' : 'Congelador';
-      const note = storage === 'Congelador' ? 'Sacar a nevera la noche antes de consumir' : 'Consumir dentro de 3-4 días desde el domingo';
-      storagePlan.push({ meal: `${meal.name}-${day.day}`, consumeDay: day.day, storage, note });
-    });
-  });
-  return storagePlan;
-}
-
-function syncPlanDerivedData(plan){
-  plan.shoppingList = recomputeShoppingList(plan);
-  plan.storagePlan = recomputeStoragePlan(plan);
-  return plan;
-}
-
-function validatePlan(plan, targets){
-  const issues = [];
-  const validNumber = value => Number.isFinite(Number(value)) && Number(value) >= 0;
-  if(!plan || !Array.isArray(plan.days) || plan.days.length !== 7) issues.push('Deben existir exactamente 7 días.');
-  if(!plan || !Array.isArray(plan.shoppingList) || !plan.shoppingList.length) issues.push('Falta una lista de compra calculada.');
-  if(!plan || !Array.isArray(plan.batchInstructions) || !plan.batchInstructions.length) issues.push('Faltan instrucciones de batch cooking.');
-  if(!plan || !plan.foodSafetyNotes) issues.push('Faltan directrices de seguridad alimentaria.');
-  if(!plan || !Array.isArray(plan.days)) return {ok:false, issues};
-  if(new Set(plan.days.map(day=>String(day.day || '').trim().toLowerCase())).size !== plan.days.length) issues.push('Hay días repetidos en el plan.');
-  plan.days.forEach((day, index)=>{
-    if(!Array.isArray(day.meals) || day.meals.length !== Number(profile.mealsPerDay || 5)) { issues.push(`El día ${index+1} no tiene el número correcto de comidas.`); return; }
-    day.meals.forEach(meal=>{
-      if(!['crudo','cocinado'].includes(meal.weightBasis) || !Array.isArray(meal.items) || !meal.items.length || !Array.isArray(meal.alternatives) || meal.alternatives.length < 2) issues.push(`El día ${index+1} tiene una comida incompleta.`);
-      if(!validNumber(meal.kcal) || !validNumber(meal.p) || !validNumber(meal.c) || !validNumber(meal.f)) issues.push(`La comida ${meal.name || ''} del día ${index+1} tiene valores inválidos.`);
-      const liquidKeywords = /overnight|porridge|crema|batido|harina de arroz|crema de arroz|avena instantánea/i;
-      const needsLiquid = liquidKeywords.test(`${meal.name} ${meal.items.map(item=>item.food || '').join(' ')}`);
-      const hasLiquid = meal.items.some(item=>item.isLiquid === true && Number(item.ml || item.grams) > 0);
-      if(needsLiquid && !hasLiquid) issues.push(`La comida ${meal.name} del día ${index+1} debe indicar agua o leche como ingrediente con ml y kcal.`);
-      meal.items.forEach(item=>{
-        if(!item.food || !validNumber(item.grams) || !validNumber(item.kcal) || !validNumber(item.p) || !validNumber(item.c) || !validNumber(item.f)) issues.push(`Faltan valores válidos en ${item.food || 'un ingrediente'} del día ${index+1}.`);
-        if(item.isLiquid === true && (!item.ml || Number(item.ml) <= 0)) issues.push(`El líquido ${item.food || ''} del día ${index+1} debe indicar mililitros.`);
-      });
-      const itemSum = sumEntries(meal.items);
-      if(Math.abs(Number(meal.kcal || 0) - itemSum.kcal) > 1 || Math.abs(Number(meal.p || 0) - itemSum.p) > 0.5 || Math.abs(Number(meal.c || 0) - itemSum.c) > 0.5 || Math.abs(Number(meal.f || 0) - itemSum.f) > 0.5) issues.push(`Los totales de ${meal.name} del día ${index+1} no suman sus ingredientes.`);
-      const mealMacroKcal = Number(meal.p || 0) * 4 + Number(meal.c || 0) * 4 + Number(meal.f || 0) * 9;
-      if(Number(meal.kcal) > 0 && Math.abs(meal.kcal - mealMacroKcal) > meal.kcal * 0.1) issues.push(`Las kcal y macros no cuadran en ${meal.name} del día ${index+1}.`);
-    });
-    const sum = sumEntries(day.meals);
-    const target = targets.average;
-    if(Math.abs(sum.kcal-target.kcal) > target.kcal*0.05 || Math.abs(sum.p-target.p) > target.p*0.05 || Math.abs(sum.c-target.c) > target.c*0.1 || Math.abs(sum.f-target.f) > target.f*0.1) issues.push(`El día ${index+1} no cumple kcal, macros o proteína.`);
-    day.totals = { kcal:sum.kcal, p:sum.p, c:sum.c, f:sum.f };
-  });
-  return {ok: issues.length === 0, issues};
-}
-
-function renderPlanObject(plan, dateStr){
-  $('plan-container').style.display='block';
-  $('plan-date').innerText = 'Generado: ' + dateStr;
-  
-  const avgKcal = Math.round(plan.days.reduce((sum, day)=>sum + Number(day.totals?.kcal || 0), 0) / 7);
-  let html = `<div class="plan-summary-bar">
-      <span class="meta-pill"><b>7</b> días</span>
-      <span class="meta-pill"><b>${avgKcal}</b> kcal medias</span>
-      <span class="badge badge-batch">🍱 batch</span><span class="badge badge-fresh">⚡ fresh</span>
-    </div>
-    <p style="font-size:.8rem; color:var(--text-dim); margin:12px 0 20px; line-height:1.5;">Los nombres de los días solo ordenan la semana para el batch cooking del domingo. Todos los días tienen el mismo objetivo.</p>`;
-  plan.days.forEach((d, dayIndex)=>{
-    const totals = d.totals || sumEntries(d.meals);
-    html += `<div class="day-card"><h3><span>${d.day}</span></h3>`;
-    d.meals.forEach((m, mealIndex)=>{
-      const badge = m.type==='batch' ? '<span class="badge badge-batch">🍱 batch</span>' : '<span class="badge badge-fresh">⚡ fresh</span>';
-      const alternatives = Array.isArray(m.alternatives) ? m.alternatives.join(' · ') : 'Sin alternativas';
-      html += `<div class="meal-row"><div><div class="meal-name">${m.name}</div>${badge}<small style="display:block;color:var(--text-dim);font-size:.68rem;margin-top:5px;">${m.weightBasis || 'no indicado'}</small></div><div class="meal-items">${m.items.map((i, itemIndex)=>`<div class="ingredient-row"><span>${i.food} (${i.isLiquid ? (i.ml || i.grams) + 'ml' : i.grams + 'g'})</span><button class="secondary" onclick="replaceIngredient(${dayIndex},${mealIndex},${itemIndex})">No tengo este ingrediente</button></div>`).join('')}<small class="meal-alternatives">Alternativas: ${alternatives}</small></div><div class="meal-kcal">${Math.round(m.kcal)}<small>kcal</small><button class="secondary" style="padding:5px 7px;font-size:.66rem;margin-top:8px;" onclick="replaceMeal(${dayIndex},${mealIndex})">Cambiar comida</button></div></div>`;
-    });
-    html += `<div class="day-total">Total del día: <b>${Math.round(totals.kcal)} kcal</b><span style="color:var(--text-dim);"> · P:${Math.round(totals.p)} · C:${Math.round(totals.c)} · G:${Math.round(totals.f)}</span></div></div>`;
-  });
-  
-  if(plan.shoppingList) {
-    html += `<div class="day-card"><h3>Compra · viernes</h3><table class="plan-table"><tbody>${plan.shoppingList.map(i=>`<tr><td>${i.item}</td><td style="text-align:right;">${i.qty}</td></tr>`).join('')}</tbody></table></div>`;
-  }
-  if(plan.batchInstructions) {
-    html += `<div class="day-card"><h3>Batch cooking · domingo</h3><ol style="padding-left:16px;font-size:0.9rem;">${plan.batchInstructions.map(i=>`<li style="margin-bottom:8px;">${i}</li>`).join('')}</ol></div>`;
-  }
-  if(plan.storagePlan) {
-    html += `<div class="day-card"><h3>Conservación</h3><table class="plan-table"><tbody>${plan.storagePlan.map(i=>`<tr><td><b>${i.meal}</b></td><td>${i.storage}</td><td style="font-size:0.75rem;">${i.note||''}</td></tr>`).join('')}</tbody></table>`;
-    if(plan.foodSafetyNotes) html += `<div class="alert warn" style="margin-top:12px;">🌡️ ${plan.foodSafetyNotes}</div>`;
-    html += `</div>`;
-  }
-  $('plan-output').innerHTML = html;
-}
-
-window.replaceIngredient = async (dayIndex, mealIndex, itemIndex) => {
-  const saved = await safeGet('lastPlan');
-  const meal = saved?.plan?.days?.[dayIndex]?.meals?.[mealIndex];
-  const oldItem = meal?.items?.[itemIndex];
-  if(!meal || !oldItem) return;
-  showToast('Buscando ingrediente equivalente...');
-  const prompt = `Sustituye SOLO este ingrediente de una comida de hipertrofia: ${JSON.stringify(oldItem)}.
-Comida: ${meal.name}. Preferencias del usuario: ${profile.preferences || 'sin restricciones'}.
-Mantén aproximadamente sus kcal y proteína, respeta restricciones y conserva el campo isLiquid/ml si procede.
-Devuelve SOLO JSON con esta forma: {"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"isLiquid":false,"ml":0}.`;
-  const replacement = await callGemini(prompt, true, GEMINI_MODEL);
-  const valid = replacement && replacement.food && ['grams','kcal','p','c','f'].every(key => Number.isFinite(Number(replacement[key])) && Number(replacement[key]) >= 0);
-  if(!valid){ showToast('No se encontró un sustituto válido.', true); return; }
-  if(replacement.isLiquid === true && (!replacement.ml || Number(replacement.ml) <= 0)){ showToast('El sustituto líquido no indica mililitros.', true); return; }
-  const oldMealKcal = Number(meal.kcal) || 0;
-  const oldMealProtein = Number(meal.p) || 0;
-  meal.items[itemIndex] = replacement;
-  const totals = sumEntries(meal.items);
-  if(Math.abs(totals.kcal - oldMealKcal) > Math.max(120, oldMealKcal * 0.15) || Math.abs(totals.p - oldMealProtein) > Math.max(12, oldMealProtein * 0.15)){
-    meal.items[itemIndex] = oldItem;
-    showToast('El sustituto se aleja demasiado del objetivo de la comida.', true);
-    return;
-  }
-  meal.kcal = totals.kcal; meal.p = totals.p; meal.c = totals.c; meal.f = totals.f;
-  const validation = validatePlan(saved.plan, getPlanTargets());
-  if(!validation.ok){
-    meal.items[itemIndex] = oldItem;
-    meal.kcal = oldMealKcal; meal.p = oldMealProtein;
-    showToast('El sustituto no mantiene el objetivo diario.', true);
-    return;
-  }
-  syncPlanDerivedData(saved.plan); // recalcula compra y batch a partir del ingrediente ya sustituido
-  await safeSet('lastPlan', saved);
-  renderPlanObject(saved.plan, new Date(saved.generatedAt).toLocaleString('es-ES'));
-  showToast('Ingrediente sustituido: compra y batch actualizados automáticamente');
-};
-
-window.replaceMeal = async (dayIndex, mealIndex) => {
-  const saved = await safeGet('lastPlan');
-  if(!saved || !saved.plan?.days?.[dayIndex]?.meals?.[mealIndex]) return;
-  const oldMeal = saved.plan.days[dayIndex].meals[mealIndex];
-  showToast('Buscando sustitución equivalente...');
-  const target = getPlanTargets().average;
-  const prompt = `Sustituye esta comida de un plan de hipertrofia por otra equivalente y compatible con las preferencias del usuario: ${profile.preferences || 'sin restricciones'}. Mantén el mismo tipo ${oldMeal.type}, aproximadamente las mismas kcal (${Math.round(oldMeal.kcal)}) y proteína (${Math.round(oldMeal.p)}g). Devuelve SOLO JSON con esta forma: {"name":"","type":"${oldMeal.type}","weightBasis":"crudo","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"isLiquid":false,"ml":0}],"alternatives":["",""],"kcal":0,"p":0,"c":0,"f":0}. Si preparas overnight oats, crema, batido, harina de arroz o crema de arroz, incluye agua o leche como ingrediente dentro de items, con ml y sus kcal/macros; si es leche, debe contar también en las kcal totales. Los valores de la comida deben sumar sus ingredientes y ser coherentes con P*4+C*4+G*9. Objetivo del día: ${Math.round(target.kcal)} kcal y ${Math.round(target.p)}g de proteína.`;
-  const replacement = await callGemini(prompt, true, GEMINI_MODEL);
-  if(!replacement || !Array.isArray(replacement.items)) { showToast('No se encontró una sustitución válida.', true); return; }
-  saved.plan.days[dayIndex].meals[mealIndex] = replacement;
-  const validation = validatePlan(saved.plan, getPlanTargets());
-  if(!validation.ok) { showToast('La sustitución no mantiene los objetivos.', true); return; }
-  syncPlanDerivedData(saved.plan); // recalcula compra y batch con la comida nueva
-  await safeSet('lastPlan', saved);
-  renderPlanObject(saved.plan, new Date(saved.generatedAt).toLocaleString('es-ES'));
-  showToast('Comida sustituida: compra y batch actualizados automáticamente');
-};
-
-// =========================================
-// 💬 CHAT IA E INTERACCIÓN DINÁMICA
-// =========================================
-async function sendChatMessage(){
-  const inputEl = $('chat-input');
-  const text = inputEl.value.trim();
-  if(!text) return;
-  inputEl.value='';
-  let h = (await safeGet('chatHistory')) || [];
-  h.push({ role:'user', text });
-  renderChatWindow(h);
-  const t = todayStr();
-  const logsToday = await getLog(t);
-  const sumsToday = sumEntries(logsToday);
-  const overrideToday = await getDailyOverride(t);
-  const tgtToday = getTargets(overrideToday);
-  const statusText = await buildDailyStatusText(sumsToday, tgtToday, logsToday, t);
-  const prompt = `Eres coach nutricionista del usuario en la app Bulking OS (volumen/ganancia muscular). Habla directo, clínico pero amistoso, y usa los datos reales de abajo (los calcula la app; no los recalcules).
-
-Estado del bulk:
-${engineContextText()}
-Objetivo base ${Math.round(profile.targetKcal||2500)} kcal${overrideToday ? ` (hoy con un ajuste temporal ya aplicado de ${overrideToday>0?'+':''}${overrideToday} kcal)` : ''}.
-
-${statusText}
-
-Instrucciones:
-- Usa las kcal/macros restantes y las comidas de hoy para responder con precisión.
-- Si el usuario quiere compensar HOY (p. ej. "ayer comí poco, súbeme hoy"), propón un ajuste SOLO para hoy entre -300 y +300 kcal en "suggestedDelta". Si no procede, 0.
-- Nunca cambies ni prometas cambiar el objetivo permanente: lo ajusta el motor automático con tus datos de peso (reglas visibles en Progreso).
-Historial de charla: ${h.slice(-4).map(m=>`${m.role}: ${m.text}`).join(' | ')}.
-Responde SOLO este JSON: {"reply":"respuesta breve","suggestedDelta":0}`;
-  const res = await callGemini(prompt, true, GEMINI_MODEL);
-  if(res && res.reply){
-    const delta = Number.isFinite(Number(res.suggestedDelta)) ? Math.max(-300, Math.min(300, Math.round(Number(res.suggestedDelta)))) : 0;
-    h.push({ role:'ai', text: res.reply, suggestedDelta: delta, applied:false });
-    await safeSet('chatHistory', h);
-    renderChatWindow(h);
-  } else {
-    showToast("El coach no pudo procesar el mensaje.", true);
-  }
-}
-
-function renderChatWindow(h){
-  const win = $('chat-window');
-  if(!h.length) { win.innerHTML = '<div class="chat-empty">Pide ajustes como: "Ayer no comí casi, súbeme kcal hoy".</div>'; return; }
-  win.innerHTML = h.map((m,i)=>`
-    <div class="chat-bubble ${m.role}">
-      ${m.text}
-      ${(m.role==='ai' && m.suggestedDelta && !m.applied) ? `<button class="chat-action-btn" onclick="applyDelta(${i},${m.suggestedDelta})">✅ Aplicar ${m.suggestedDelta>0?'+':''}${m.suggestedDelta} kcal HOY</button>` : ''}
-      ${(m.role==='ai' && m.applied) ? `<div style="margin-top:10px; font-size:0.75rem; color:var(--green); font-weight:700;">✔ Ajuste de kcal aplicado</div>` : ''}
-    </div>
-  `).join('');
-  win.scrollTop = win.scrollHeight;
-}
-window.applyDelta = async (idx, delta) => {
-  const h = await safeGet('chatHistory');
-  const t = todayStr();
-  if(!h?.[idx] || h[idx].applied) return;
-  const safeDelta = Number.isFinite(Number(delta)) ? Math.max(-300, Math.min(300, Number(delta))) : 0;
-  const current = await getDailyOverride(t);
-  await setDailyOverride(t, Math.max(-300, Math.min(300, current + safeDelta)));
-  h[idx].applied = true; await safeSet('chatHistory', h);
-  renderChatWindow(h);
-  if(selectedLogDate === t) updateDashboardUI();
-  await refreshInsights();
-  showToast("Objetivo ajustado solo para hoy.");
-};
 
 // =========================================
 // 📉 DATOS METABÓLICOS Y GRÁFICOS
@@ -3584,7 +3142,7 @@ async function saveProfile(){
     fatPerKg: (v => v >= 0.5 && v <= 1.5 ? v : DEFAULT_FAT_PER_KG)(Number(String($('prof-fat-kg').value).replace(',', '.')))
   });
   __engineCache = null; await syncDynamicMacros(true);
-  updateBodyStats(); await updateDashboardUI(); await refreshInsights();
+  renderObjectiveSummary(); await updateDashboardUI(); await refreshInsights();
   showToast('Perfil guardado. El objetivo de kcal no cambia: lo ajusta el motor con tus datos.');
 }
 async function logManualDecision(st, newTarget, reason){
@@ -3610,16 +3168,17 @@ async function setManualTarget(){
   await setTargetKcal(k, 'manual', 'Fijado a mano por el usuario.', rec.id);
   await updateDashboardUI(); await refreshInsights(); showToast(`Objetivo fijado en ${k} kcal`);
 }
-function updateBodyStats(){
-  let M = null; try { M = getEngineState().maintenance; } catch(e){}
-  $('ui-tdee').innerText = Math.round(M ? M.posterior : calcTDEE(profile, profile.weight));
-  const sub = $('ui-tdee-sub'); if(sub) sub.innerText = M && M.method === 'bayes' ? `kcal/día · ±${Math.round(M.posteriorSd)} · fórmula + datos` : 'kcal/día · solo fórmula';
-  { const n = $('macro-dyn-note'), k = macroPerKg(profile), ref = Number(profile.macroWeightKg);
-    if(n) n.innerText = ref > 0 ? `Macros dinámicos: calculados con ${fmtN(ref,1)} kg de peso tendencia (P ${Math.round(profile.targetProtein)} g · G ${Math.round(profile.targetFat)} g · C ${Math.round(profile.targetCarbs)} g · azúcar ${Math.round(profile.targetSugar || 0)} g). Se recalculan solos si el peso tendencia sube o baja ≥ ${fmtN(MACRO_RECALC_KG,1)} kg (o ${fmtN(MACRO_RECALC_PCT*100,1)} %), y con cada cambio de kcal. Carbohidratos = lo que queda; azúcar = 5 % de las kcal.` : ''; }
-  const bmi = profile.weight / Math.pow(profile.height/100, 2);
-  $('ui-bmi').innerText = bmi.toFixed(1);
-  $('ui-bmi-label').innerText = bmi<18.5?'Bajo Peso':bmi<25?'Normopeso':'Sobrepeso';
-  $('ui-bmi-label').style.color = bmi<18.5?'var(--accent)':bmi<25?'var(--green)':'var(--red)';
+// Objetivo actual (Ajustes): kcal y macros dinámicos con su base de cálculo.
+function renderObjectiveSummary(){
+  const el = $('objective-summary'); if(!el) return;
+  const k = macroPerKg(profile), ref = Number(profile.macroWeightKg), T = getTargets();
+  el.innerHTML = kv('Objetivo diario', `${Math.round(T.kcal)} kcal`, 'lo ajusta el motor con tu peso (ver Progreso)')
+    + kv('Proteína', `${Math.round(T.p)} g`, `${fmtN(k.protein,1)} g por kg`)
+    + kv('Grasas', `${Math.round(T.f)} g`, `${fmtN(k.fat,1)} g por kg`)
+    + kv('Carbohidratos', `${Math.round(T.c)} g`, 'lo que resta de las kcal')
+    + kv('Azúcar', `${Math.round(T.s)} g`, '5 % de las kcal');
+  const n = $('macro-dyn-note');
+  if(n) n.innerText = ref > 0 ? `Macros dinámicos: calculados con ${fmtN(ref,1)} kg de peso tendencia. Se recalculan solos si ese peso sube o baja ≥ ${fmtN(MACRO_RECALC_KG,1)} kg (o ${fmtN(MACRO_RECALC_PCT*100,1)} %) y con cada cambio de kcal.` : '';
 }
 
 // =========================================
@@ -3956,7 +3515,7 @@ Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
 
 Genera 3-4 métricas y exactamente 3 acciones. Usa solo números presentes en los datos de arriba. Nada de párrafos: cada campo va a una tarjeta visual pequeña.`;
 
-  const res = await callGemini(prompt, true, GEMINI_MODEL_PLAN);
+  const res = await callGemini(prompt, true);
   btn.disabled = false; btn.innerText = 'Generar resumen';
   if(!res || !res.veredicto){ showToast('No se pudo generar el resumen ahora mismo.', true); return; }
 
@@ -4239,7 +3798,7 @@ async function addWeight(){
 async function afterWeightChange(){
   await refreshProfileWeightFromLatest();
   __engineCache = null; await syncDynamicMacros();
-  await renderWeightDayList(); updateBodyStats(); await updateDashboardUI(); await refreshInsights();
+  await renderWeightDayList(); renderObjectiveSummary(); await updateDashboardUI(); await refreshInsights();
 }
 
 // =========================================
@@ -4289,7 +3848,7 @@ function renderBulkStatus(elId){
   if(st.confidence.level === 'BAJA' && st.confidence.reasons.length) html += `<div class="muted-line">Falta: ${st.confidence.reasons.join('; ')}.</div>`;
   el.innerHTML = html;
 }
-function renderWhyTarget(elId, detailed = false){
+function renderWhyTarget(elId){
   const el = $(elId); if(!el) return;
   const st = getEngineState(), d = st.decision, M = st.maintenance, R = st.range, A = st.adherence;
   const T = Math.round(profile.targetKcal || 0);
@@ -4303,38 +3862,18 @@ function renderWhyTarget(elId, detailed = false){
   html += kv('Tendencia de peso', st.rate ? `${fmtS(st.rate.perWeek)} kg/sem` : '—', STATUS_UI[st.status.code].label.toLowerCase());
   html += kv('Último cambio', ch ? `${ch.delta > 0 ? '+' : ''}${ch.delta} kcal` : 'ninguno', ch ? `${ch.date} · ${SOURCE_UI[ch.source] || ch.source}` : '');
   html += `<div class="decision-box tone-${d.delta ? 'warn' : d.action === 'SIN_DATOS' ? 'neutral' : 'ok'}"><b>${profile.adjustmentPaused ? 'Ajuste automático pausado.' : d.delta ? `Propuesta aplicada: ${d.delta > 0 ? '+' : ''}${d.delta} kcal` : 'Sin cambios.'}</b> ${d.reason}</div>`;
-  if(detailed){
-    html += `<details class="sub-details"><summary>Cómo se calcula (fórmulas y números)</summary><div class="formula">
+  html += `<details class="sub-details"><summary>Cómo se calcula (fórmulas y números)</summary><div class="formula">
       <p><b>Fórmula (prior):</b> Mifflin-St Jeor ${fmtN(M.bmr)} kcal × (1,2 + 0,075 × ${profile.trainingDays} días de entreno) = ${fmtN(M.prior)} ±${fmtN(M.priorSd)} kcal (±12 %).</p>
-      ${M.method === 'bayes' ? `<p><b>Observado:</b> ingesta media ${fmtN(st.intake.mean)} − ritmo ${fmtS(st.rate.slopePerDay*1000,1)} g/día × 7,7 kcal/g = ${fmtN(M.obs)} ±${fmtN(M.obsSd)} kcal (incertidumbre de la ingesta, de la pendiente y un 5 % de error de registro).</p>
+      ${M.method === 'bayes' ? `<p><b>Observado:</b> ingesta media ${fmtN(st.intake.mean)} − ritmo ${fmtS(st.rate.slopePerDay*1000,1)} g/día × 7,7 kcal/g = ${fmtN(M.obs)} ±${fmtN(M.obsSd)} kcal (incertidumbre de la ingesta, de la pendiente y del error de registro: ${fmtN(BulkEngine.CONFIG.LOGGING_SYSTEMATIC_FRACTION*100)} % sistemático + el error de cada entrada según el rango de la IA).</p>
       <p><b>Combinado:</b> media ponderada por precisión → ${fmtN(M.posterior)} ±${fmtN(M.posteriorSd)} kcal. Ventana: ${st.intake.from} → ${st.intake.to} (la ingesta del día D se refleja en el peso de D+1).</p>` : ''}
-      <p><b>Reglas del ajuste:</b> solo con confianza MEDIA/ALTA · nunca baja si ganas por debajo del rango · si comes <${BulkEngine.CONFIG.ADHERENCE_MIN*100} % del objetivo, no sube (el problema es llegar) · zona muerta ±${BulkEngine.CONFIG.DEADBAND_KCAL} kcal · máx. ${BulkEngine.CONFIG.STEP_MAX.MEDIA}/${BulkEngine.CONFIG.STEP_MAX.ALTA} kcal por cambio · ≥${BulkEngine.CONFIG.COOLDOWN_DAYS} días entre cambios · sin invertir el sentido en ${BulkEngine.CONFIG.NO_REVERSAL_DAYS} días · nunca por debajo del mantenimiento estimado.</p>
+      <p><b>Reglas del ajuste:</b> solo con confianza MEDIA/ALTA · nunca baja si ganas por debajo del rango · si comes <${BulkEngine.CONFIG.ADHERENCE_MIN*100} % del objetivo, no sube (el problema es llegar) · zona muerta ±${BulkEngine.CONFIG.DEADBAND_KCAL} kcal · máx. ${BulkEngine.CONFIG.STEP_MAX.MEDIA}/${BulkEngine.CONFIG.STEP_MAX.ALTA} kcal por cambio · ≥${BulkEngine.CONFIG.COOLDOWN_DAYS} días entre cambios · sin invertir el sentido en ${BulkEngine.CONFIG.NO_REVERSAL_DAYS} días · nunca por debajo del mantenimiento estimado · con adherencia ≥${fmtN(BulkEngine.CONFIG.ADHERENCE_FULL*100)} % sube al menos la mitad de la brecha de ritmo aunque el modelo diga que sobra.</p>
     </div></details>`;
-  }
   el.innerHTML = html;
 }
-function renderInsightsList(elId){
+function renderInsightsList(elId, ids){
   const el = $(elId); if(!el) return;
-  const st = getEngineState();
-  el.innerHTML = st.insights.map(i => `<div class="q-item tone-${i.tone}"><div class="q-head"><span class="q-dot"></span><span class="q-text">${i.q}</span><b class="q-val">${i.value}</b></div><div class="q-ans">${i.a}</div></div>`).join('');
-}
-async function renderMetricStrip(){
-  const wEl = $('ui-strip-weight'), tEl = $('ui-strip-trend'), gEl = $('ui-strip-goal');
-  if(!wEl || !tEl || !gEl) return;
-  const st = getEngineState();
-  if(st.weight.points.length){ wEl.innerText = st.weight.level.toFixed(1) + ' kg'; wEl.style.color = ''; }
-  else { wEl.innerText = '--'; wEl.style.color = 'var(--text-dim)'; }
-  if(st.rate && st.confidence.level !== 'BAJA'){
-    const r = st.rate.perWeek;
-    tEl.innerText = fmtS(r);
-    tEl.style.color = st.status.code === 'DENTRO' ? 'var(--green)' : st.status.code === 'INCIERTO' ? 'var(--text-mid)' : 'var(--red)';
-    tEl.nextElementSibling.innerText = `kg/sem · ±${fmtN(st.confidence.ciHalfWidth, 2)}`;
-  } else { tEl.innerText = '--'; tEl.style.color = 'var(--text-dim)'; tEl.nextElementSibling.innerText = 'kg/sem · pocos datos'; }
-  if(profile.goalWeightKg && st.weight.points.length){
-    const rem = profile.goalWeightKg - st.weight.level;
-    gEl.innerText = `${rem >= 0 ? '+' : ''}${rem.toFixed(1)}`; gEl.style.color = 'var(--accent)';
-    gEl.nextElementSibling.innerText = `kg a ${profile.goalWeightKg}`;
-  } else { gEl.innerText = '--'; gEl.style.color = 'var(--text-dim)'; gEl.nextElementSibling.innerText = 'Sin objetivo'; }
+  const st = getEngineState(), list = ids ? st.insights.filter(i => ids.includes(i.id)) : st.insights;
+  el.innerHTML = list.map(i => `<div class="q-item tone-${i.tone}"><div class="q-head"><span class="q-dot"></span><span class="q-text">${i.q}</span><b class="q-val">${i.value}</b></div><div class="q-ans">${i.a}</div></div>`).join('');
 }
 // Días cerrados recientes con registro dudoso → te pregunta en vez de adivinar.
 function renderDayFlagBanner(){
@@ -4452,7 +3991,6 @@ async function renderTrendCharts(){
   el.innerHTML = kv('Media real (días completos)', I.n ? `${fmtN(I.mean)} kcal` : '—', `${I.from} → ${I.to} · ${I.n} días${I.doubtful.length ? ` · ${I.doubtful.length} dudoso(s) fuera` : ''}`)
     + kv('Adherencia (ventana)', A.ratio !== null ? `${fmtN(A.ratio*100)} %` : '—', A.n ? `${A.within10}/${A.n} días dentro de ±10 % · te faltan ${fmtN(A.meanGap)} kcal/día de media` : '')
     + kv('Últimos 7 días', A7.ratio !== null ? `${fmtN(A7.ratio*100)} %` : '—', st.intake7.n ? `media ${fmtN(st.intake7.mean)} kcal en ${st.intake7.n} días completos` : '')
-    + kv('Necesario estimado', `≈ ${fmtN(st.decision.needed)} kcal`, 'para ganar en el centro del rango');
   el.innerHTML += `<div class="muted-line">Barras doradas = días completos · rojizas = dudosos · grises = incompletos (ni los dudosos ni los incompletos cuentan). Los días sin registro quedan vacíos, no como 0.</div>`;
 }
 function renderDataQualityCard(){
@@ -4497,7 +4035,7 @@ async function renderDecisionLog(){
   const log = ((await safeGet('decisionLog')) || []).slice().reverse();
   const tl = ((await safeGet('targetTimeline')) || []).slice().reverse();
   let html = '<div class="sub-title">Línea temporal del objetivo</div>';
-  html += tl.length ? `<div class="table-wrap"><table class="plan-table audit"><thead><tr><th>Fecha</th><th>Objetivo</th><th>Cambio</th><th>Origen</th></tr></thead><tbody>${tl.map(e => `<tr title="${escAttr(e.reason)}"><td>${e.date}${e.approx ? '*' : ''}</td><td>${e.kcal}</td><td>${e.delta ? (e.delta > 0 ? '+' : '') + e.delta : '—'}</td><td>${SOURCE_UI[e.source] || e.source}</td></tr>`).join('')}</tbody></table></div><div class="muted-line">* fecha aproximada (cambio que la versión anterior no registró). Pasa el ratón o toca una fila para ver el motivo.</div>` : '<div class="muted-line">Sin cambios registrados.</div>';
+  html += tl.length ? `<div class="table-wrap"><table class="data-table audit"><thead><tr><th>Fecha</th><th>Objetivo</th><th>Cambio</th><th>Origen</th></tr></thead><tbody>${tl.map(e => `<tr title="${escAttr(e.reason)}"><td>${e.date}${e.approx ? '*' : ''}</td><td>${e.kcal}</td><td>${e.delta ? (e.delta > 0 ? '+' : '') + e.delta : '—'}</td><td>${SOURCE_UI[e.source] || e.source}</td></tr>`).join('')}</tbody></table></div><div class="muted-line">* fecha aproximada (cambio que la versión anterior no registró). Pasa el ratón o toca una fila para ver el motivo.</div>` : '<div class="muted-line">Sin cambios registrados.</div>';
   html += '<div class="sub-title" style="margin-top:18px;">Evaluaciones y decisiones</div>';
   html += log.length ? log.map(d => `<details class="decision-item"><summary><span>${d.date}</span><b class="act-${String(d.action).toLowerCase()}">${d.action}</b><span>${d.prevTarget}${d.delta ? ` → ${d.newTarget}` : ''} kcal</span>${d.legacy ? '<span class="mini-tag">v1</span>' : ''}</summary><div class="decision-reason">${escAttr(d.reason)}</div>${d.inputs ? `<pre class="trace">${escAttr(JSON.stringify(d.inputs, null, 2))}</pre>` : ''}</details>`).join('') : '<div class="muted-line">Sin evaluaciones todavía.</div>';
   el.innerHTML = html;
@@ -4514,29 +4052,44 @@ window.runBacktestUI = async () => {
   window.__lastBacktest = rows;
   const tone = r => r.newAction === 'SUBIR' ? 'act-subir' : r.newAction === 'BAJAR' ? 'act-bajar' : '';
   el.innerHTML = `<div class="muted-line" style="margin-top:0;">Cada día solo "ve" los datos anteriores a ese día (decisión por la mañana). Ambos algoritmos parten de ${initial} kcal y evolucionan con sus propias decisiones; "real" es lo que mostraba la app.</div>
-    <div class="table-wrap"><table class="plan-table audit"><thead><tr><th>Día</th><th>Real</th><th>Antiguo</th><th>Nuevo</th><th>Motivo nuevo</th><th>Ritmo [IC80]</th><th>Conf.</th><th>Mant.</th></tr></thead><tbody>
+    <div class="table-wrap"><table class="data-table audit"><thead><tr><th>Día</th><th>Real</th><th>Antiguo</th><th>Nuevo</th><th>Motivo nuevo</th><th>Ritmo [IC80]</th><th>Conf.</th><th>Mant.</th></tr></thead><tbody>
     ${rows.map(r => `<tr title="${escAttr(r.newReasonText)}"><td>${shortDate(r.date)}</td><td>${Math.round(r.observedTarget)}</td><td>${Math.round(r.legacyTarget)}${r.legacyEvent ? ' ⚠' : ''}</td><td class="${tone(r)}">${r.newTarget}</td><td>${r.newReason}</td><td>${r.rate !== null ? `${fmtS(r.rate)} [${fmtS(r.ciLow)}, ${fmtS(r.ciHigh)}]` : '—'}</td><td>${r.confidence}</td><td>${fmtN(r.maintenance)}</td></tr>`).join('')}
     </tbody></table></div>
     ${rows.filter(r => r.legacyEvent).map(r => `<div class="muted-line">⚠ ${r.date} algoritmo antiguo: ${r.legacyEvent}</div>`).join('')}
     <div class="muted-line">Antiguo = port fiel del algoritmo anterior (incluido el fallo Number(null)=0), validado contra su código original. Simula un único dispositivo sin sobrescrituras de sincronización.</div>`;
 };
 
-// Refresca todo lo que depende del motor (dashboard + pestaña Progreso si está abierta).
+// Refresca lo que depende del motor: aviso de días dudosos (Hoy) y la pestaña abierta (Progreso, Gym o Ajustes).
 async function refreshInsights(){
   try {
-    renderBulkStatus('bulk-status-content');
-    renderWhyTarget('why-target-dash', false);
-    renderInsightsList('insights-dash');
     renderDayFlagBanner();
-    await renderMetricStrip();
-    if($('tab-body') && $('tab-body').classList.contains('active')) await renderBodyTab();
+    const active = id => { const e = $(id); return !!e && e.classList.contains('active'); };
+    if(active('tab-body')) await renderBodyTab();
+    if(active('tab-gym')) await renderGymTab();
+    if(active('tab-settings')) await renderSettingsTab();
   } catch(e){ console.error('refreshInsights', e); }
 }
+// Progreso · análisis (cambia con cada dato nuevo)
 async function renderBodyTab(){
-  renderBulkStatus('bulk-status-body'); renderPredictionCard(); renderWhyTarget('why-target-body', true); renderInsightsList('insights-body');
-  await renderWeightChart(); await renderModelChart(); await renderTrendCharts();
+  renderBulkStatus('bulk-status-body'); renderPredictionCard();
+  await renderWeightChart();
+  await renderTrendCharts(); renderInsightsList('insights-nutrition', ['eating', 'logerr']);
+  renderWhyTarget('why-target-body'); await renderModelChart();
+  await renderMeasureTrends();
+}
+// Progreso · cuerpo (composición, medidas y fotos: solo al abrir la pestaña o al guardar medidas)
+async function renderBodyCompositionBlock(){
+  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart(); await renderPhotoGallery();
+}
+// Gym · actividad
+async function renderGymTab(){
+  const di = $('input-steps-date'); if(di && !di.value) di.value = todayStr();
+  await loadStepsForDate(); await renderStepsCard(); renderInsightsList('steps-insight', ['steps']);
+}
+// Ajustes · objetivo, datos y auditoría del motor
+async function renderSettingsTab(){
+  renderObjectiveSummary(); renderSyncStatus();
   renderDataQualityCard(); await renderAiStatsCard(); await renderDecisionLog();
-  await renderStepsCard(); await renderMeasureTrends();
 }
 
 // =========================================
@@ -4640,7 +4193,7 @@ async function renderStreakBadge(){
 // =========================================
 // 🧾 CONTEXTO PARA LA IA (una sola fuente: el motor)
 // =========================================
-// Chat, resumen semanal y resumen corporal reciben EXACTAMENTE las mismas cifras
+// El asistente diario, el resumen semanal y el resumen corporal reciben EXACTAMENTE las mismas cifras
 // que ves en el dashboard. La IA explica; no calcula ni decide el objetivo.
 function engineContextText(st = getEngineState()){
   const r = st.rate, M = st.maintenance, A = st.adherence, A7 = st.adherence7, d = st.decision;
@@ -4669,7 +4222,7 @@ Devuelve SOLO este JSON, sin markdown ni texto fuera de él:
 {"insights":[{"valor":"dato corto con su número, máx 6 palabras","etiqueta":"1-3 palabras"}],"nota":"UNA frase de máximo 20 palabras con la acción más útil"}
 
 Genera entre 3 y 4 insights. Prioriza lo que explica el progreso o lo bloquea (casi siempre: adherencia vs necesario estimado y ritmo vs rango).`;
-  const res = await callGemini(prompt, true, GEMINI_MODEL_PLAN);
+  const res = await callGemini(prompt, true);
   btn.disabled = false; btn.innerText = 'Resumen semanal con IA';
   if(!res || !Array.isArray(res.insights)){ showToast('No se pudo generar el resumen ahora mismo.', true); return; }
   out.style.display = 'block';
@@ -4743,7 +4296,7 @@ async function renderPhotoGallery(){
   if(!gallery) return;
   const dates = await getPhotoDates();
   if(!dates.length){
-    gallery.innerHTML = '<div class="chat-empty">Aún no has guardado ninguna foto.</div>';
+    gallery.innerHTML = '<div class="empty-state">Aún no has guardado ninguna foto.</div>';
     if(controls) controls.style.display = 'none';
     return;
   }
@@ -4779,7 +4332,9 @@ function nav(tab){
   document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
   $('tab-'+tab).classList.add('active');
   document.querySelector(`.nav-item[data-tab="${tab}"]`).classList.add('active');
-  if(tab==='body'){ renderBodyTab(); renderBodyMeasureDayList(); renderBodyComposition(); renderBodyCompositionChart(); renderPhotoGallery(); }
+  if(tab==='body'){ renderBodyTab(); renderBodyCompositionBlock(); }
+  else if(tab==='gym') renderGymTab();
+  else if(tab==='settings') renderSettingsTab();
 }
 
 // BACKUP IMPORT/EXPORT
@@ -4800,7 +4355,7 @@ async function exportData(){
 // 🩺 EXPORTACIÓN DE DIAGNÓSTICO (PDF + JSON + CSV)
 // =========================================
 // Un único informe (buildDiagnosticReport) → tres formatos. Sin secretos: ni
-// API keys, ni syncUid, ni fotos, ni chat. Etiquetas: OBSERVED (lo que
+// API keys, ni syncUid, ni fotos. Etiquetas: OBSERVED (lo que
 // registraste), CALCULATED (derivado determinista), ESTIMATED (modelo con
 // incertidumbre), PREDICTED (futuro).
 function loadScriptOnce(src){
@@ -4829,7 +4384,7 @@ async function buildDiagnosticReport(){
   return {
     meta: { app: 'Bulking OS', schemaVersion: 2, engineVersion: st.engineVersion, generatedAt: new Date().toISOString(), asOf: st.asOf, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       tags: { OBSERVED: 'registrado por el usuario', CALCULATED: 'derivado de forma determinista', ESTIMATED: 'modelo con incertidumbre', PREDICTED: 'proyección futura' },
-      privacy: 'Sin API keys, sin syncUid, sin fotos y sin historial de chat.' },
+      privacy: 'Sin API keys, sin syncUid y sin fotos.' },
     config: BulkEngine.CONFIG,
     OBSERVED: {
       profile: { age: profile.age, heightCm: profile.height, sex: profile.sex, trainingDaysPerWeek: profile.trainingDays, mealsPerDay: profile.mealsPerDay, ratePreset: profile.ratePreset, goalWeightKg: profile.goalWeightKg, bulkStartDate: profile.bulkStartDate, adjustmentPaused: !!profile.adjustmentPaused, currentTargetKcal: Math.round(profile.targetKcal || 0), preferences: profile.preferences || '' },
@@ -4949,7 +4504,7 @@ async function exportDiagnosticPDF(rep, base){
   doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.text('Bulking OS - Informe de diagnóstico', M0, y); y += 7;
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(90);
   para(`Datos hasta ${rep.meta.asOf} · generado ${rep.meta.generatedAt} · motor v${rep.meta.engineVersion} · zona ${rep.meta.timezone}`);
-  para('Etiquetas: OBSERVED = registrado · CALCULATED = derivado · ESTIMATED = modelo con incertidumbre · PREDICTED = futuro. Sin API keys, syncUid, fotos ni chat.'); y += 3;
+  para('Etiquetas: OBSERVED = registrado · CALCULATED = derivado · ESTIMATED = modelo con incertidumbre · PREDICTED = futuro. Sin API keys, syncUid ni fotos.'); y += 3;
   h1('1. Resumen ejecutivo');
   table(['Pregunta', 'Respuesta', 'Detalle'], rep.insights.map(i => [i.q, i.value, i.a]), { columnStyles: { 0: { cellWidth: 42 }, 1: { cellWidth: 28 } } });
   h1('2. Perfil y configuración (OBSERVED)');
@@ -5128,15 +4683,6 @@ window.runSelfTests = async function(){
   const consensusNormal = computeBodyFatConsensus({ weightKg:80, heightCm:180, age:28, sex:'m', neck:38, waist:85, hip:null });
   check('Consenso: caso normal da un recomendado dentro de min/max', consensusNormal.recommended >= consensusNormal.min && consensusNormal.recommended <= consensusNormal.max);
 
-  // --- Sincronización menú/compra (fuente única de verdad) ---
-  const fakePlan = { days: [
-    { day:'Lunes', training:false, meals:[ { name:'Comida', type:'batch', items:[ {food:'Pollo', grams:200}, {food:'Arroz', grams:100} ] } ] },
-    { day:'Martes', training:false, meals:[ { name:'Comida', type:'batch', items:[ {food:'Pollo', grams:150} ] } ] }
-  ]};
-  const shopping = recomputeShoppingList(fakePlan);
-  const pollo = shopping.find(s => s.item === 'Pollo');
-  check('Sincronización menú↔compra: suma correctamente entre días (200+150=350g)', pollo && pollo.qty === '350 g');
-
   // --- Motor de datos (misma batería que `python bulking_app.py --test`) ---
   try { runEngineTests(BulkEngine, () => {}).results.forEach(r => check('Motor · ' + r.name, r.pass, r.detail)); } catch(e){ check('Motor: tests ejecutados', false, e.message); }
 
@@ -5163,7 +4709,7 @@ function renderDayStatusRow(date){
 // Otro dispositivo/pestaña cambió datos → recargar perfil y repintar.
 async function onExternalDataChange(){
   profile = await loadProfile(); __engineCache = null;
-  try { await syncDynamicMacros(); updateBodyStats(); await updateDashboardUI(); await refreshInsights(); } catch(e){ console.error(e); }
+  try { await syncDynamicMacros(); renderObjectiveSummary(); await updateDashboardUI(); await refreshInsights(); } catch(e){ console.error(e); }
 }
 let __storageEventTimer = null;
 window.addEventListener('storage', (e) => {
@@ -5196,10 +4742,7 @@ window.onload = async () => {
   $('input-goal-weight').value = profile.goalWeightKg || '';
   $('input-measure-date').value = todayStr();
 
-  const dStr = new Date().toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'short',year:'numeric'});
-  $('date-display').innerText = dStr.charAt(0).toUpperCase()+dStr.slice(1);
-
-  const lp = await safeGet('lastPlan'); if(lp && lp.plan) renderPlanObject(lp.plan, new Date(lp.generatedAt).toLocaleString('es-ES'));
+  $('input-steps-date').value = todayStr();
   renderSyncStatus();
   renderNoSyncBanner();
   await pruneOldCaches();
@@ -5210,16 +4753,15 @@ window.onload = async () => {
     const parts = [];
     if(migration.correction) parts.push(`se ha deshecho el ajuste del ${migration.correction.date} (${migration.correction.from} → ${migration.correction.to} kcal) causado por un fallo del algoritmo anterior`);
     if(migration.removedSensitiveKeys.length) parts.push(`se ha borrado del almacenamiento una clave sensible (${migration.removedSensitiveKeys.join(', ')})`);
-    if(parts.length) showAdjustAlert(`🔧 Bulking OS v2: ${parts.join('; ')}. Detalle en Progreso → Historial de decisiones.`, true);
+    if(parts.length) showAdjustAlert(`🔧 Bulking OS v2: ${parts.join('; ')}. Detalle en Ajustes → Auditoría del motor → Historial de decisiones.`, true);
   }
-  updateBodyStats(); await updateDashboardUI(); await refreshInsights(); await renderWeightDayList();
+  renderObjectiveSummary(); await updateDashboardUI(); await refreshInsights(); await renderWeightDayList();
   await checkBackupReminder();
-  renderChatWindow((await safeGet('chatHistory'))||[]);
 
-  $('chat-input').addEventListener('keydown', e => { if(e.key==='Enter') sendChatMessage(); });
   $('manual-text').addEventListener('keydown', e => { if(e.key==='Enter') processText(); });
   $('input-weight-date').addEventListener('change', renderWeightDayList);
   $('input-measure-date').addEventListener('change', renderBodyMeasureDayList);
+  $('input-steps-date').addEventListener('change', loadStepsForDate);
 };
 
 </script>
@@ -5231,8 +4773,7 @@ def get_injected_html():
     """Inyecta las variables de configuración de Python dentro del HTML estático."""
     html = APP_HTML_TEMPLATE
     html = html.replace("__API_KEY_B64__", GEMINI_API_KEY_B64)
-    html = html.replace("__MODEL__", GEMINI_MODEL)
-    html = html.replace("__MODEL_PLAN__", GEMINI_MODEL_PLAN)
+    html = html.replace("__MODEL_SUMMARY__", GEMINI_MODEL_SUMMARY)
     html = html.replace("__MODEL_FOOD__", GEMINI_MODEL_FOOD)
     html = html.replace("__FILLER__", FILLER_FOODS)
     html = html.replace("__FIREBASE_DB_URL__", FIREBASE_DB_URL)
@@ -5254,7 +4795,7 @@ if "--test" in sys.argv:
     import shutil, tempfile
     node = shutil.which("node")
     if not node:
-        print("Necesitas Node.js instalado para --test (o abre la app → Datos → Ejecutar tests).")
+        print("Necesitas Node.js instalado para --test (o abre la app → Ajustes → Herramientas → Ejecutar tests).")
         sys.exit(2)
     def _between(a, b):
         i = APP_HTML_TEMPLATE.index(a); j = APP_HTML_TEMPLATE.index(b) + len(b)
