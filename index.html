@@ -530,6 +530,8 @@
   .water-num b { font-size: 2.3rem; font-weight: 600; letter-spacing: -0.04em; color: var(--text); }
   .water-sub { margin-top: 2px; font-size: .74rem; color: var(--text-dim); min-height: 1.1em; }
   .water-sub.done { color: var(--green); }
+  .water-sub:empty { display: none; }
+  #water-drinks { color: var(--accent); }
   .water-btns { display: flex; gap: 6px; margin-top: 12px; }
   .water-btns button { flex: 1; padding: 10px 0; font-size: .8rem; }
   .water-btns .undo { flex: 0 0 40px; font-size: 1rem; }
@@ -599,13 +601,17 @@
           <defs>
             <clipPath id="bottle-clip"><path d="M33 14H47V28C47 34 68 38 68 54V146Q68 154 60 154H20Q12 154 12 146V54C12 38 33 34 33 28Z"/></clipPath>
             <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tone); stop-opacity:.9"/><stop offset="1" style="stop-color:var(--tone); stop-opacity:.5"/></linearGradient>
+            <linearGradient id="drinks-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--accent); stop-opacity:.8"/><stop offset="1" style="stop-color:var(--accent); stop-opacity:.42"/></linearGradient>
           </defs>
           <g clip-path="url(#bottle-clip)">
             <rect x="0" y="0" width="80" height="160" fill="rgba(255,255,255,0.03)"/>
+            <g id="drinks-level" class="water-level" style="transform: translateY(170px)">
+              <g class="wave"><path d="M0 5Q10 0 20 5T40 5T60 5T80 5T100 5T120 5T140 5T160 5V170H0Z" fill="url(#drinks-grad)"/></g>
+            </g>
             <g id="water-level" class="water-level" style="transform: translateY(170px)">
               <g class="wave"><path d="M0 5Q10 0 20 5T40 5T60 5T80 5T100 5T120 5T140 5T160 5V170H0Z" fill="url(#water-grad)"/></g>
             </g>
-            <g stroke="rgba(255,255,255,0.32)" stroke-width="1"><line x1="57" x2="68" y1="124" y2="124"/><line x1="52" x2="68" y1="94" y2="94"/><line x1="57" x2="68" y1="64" y2="64"/></g>
+            <g stroke="rgba(255,255,255,0.32)" stroke-width="1"><line x1="57" x2="68" y1="117.5" y2="117.5"/><line x1="52" x2="68" y1="81" y2="81"/><line x1="57" x2="68" y1="44.5" y2="44.5"/></g>
           </g>
           <path d="M33 14H47V28C47 34 68 38 68 54V146Q68 154 60 154H20Q12 154 12 146V54C12 38 33 34 33 28Z" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.6" stroke-linejoin="round"/>
           <rect x="31" y="4" width="18" height="10" rx="3" fill="rgba(255,255,255,0.18)"/>
@@ -613,6 +619,7 @@
         <div class="water-side">
           <div class="water-num"><b id="water-now">0</b><span> / <span id="water-goal">--</span> L</span></div>
           <div class="water-sub" id="water-sub"></div>
+          <div class="water-sub" id="water-drinks"></div>
           <div class="water-btns">
             <button class="secondary" onclick="addWater(250)">+250</button>
             <button class="secondary" onclick="addWater(500)">+500</button>
@@ -742,6 +749,7 @@
        · claves de almacenamiento con prefijo `gym:` (p. ej. `gym:session:YYYY-MM-DD`, `gym:exercises`, `gym:routines`)
          → entran solas en el export/import JSON y en la sincronización, sin tocar el motor de kcal.
        · los pasos ya viven aquí (`steps:YYYY-MM-DD`).
+       · la IA (asistente y resúmenes) lee sola todas las claves `gym:*` y las sesiones `gym:session:YYYY-MM-DD` (buildAIContext → gymContextLines).
        · el cruce con nutrición se hará leyendo getEngineState() (kcal, peso tendencia, superávit) en modo solo lectura. -->
   <div id="tab-gym" class="section">
     <div class="glass-card" data-tone="blue">
@@ -2286,7 +2294,8 @@ async function buildDailyStatusText(sums, target, logs, date){
   const remS = Math.max(0, target.s - sums.s);
   const remKcal = Math.max(0, target.kcal - sums.kcal);
   const loggedList = logs.length ? logs.map(l => `${l.time || ''} ${l.label} (${Math.round(l.kcal)} kcal)`).join('; ') : 'ninguna todavía';
-  const history = await buildRecentHistorySummary(14);
+  const hyd = await hydrationOn(date), steps = await getSteps(date);
+  const context = await buildAIContext({ days: 14, entriesDays: 2, asOf: date });
 
   return `Estado de ${formatDateLabel(date)} (hora actual ${hourLabel}):
 - Kcal: objetivo ${Math.round(target.kcal)}, ingeridas ${Math.round(sums.kcal)}, restantes ${Math.round(remKcal)}.
@@ -2294,9 +2303,81 @@ async function buildDailyStatusText(sums, target, logs, date){
 - Carbohidratos: objetivo ${Math.round(target.c)}g, ingeridos ${Math.round(sums.c)}g, restantes ${Math.round(remC)}g.
 - Grasas: objetivo ${Math.round(target.f)}g, ingeridas ${Math.round(sums.f)}g, restantes ${Math.round(remF)}g.
 - Azúcar: objetivo recomendado (OMS, <5% de las kcal) ${Math.round(target.s)}g, ingerido ${Math.round(sums.s)}g, restante ${Math.round(remS)}g.
+- Líquidos: objetivo ${fmtL(hyd.goalMl)} L, bebidos ${fmtL(hyd.totalMl)} L (agua ${fmtL(hyd.plainMl)}${hyd.drinksMl ? ` + otras bebidas ${fmtL(hyd.drinksMl)}` : ''}), faltan ${fmtL(Math.max(0, hyd.goalMl - hyd.totalMl))} L.
+- Pasos de hoy: ${steps || 'sin registrar'}. ${hyd.ctx.train ? 'Hoy es día de entreno.' : 'Hoy no está marcado como día de entreno.'}
 - Comidas registradas hoy (${logs.length}/${mealsTarget} previstas, quedan realistamente ${mealsRemaining} por la hora que es): ${loggedList}.
-- Preferencias y restricciones: ${profile.preferences || 'ninguna indicada'}.
-${history ? '- ' + history : ''}`;
+
+CONTEXTO COMPLETO DEL USUARIO (datos reales de la app):
+${context}`;
+}
+
+// =========================================
+// 🧠 CONTEXTO COMPLETO PARA LA IA
+// =========================================
+// Una sola fuente para el asistente diario y los resúmenes: perfil, objetivos, motor, fiabilidad del registro,
+// tabla diaria (kcal ± error, macros, azúcar, agua, pasos, peso, entreno), comidas con sus estimaciones,
+// medidas, composición y entrenamiento (Gym: lee solas todas las claves `gym:*` cuando existan).
+// La IA recibe los números ya calculados y NO debe recalcularlos ni inventarlos.
+function gymContextLines(){
+  const keys = [];
+  try { for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k && k.startsWith('gym:')) keys.push(k); } } catch(e){}
+  if(!keys.length) return ['ENTRENAMIENTO (Gym): el módulo aún no tiene datos. Solo se sabe qué días marcó el usuario "Entreno" en el registro de agua.'];
+  const sessions = keys.filter(k => /^gym:session:\d{4}-\d{2}-\d{2}/.test(k)).sort().slice(-8);
+  const out = [`ENTRENAMIENTO (Gym): ${keys.length} registros guardados.`];
+  for(const k of sessions){ let v = null; try { v = JSON.parse(localStorage.getItem(k)); } catch(e){} out.push(`- ${k.replace('gym:session:', '')}: ${JSON.stringify(v).slice(0, 420)}`); }
+  const other = keys.filter(k => !sessions.includes(k)).slice(0, 6);
+  if(other.length) out.push(`- Otros datos de Gym: ${other.join(', ')}`);
+  return out;
+}
+async function buildAIContext({ days = 14, entriesDays = 3, asOf = todayStr() } = {}){
+  const st = getEngineState(), U = BulkEngine.util, C = BulkEngine.CONFIG, base = await waterBase(), L = [];
+  const k = macroPerKg(profile), T = getTargets();
+  const r0 = x => Math.round(x), fL = ml => fmtL(ml);
+  L.push(`PERFIL: ${profile.sex === 'f' ? 'mujer' : 'hombre'}, ${profile.age} años, ${profile.height} cm, peso tendencia ${st.weight.level.toFixed(1)} kg (referencia ${Number(profile.weight).toFixed(1)}), peso objetivo ${profile.goalWeightKg || 'sin definir'}, ritmo elegido ${profile.ratePreset || 'estandar'}, ${profile.mealsPerDay || 5} comidas/día, ${profile.trainingDays} días de entreno/semana, proteína ${k.protein} g/kg, grasas ${k.fat} g/kg. Preferencias y restricciones: ${profile.preferences || 'ninguna indicada'}.`);
+  const todayH = await hydrationOn(asOf, base);
+  L.push(`OBJETIVOS DEL DÍA: ${r0(T.kcal)} kcal · proteína ${r0(T.p)} g · carbohidratos ${r0(T.c)} g · grasas ${r0(T.f)} g · azúcar recomendado <${r0(T.s)} g · líquidos ${fL(todayH.goalMl)} L (agua + otras bebidas${todayH.ctx.train ? ', día de entreno' : ''}${todayH.ctx.heat ? ', calor' : ''}).`);
+  L.push('MOTOR (calculado por la app):\n' + engineContextText(st));
+  // fiabilidad del registro
+  const I = st.intake; const corr = await getAiCorrections();
+  let aiN = 0, weighedN = 0, outN = 0, allN = 0;
+  for(let i = 0; i < 21; i++){ for(const e of await getLog(U.addDays(asOf, -i))){ allN++; if(e.ai) aiN++; if(e.weighed) weighedN++; if(e.eatenOut) outN++; } }
+  const pcts = corr.filter(c => Number.isFinite(c.deltaPct)).map(c => c.deltaPct), meanCorr = pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null;
+  L.push(`FIABILIDAD DEL REGISTRO: error asumido ${I.errTotalPct !== null && I.errTotalPct !== undefined ? '±' + fmtN(I.errTotalPct * 100) + ' % de la ingesta media (≈ ±' + fmtN(I.errTotalSd) + ' kcal/día)' : 'sin datos'}: ${fmtN(C.LOGGING_SYSTEMATIC_FRACTION * 100)} % sistemático + error de cada entrada según su rango y confianza. Últimos 21 días: ${allN} entradas, ${aiN} estimadas por IA, ${weighedN} pesadas con báscula/etiqueta, ${outN} de comida fuera. ${pcts.length ? `Correcciones del usuario a la IA: ${pcts.length}, corrección media ${meanCorr >= 0 ? '+' : ''}${fmtN(meanCorr, 1)} % (positivo = la IA infraestima).` : 'Aún sin correcciones del usuario a la IA.'}`);
+  // tabla diaria
+  const rows = []; const trainDays = [];
+  const window = st.days.filter(d => d.date <= asOf).slice(-days);
+  for(const d of window){
+    const logs = await getLog(d.date), sum = sumEntries(logs), h = await hydrationOn(d.date, base), steps = await getSteps(d.date);
+    const errKcal = sum.kcal > 0 ? r0(1.2816 * Math.sqrt(d.errSd ** 2 + (C.LOGGING_SYSTEMATIC_FRACTION * sum.kcal) ** 2) / 10) * 10 : 0;
+    if(h.ctx.train) trainDays.push(d.date);
+    rows.push(`${d.date}${d.date === asOf ? ' (hoy, en curso)' : ''} · ${d.status} · ${logs.length ? `${r0(sum.kcal)}±${errKcal} kcal de ${r0(d.target || T.kcal)} · P${r0(sum.p)} C${r0(sum.c)} G${r0(sum.f)} Az${r0(sum.s)}` : 'sin comidas'} · líquidos ${fL(h.totalMl)}/${fL(h.goalMl)} L (agua ${fL(h.plainMl)}${h.drinksMl ? ` + otras bebidas ${fL(h.drinksMl)}` : ''}) · pasos ${steps ? steps : '—'} · peso ${d.weight ? d.weight : '—'}${h.ctx.train ? ' · ENTRENO' : ''}${h.ctx.heat ? ' · calor' : ''}`);
+  }
+  L.push(`DÍAS (últimos ${window.length}; estado: complete = cuenta para el motor, doubtful/incomplete = no cuenta, open = en curso):\n${rows.join('\n')}`);
+  // comidas con estimaciones
+  if(entriesDays > 0){
+    const ent = [];
+    for(let i = entriesDays - 1; i >= 0; i--){
+      const d = U.addDays(asOf, -i);
+      for(const e of await getLog(d)){
+        const flags = [e.weighed ? 'pesado' : null, e.eatenOut ? 'fuera de casa' : null, e.corrected ? 'corregido por el usuario' : null, e.liquidMl ? `bebida ${r0(e.liquidMl)} ml` : null].filter(Boolean).join(', ');
+        ent.push(`${d} ${e.time || ''} ${e.label}: ${r0(e.kcal)} kcal${e.ai && e.ai.range ? ` (rango IA ${e.ai.range.low}–${e.ai.range.high}, confianza ${e.ai.confidence || '—'})` : ''} · P${r0(e.p)} C${r0(e.c)} G${r0(e.f)} Az${r0(e.s || 0)}${flags ? ' · ' + flags : ''} · ${e.source || 'manual'}`);
+      }
+    }
+    L.push(`COMIDAS REGISTRADAS (últimos ${entriesDays} días, con la estimación de la IA):\n${ent.length ? ent.join('\n') : 'ninguna'}`);
+  }
+  // medidas y composición
+  try {
+    const H = await getMeasureHistory(120), parts = [];
+    for(const f of MEASURE_FIELDS){ const a = H[f.k]; if(!a || !a.length) continue; const first = a[0], last = a[a.length - 1]; parts.push(a.length > 1 ? `${f.label} ${last.v} cm (${last.v - first.v >= 0 ? '+' : ''}${fmtN(last.v - first.v, 1)} desde ${first.date})` : `${f.label} ${last.v} cm (${last.date})`); }
+    const latest = await getLatestBodyMeasure();
+    const bf = computeBodyFatConsensus({ weightKg: st.weight.level, heightCm: profile.height, age: profile.age, sex: profile.sex, neck: latest && latest.neck, waist: latest && latest.waist, hip: latest && latest.hip });
+    const bfPct = bf.recommended ?? cunBaeBodyFat(bmiOf(st.weight.level, profile.height), profile.age, profile.sex);
+    L.push(`CUERPO: ${parts.length ? 'medidas ' + parts.join(' · ') : 'sin medidas registradas'}. % grasa estimado ${bfPct.toFixed(1)} % (${bf.hasMeasurements ? 'con cinta métrica' : 'CUN-BAE, sin medidas'}); IMC ${bmiOf(st.weight.level, profile.height).toFixed(1)}.`);
+  } catch(e){ /* sin datos corporales */ }
+  L.push(`ACTIVIDAD: ${st.activity && st.activity.avg7 ? `pasos medios ${fmtN(st.activity.avg7)}/día en 7 días${st.activity.changePct !== null ? ` (${fmtS(st.activity.changePct * 100, 0)} % vs. las 3 semanas previas)` : ''}` : 'sin pasos registrados'}. Días marcados como entreno: ${trainDays.length ? trainDays.join(', ') : 'ninguno'}.`);
+  L.push(...gymContextLines());
+  const hist = await buildRecentHistorySummary(14); if(hist) L.push('HISTORIAL: ' + hist);
+  return L.join('\n');
 }
 
 async function requestDailyAssistantAI(sums, target, logs, date){
@@ -2312,6 +2393,7 @@ Instrucciones:
 - Si el objetivo de kcal y proteína está prácticamente cumplido, dilo y no fuerces otra comida.
 - Si ya se superó el objetivo de kcal, no generes culpa: indica que no debe compensar mañana.
 - Si algún macro o el azúcar está cerca de su límite, avísalo y orienta hacia opciones bajas en ese macro.
+- Usa también los demás datos cuando cambien la recomendación (líquidos pendientes, entreno de hoy, pasos, fiabilidad del registro), con como mucho UNA mención breve; no enumeres cifras que no aporten.
 Máximo 2-3 frases en "body". Un solo emoji, solo en "title".`;
 
   const res = await callGemini(prompt, true);
@@ -2364,6 +2446,21 @@ const fmtL = ml => (Math.round(ml / 10) / 100).toLocaleString('es-ES', { minimum
 async function getWater(date){ const v = await safeGet('water:' + date); return Array.isArray(v) ? v.filter(e => e && Number(e.ml) > 0) : []; }
 async function getWaterCtx(date){ const v = await safeGet('waterctx:' + date); return { train: !!(v && v.train), heat: !!(v && v.heat) }; }
 const waterTotal = arr => arr.reduce((a, e) => a + Number(e.ml || 0), 0);
+const drinksOf = logs => logs.reduce((a, e) => a + (Number(e.liquidMl) > 0 ? Number(e.liquidMl) : 0), 0);
+// Qué cuenta: el objetivo es de LÍQUIDOS TOTALES (base EFSA: ~80 % del agua total viene de bebidas).
+//   · Agua: los botones (agua, infusiones…). · Otras bebidas: las detecta la IA al registrar comidas (solo marca cuáles son bebidas
+//   sin alcohol y sus ml; el usuario puede editarlos). · NO cuenta: fruta, verdura, sopas ni comida sólida (ya descontadas en el 20 %) ni alcohol.
+async function waterBase(){
+  let weightKg = Number(profile.weight) || 0; try { const l = getEngineState().weight.level; if(l > 0) weightKg = l; } catch(e){}
+  return { weightKg, kcal: getTargets().kcal };
+}
+async function hydrationOn(date, base){
+  base = base || await waterBase();
+  const arr = await getWater(date), logs = await getLog(date), ctx = await getWaterCtx(date);
+  const plainMl = waterTotal(arr), drinksMl = drinksOf(logs), totalMl = plainMl + drinksMl;
+  const goal = BulkEngine.waterGoal(profile, { weightKg: base.weightKg, kcal: base.kcal, train: ctx.train, heat: ctx.heat });
+  return { date, arr, plainMl, drinksMl, totalMl, goalMl: goal.goalMl, goal, ctx, pct: goal.goalMl > 0 ? totalMl / goal.goalMl : 0 };
+}
 window.addWater = async ml => {
   ml = Number(ml); if(!Number.isFinite(ml) || ml <= 0 || ml > 3000) return;
   const arr = await getWater(selectedLogDate), now = Date.now();
@@ -2384,30 +2481,32 @@ window.toggleWaterCtx = async key => {
   if(ctx.train || ctx.heat) await safeSet('waterctx:' + selectedLogDate, ctx); else await safeRemove('waterctx:' + selectedLogDate);
   await renderWater(selectedLogDate);
 };
+// Altura del agua en la botella: 0 % = vacía, 100 % = hasta el tapón (la onda tapa por completo el cuello).
+const waterY = fr => fr <= 0 ? 170 : 149 - 146 * Math.min(1, fr);
 async function renderWater(date){
   const card = $('water-card'); if(!card) return;
-  let weightKg = Number(profile.weight) || 0; try { const l = getEngineState().weight.level; if(l > 0) weightKg = l; } catch(e){}
-  const kcal = getTargets().kcal, goalFor = ctx => BulkEngine.waterGoal(profile, { weightKg, kcal, train: ctx.train, heat: ctx.heat });
-  const arr = await getWater(date), total = waterTotal(arr), ctx = await getWaterCtx(date), g = goalFor(ctx);
-  const f = g.goalMl > 0 ? total / g.goalMl : 0, fill = Math.max(0, Math.min(1, f)), left = g.goalMl - total;
-  $('water-level').style.transform = `translateY(${fill <= 0 ? 170 : 154 - 120 * fill}px)`;
-  $('water-bottle').classList.toggle('full', f >= 1);
-  $('water-now').textContent = fmtL(total); $('water-goal').textContent = fmtL(g.goalMl);
+  const base = await waterBase(), h = await hydrationOn(date, base), left = h.goalMl - h.totalMl;
+  $('water-level').style.transform = `translateY(${waterY(h.plainMl / h.goalMl)}px)`;
+  $('drinks-level').style.transform = `translateY(${h.drinksMl > 0 ? waterY(h.totalMl / h.goalMl) : 170}px)`;
+  $('water-bottle').classList.toggle('full', h.pct >= 1);
+  $('water-now').textContent = fmtL(h.totalMl); $('water-goal').textContent = fmtL(h.goalMl);
   const sub = $('water-sub'); sub.classList.toggle('done', left <= 0);
   sub.textContent = left > 0 ? `quedan ${fmtL(left)} L` : left === 0 ? 'objetivo cumplido' : `objetivo cumplido · +${fmtL(-left)} L`;
-  setMeta('meta-water', total > 0 ? `${Math.round(f * 100)} %` : '');
-  $('chip-train').classList.toggle('on', ctx.train); $('chip-heat').classList.toggle('on', ctx.heat);
-  $('water-undo').disabled = !arr.length;
+  $('water-drinks').textContent = h.drinksMl > 0 ? `incluye ${fmtL(h.drinksMl)} L de otras bebidas de tus comidas` : '';
+  setMeta('meta-water', h.totalMl > 0 ? `${Math.round(h.pct * 100)} %` : '');
+  $('chip-train').classList.toggle('on', h.ctx.train); $('chip-heat').classList.toggle('on', h.ctx.heat);
+  $('water-undo').disabled = !h.arr.length;
   // detalle: de dónde sale el objetivo + media de 7 días
-  const W = BulkEngine.WATER; let sum = 0, hits = 0;
-  for(let i = 0; i < 7; i++){ const d = BulkEngine.util.addDays(date, -i), t = waterTotal(await getWater(d)); sum += t; if(t >= goalFor(await getWaterCtx(d)).goalMl) hits++; }
+  const W = BulkEngine.WATER, g = h.goal; let sum = 0, hits = 0;
+  for(let i = 0; i < 7; i++){ const d = await hydrationOn(BulkEngine.util.addDays(date, -i), base); sum += d.totalMl; if(d.totalMl >= d.goalMl) hits++; }
   const names = { efsa: 'mínimo EFSA', weight: `${W.ML_PER_KG} mL/kg`, energy: '1 mL/kcal' };
   $('water-detail').innerHTML =
       kv('Agua total de referencia', `${fmtL(g.totalMl)} L`, `la mayor de: EFSA ${fmtL(g.refs.efsa)} · ${W.ML_PER_KG} mL/kg ${fmtL(g.refs.weight)} · 1 mL/kcal ${fmtL(g.refs.energy)} (manda ${names[g.basis]})`)
-    + kv('Solo líquidos', `${fmtL(g.drinkMl)} L`, `descontando ~${Math.round(W.FOOD_SHARE * 100)} % que llega en la comida`)
+    + kv('Objetivo de líquidos', `${fmtL(g.drinkMl)} L`, `descontando ~${Math.round(W.FOOD_SHARE * 100)} % que llega en la comida sólida y la fruta`)
     + (g.extraMl ? kv('Entreno / calor', `+${fmtL(g.extraMl)} L`) : '')
+    + kv('Hoy', `${fmtL(h.plainMl)} L agua${h.drinksMl ? ` + ${fmtL(h.drinksMl)} L otras bebidas` : ''}`)
     + kv('Media 7 días', `${fmtL(sum / 7)} L`, `${hits}/7 días con objetivo`)
-    + `<div class="muted-line">Cuenta cualquier líquido (agua, infusiones, café). Se recalcula con tu peso tendencia y tus kcal. La edad adulta no lo cambia (EFSA). Es una referencia, no una obligación: tu sed y el color de la orina mandan. Base: EFSA 2010, IOM 2004 y ACSM 2007.</div>`;
+    + `<div class="muted-line"><b>Cuenta:</b> el agua que registras con los botones y las bebidas sin alcohol de tus comidas (refrescos, zumos, leche, café, té). La IA solo marca qué es bebida y cuántos ml; puedes corregirlo al revisar la comida. <b>No cuenta:</b> fruta, verdura, sopas y comida sólida (ya están en el 20 % descontado) ni el alcohol. Referencia, no obligación: tu sed y el color de la orina mandan. Base: EFSA 2010, IOM 2004 y ACSM 2007.</div>`;
 }
 
 // =========================================
@@ -2730,7 +2829,7 @@ async function recordAiCorrection(rec){
 }
 function normalizeAiEstimate(res, text){
   if(!res || typeof res !== 'object') return null;
-  let items = (Array.isArray(res.items) ? res.items : []).filter(i => i && i.food).map(i => ({ food: String(i.food), grams: numOr0(i.grams), kcal: numOr0(i.kcal), p: numOr0(i.p), c: numOr0(i.c), f: numOr0(i.f), s: numOr0(i.s) }));
+  let items = (Array.isArray(res.items) ? res.items : []).filter(i => i && i.food).map(i => ({ food: String(i.food), grams: numOr0(i.grams), kcal: numOr0(i.kcal), p: numOr0(i.p), c: numOr0(i.c), f: numOr0(i.f), s: numOr0(i.s), drink: i.drink === true }));
   let tot = sumEntries(items);
   const explicit = parseExplicitNutrition(text);
   if(explicit && explicit.kcal > 0){
@@ -2739,6 +2838,7 @@ function normalizeAiEstimate(res, text){
     tot = sumEntries(items);
   }
   const r1 = x => Math.round(x * 10) / 10;
+  const liquidMl = Math.max(0, Math.min(3000, Math.round(items.filter(i => i.drink).reduce((a, i) => a + i.grams, 0))));
   let low = numOr0(res.kcal_low), high = numOr0(res.kcal_high);
   if(explicit){ low = high = tot.kcal; }
   else { if(!(low > 0 && low <= tot.kcal)) low = tot.kcal * 0.8; if(!(high >= tot.kcal)) high = tot.kcal * 1.25; }
@@ -2748,7 +2848,7 @@ function normalizeAiEstimate(res, text){
   const g = singleGramsOf(text);
   if(g && tot.kcal > g * 9.3){ warnings.push(`${Math.round(tot.kcal)} kcal en ${g} g es imposible (la grasa pura tiene ~9 kcal/g).`); if(tot.kcal/10 <= g*9.3) fixKcal = Math.round(tot.kcal/10); }
   const conf = explicit ? 'alta' : (['alta','media','baja'].includes(res.confidence) ? res.confidence : 'media');
-  return { label: String(res.label || text).slice(0, 80), kcal: r1(tot.kcal), p: r1(tot.p), c: r1(tot.c), f: r1(tot.f), s: r1(tot.s),
+  return { label: String(res.label || text).slice(0, 80), liquidMl, kcal: r1(tot.kcal), p: r1(tot.p), c: r1(tot.c), f: r1(tot.f), s: r1(tot.s),
     items: items.map(i => ({ ...i, kcal: r1(i.kcal), p: r1(i.p), c: r1(i.c), f: r1(i.f), s: r1(i.s) })),
     range: { low: Math.round(low), high: Math.round(high) }, confidence: conf,
     assumptions: (Array.isArray(res.assumptions) ? res.assumptions : []).map(String).slice(0, 6),
@@ -2771,11 +2871,12 @@ Reglas:
 4. Tablas de composición españolas (BEDCA). Bebidas: 1 ml ≈ 1 g.
 5. Coherencia por alimento: kcal ≈ 4·p + 4·c + 9·f. "s" = azúcares totales (0 si no lleva).
 6. Incertidumbre honesta: "kcal_low"/"kcal_high" = rango del ~90 % de lo descrito. Tus estimaciones suelen ser dispares, así que sé HONESTO y AMPLIO: nunca menos de ±15 % si hay que suponer ración, aceite o marca, y ±30 % o más si es un plato mixto, de restaurante o ambiguo. "confidence": "alta" si hay cantidades o etiqueta; "media" si hay que suponer la ración; "baja" si es muy ambiguo.
-7. "question": SOLO si una única aclaración cambiaría el total más de un 25 % (p. ej. "¿Cuántos gramos eran aproximadamente?", "¿Frito o a la plancha?"). Si no, null.
-${corr ? `8. Correcciones previas de ESTE usuario a estimaciones tuyas (calibra raciones y productos parecidos):\n${corr}\n` : ''}Si el texto no describe comida, devuelve "items": [] y explica el motivo en "label".
+7. "drink": true SOLO en bebidas SIN alcohol que se toman como líquido (agua, refrescos, zumos, leche, café, té, batidos líquidos); en ese caso "grams" = ml. false en comida sólida, fruta, verdura, sopas, cremas, yogures y en cualquier bebida con alcohol. No estimes el agua que contienen los alimentos.
+8. "question": SOLO si una única aclaración cambiaría el total más de un 25 % (p. ej. "¿Cuántos gramos eran aproximadamente?", "¿Frito o a la plancha?"). Si no, null.
+${corr ? `9. Correcciones previas de ESTE usuario a estimaciones tuyas (calibra raciones y productos parecidos):\n${corr}\n` : ''}Si el texto no describe comida, devuelve "items": [] y explica el motivo en "label".
 
 Devuelve SOLO JSON, sin texto fuera:
-{"label":"nombre corto","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"s":0}],"kcal_low":0,"kcal_high":0,"confidence":"media","assumptions":[""],"question":null}`;
+{"label":"nombre corto","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"s":0,"drink":false}],"kcal_low":0,"kcal_high":0,"confidence":"media","assumptions":[""],"question":null}`;
   const res = await callGemini(prompt, true, GEMINI_MODEL_FOOD, 2, { temperature: 0 });
   const est = normalizeAiEstimate(res, text);
   if(est){ est.source = 'Estimación de IA'; est.fromAI = true; }
@@ -2818,6 +2919,7 @@ function reviewInputsHTML(e){
       <input id="review-f" type="number" min="0" step="0.1" value="${e.f}" aria-label="Grasas">
       <input id="review-sugar" type="number" min="0" step="0.1" value="${e.s || 0}" aria-label="Azúcar">
     </div>
+    <div class="scale-row"><span>Bebida</span><input id="review-liquid" type="number" min="0" max="3000" step="10" value="${Math.round(e.liquidMl || 0)}" aria-label="Mililitros de bebida" style="width:92px; margin:0; padding:7px 10px;"> ml <small>cuenta para el agua · solo bebidas sin alcohol</small></div>
     <div class="scale-row"><span>Ajustar ración</span>${[0.5, 0.75, 1.25, 1.5, 2].map(k => `<button class="secondary" onclick="scaleReview(${k})">×${String(k).replace('.', ',')}</button>`).join('')}</div>
     <div class="scale-row err-flags"><span>Precisión</span>
       <label class="chk"><input type="checkbox" id="review-weighed" ${e.weighed ? 'checked' : ''}> ⚖️ Pesado con báscula / etiqueta <small>(error ↓)</small></label>
@@ -2845,7 +2947,7 @@ function showFoodReview(entry, isEdit = false){
     <div style="display:flex;gap:8px;"><button class="primary" style="flex:1;padding:11px;" onclick="confirmFoodReview()">${isEdit ? 'Guardar cambios' : 'Confirmar y registrar'}</button><button class="secondary" onclick="cancelFoodReview()">${isEdit ? 'Cancelar' : 'Descartar'}</button></div>`;
 }
 window.scaleReview = (k) => {
-  ['kcal','p','c','f','sugar'].forEach(f => { const el = $('review-' + f); if(el) el.value = f === 'kcal' ? Math.round(Number(el.value) * k) : Math.round(Number(el.value) * k * 10) / 10; });
+  ['kcal','p','c','f','sugar','liquid'].forEach(f => { const el = $('review-' + f); if(el) el.value = (f === 'kcal' || f === 'liquid') ? Math.round(Number(el.value) * k) : Math.round(Number(el.value) * k * 10) / 10; });
 };
 window.applyReviewKcal = (kcal) => { const cur = Number($('review-kcal').value) || 0; if(cur > 0) scaleReview(kcal / cur); };
 window.answerFoodQuestion = async () => {
@@ -2895,14 +2997,14 @@ window.reestimateLog = async (id) => {
 };
 function aiSnapshot(est){
   if(!est) return null;
-  return { kcal: est.kcal, p: est.p, c: est.c, f: est.f, s: est.s || 0, items: est.items || [], range: est.range || null, confidence: est.confidence || null,
+  return { kcal: est.kcal, p: est.p, c: est.c, f: est.f, s: est.s || 0, liquidMl: est.liquidMl || 0, items: est.items || [], range: est.range || null, confidence: est.confidence || null,
     assumptions: est.assumptions || [], question: est.question || null, clarification: est.clarification || null, explicitBasis: est.explicitBasis || null,
     warnings: est.warnings || [], model: est.model || null, promptVersion: est.promptVersion || null, at: Date.now() };
 }
 const differsFrom = (a, b) => Math.abs((a.kcal||0) - (b.kcal||0)) >= 1 || ['p','c','f'].some(k => Math.abs((a[k]||0) - (b[k]||0)) >= 0.5);
 window.confirmFoodReview = async () => {
   if(!pendingFoodEntry) return;
-  const final = { label: $('review-label').value.trim(), kcal: Number($('review-kcal').value), p: Number($('review-p').value), c: Number($('review-c').value), f: Number($('review-f').value), s: Number($('review-sugar').value) || 0 };
+  const final = { label: $('review-label').value.trim(), kcal: Number($('review-kcal').value), p: Number($('review-p').value), c: Number($('review-c').value), f: Number($('review-f').value), s: Number($('review-sugar').value) || 0, liquidMl: Math.max(0, Math.min(3000, Math.round(Number($('review-liquid') && $('review-liquid').value) || 0))) };
   const flagWeighed = !!($('review-weighed') && $('review-weighed').checked), flagOut = !!($('review-out') && $('review-out').checked);
   if(!validateFoodEntry(final) || final.kcal <= 0){ showToast('Revisa los valores de la comida.', true); return; }
   const now = Date.now();
@@ -2937,7 +3039,7 @@ window.confirmFoodReview = async () => {
     const est = saved.ai;
     const k = est && est.kcal > 0 ? final.kcal / est.kcal : 1;
     await setFoodCache(key, { promptVersion: FOOD_PROMPT_VERSION, corrected: !!saved.corrected, updatedAt: now,
-      result: { label: final.label, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
+      result: { label: final.label, liquidMl: final.liquidMl, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
   }
   cancelFoodReview();
   await updateDashboardUI(); await refreshInsights();
@@ -3358,6 +3460,7 @@ async function generateBodySummary(){
   const btn = $('btn-ai-summary');
   const out = $('ai-body-summary-output');
   btn.disabled = true; btn.innerText = 'Analizando...';
+  const context = await buildAIContext({ days: 14, entriesDays: 0 });
 
   const bmiVal = bmiOf(profile.weight, profile.height);
   const latest = await getLatestBodyMeasure();
@@ -3378,10 +3481,10 @@ async function generateBodySummary(){
 - FFMI normalizado: ${ffmiNorm.toFixed(1)} (referencia: límite natural típico ~25, Kouri et al. 1995).
 ${whtr ? `- Ratio cintura/altura: ${whtr.toFixed(2)}.` : ''}
 ${whr ? `- Ratio cintura/cadera: ${whr.toFixed(2)}.` : ''}
-Estado del bulk calculado por la app (úsalo tal cual, no lo recalcules):
-${engineContextText()}
+Contexto completo calculado por la app (úsalo tal cual, no lo recalcules):
+${context}
 
-Ten en cuenta la adherencia real y la decisión del motor al valorar si el objetivo actual tiene sentido o si la falta de progreso (si la hay) se debe más a la adherencia que al objetivo en sí.
+Cruza medidas, peso, pasos, entrenos y nutrición cuando ayude. Ten en cuenta la adherencia real y la decisión del motor al valorar si el objetivo actual tiene sentido o si la falta de progreso (si la hay) se debe más a la adherencia que al objetivo en sí.
 
 Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
 {"veredicto":"1 frase de máximo 15 palabras resumiendo su situación física","metricas":[{"valor":"dato con número, máx 5 palabras (ej: 'FFMI 21.4, buen nivel')","etiqueta":"etiqueta de 1-2 palabras"}],"acciones":["acción concreta y accionable, máx 12 palabras","acción 2","acción 3"]}
@@ -3389,7 +3492,7 @@ Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
 Genera 3-4 métricas y exactamente 3 acciones. Usa solo números presentes en los datos de arriba. Nada de párrafos: cada campo va a una tarjeta visual pequeña.`;
 
   const res = await callGemini(prompt, true);
-  btn.disabled = false; btn.innerText = 'Generar resumen';
+  btn.disabled = false; btn.innerText = 'Resumen de composición';
   if(!res || !res.veredicto){ showToast('No se pudo generar el resumen ahora mismo.', true); return; }
 
   out.style.display = 'block';
@@ -3969,7 +4072,7 @@ window.saveFavoriteFromSuggestion = async (key) => {
   const entry = window.__pendingFavoriteEntry;
   if(!entry || key !== window.__pendingFavoriteKey) return;
   const favorites = await getFavorites();
-  favorites.push({ id: Date.now().toString(36), key, label: entry.label, kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f, s: entry.s || 0 });
+  favorites.push({ id: Date.now().toString(36), key, label: entry.label, kcal: entry.kcal, p: entry.p, c: entry.c, f: entry.f, s: entry.s || 0, liquidMl: entry.liquidMl || 0 });
   await setFavorites(favorites);
   $('favorite-suggestion').style.display = 'none';
   showToast('Guardada en favoritas');
@@ -3990,7 +4093,7 @@ window.addFavoriteQuick = async (id) => {
   const fav = favorites.find(x => x.id === id);
   if(!fav) return;
   const entries = await getLog(selectedLogDate);
-  entries.push({ id: Date.now().toString(36), createdAt: Date.now(), updatedAt: Date.now(), time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), label: fav.label, kcal: fav.kcal, p: fav.p, c: fav.c, f: fav.f, s: fav.s || 0, source: '⚡ Favorita (sin pasar por IA)' });
+  entries.push({ id: Date.now().toString(36), createdAt: Date.now(), updatedAt: Date.now(), time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), label: fav.label, kcal: fav.kcal, p: fav.p, c: fav.c, f: fav.f, s: fav.s || 0, liquidMl: fav.liquidMl || 0, source: '⚡ Favorita (sin pasar por IA)' });
   await setLog(selectedLogDate, entries);
   showToast(`+${Math.round(fav.kcal)} kcal registradas (${fav.label})`);
   await updateDashboardUI(); await refreshInsights();
@@ -4049,16 +4152,17 @@ async function generateWeeklySummary(){
   const out = $('weekly-summary-output');
   btn.disabled = true; btn.innerText = 'Generando...';
   const streak = await computeStreak();
+  const context = await buildAIContext({ days: 14, entriesDays: 3 });
   const prompt = `Actúa como coach de nutrición deportiva. Resume la situación de un usuario en fase de volumen usando SOLO estos datos, calculados por la app (no recalcules ni inventes cifras):
-${engineContextText()}
+${context}
 - Racha de días con comida registrada: ${streak}.
 
 Devuelve SOLO este JSON, sin markdown ni texto fuera de él:
 {"insights":[{"valor":"dato corto con su número, máx 6 palabras","etiqueta":"1-3 palabras"}],"nota":"UNA frase de máximo 20 palabras con la acción más útil"}
 
-Genera entre 3 y 4 insights. Prioriza lo que explica el progreso o lo bloquea (casi siempre: adherencia vs necesario estimado y ritmo vs rango).`;
+Genera entre 3 y 4 insights. Prioriza lo que explica el progreso o lo bloquea (casi siempre: adherencia vs necesario estimado y ritmo vs rango), pero cruza también hidratación, pasos, entreno, azúcar, proteína y la fiabilidad del registro cuando aporten algo. Ten en cuenta que las kcal registradas llevan error: apóyate en el peso.`;
   const res = await callGemini(prompt, true);
-  btn.disabled = false; btn.innerText = 'Resumen semanal con IA';
+  btn.disabled = false; btn.innerText = 'Resumen semanal';
   if(!res || !Array.isArray(res.insights)){ showToast('No se pudo generar el resumen ahora mismo.', true); return; }
   out.style.display = 'block';
   out.innerHTML = `<div class="insight-grid">${res.insights.slice(0,4).map(i=>`<div class="insight-card"><div class="insight-value">${i.valor || ''}</div><div class="insight-label">${i.etiqueta || ''}</div></div>`).join('')}</div>${res.nota ? `<div class="insight-note" style="margin-top:14px;">${res.nota}</div>` : ''}`;
@@ -4210,8 +4314,9 @@ async function buildDiagnosticReport(){
   const r2 = (x, k = 2) => x === null || x === undefined || !Number.isFinite(x) ? null : +x.toFixed(k);
   const weighIns = [], food = [];
   for(const [date, arr] of Object.entries(st.raw.weights).sort()) (arr || []).forEach(e => weighIns.push({ date, time: e.time || null, kg: e.kg, id: e.id || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, edits: e.edits || [] }));
-  for(const [date, arr] of Object.entries(st.raw.logs).sort()) (arr || []).forEach(e => food.push({ date, id: e.id, time: e.time || null, label: e.label, kcal: r2(e.kcal,1), p: r2(e.p,1), c: r2(e.c,1), f: r2(e.f,1), s: r2(e.s || 0,1), source: e.source || null, originalText: e.originalText || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, corrected: !!e.corrected, aiEstimate: e.ai ? { kcal: e.ai.kcal, range: e.ai.range, confidence: e.ai.confidence, assumptions: e.ai.assumptions, model: e.ai.model, promptVersion: e.ai.promptVersion } : null }));
+  for(const [date, arr] of Object.entries(st.raw.logs).sort()) (arr || []).forEach(e => food.push({ date, id: e.id, time: e.time || null, label: e.label, kcal: r2(e.kcal,1), p: r2(e.p,1), c: r2(e.c,1), f: r2(e.f,1), s: r2(e.s || 0,1), source: e.source || null, liquidMl: e.liquidMl || 0, weighed: !!e.weighed, eatenOut: !!e.eatenOut, originalText: e.originalText || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, corrected: !!e.corrected, aiEstimate: e.ai ? { kcal: e.ai.kcal, range: e.ai.range, confidence: e.ai.confidence, assumptions: e.ai.assumptions, model: e.ai.model, promptVersion: e.ai.promptVersion } : null }));
   const tl = st.raw.timeline;
+  const hyd = {}; { const hb = await waterBase(); for(const d of st.days){ const h = await hydrationOn(d.date, hb); hyd[d.date] = { waterMl: h.plainMl, drinksMl: h.drinksMl, goalMl: h.goalMl, steps: await getSteps(d.date), train: h.ctx.train, heat: h.ctx.heat }; } }
   let replay = [];
   try { if(st.days.length >= 3) replay = BulkEngine.replay(st.raw, profile, { from: U.addDays(st.days[0].date, 1), to: st.asOf, initialTarget: tl.length ? tl[0].kcal : Math.round(profile.targetKcal) }); } catch(e){ console.error(e); }
   const rate = st.rate ? { kgPerWeek: r2(st.rate.perWeek,4), ciLow80: r2(st.rate.ciLow,4), ciHigh80: r2(st.rate.ciHigh,4), pctBodyweightPerWeek: r2(st.rate.perWeek / st.weight.level * 100, 3), weighIns: st.rate.n, spanDays: st.rate.span, window: [st.rate.firstDate, st.rate.lastDate], residualSdKg: r2(st.rate.residualSD,3), lag1Autocorrelation: r2(st.rate.rho,3), effectiveN: r2(st.rate.nEff,1), method: 'OLS sobre pesajes no atípicos (28 días), SE corregido por autocorrelación AR(1)' } : null;
@@ -4226,7 +4331,7 @@ async function buildDiagnosticReport(){
       weighIns, foodEntries: food, dayFlags: st.raw.dayFlags, targetTimeline: tl, aiCorrections: await getAiCorrections()
     },
     CALCULATED: {
-      daily: st.days.map(d => ({ date: d.date, firstWeighInKg: d.weight, weighTime: d.weightTime, weighIns: d.weighIns, trendKg: r2((st.weight.points.find(p => p.date === d.date) || {}).trend, 3), outlier: !!(st.weight.points.find(p => p.date === d.date) || {}).outlier, intakeKcal: Math.round(d.intake), p: r2(d.p,1), c: r2(d.c,1), f: r2(d.f,1), entries: d.entries, status: d.status, userFlag: d.userFlag, targetKcal: d.target, diffKcal: d.entries && d.target ? Math.round(d.intake - d.target) : null })),
+      daily: st.days.map(d => ({ date: d.date, firstWeighInKg: d.weight, weighTime: d.weightTime, weighIns: d.weighIns, trendKg: r2((st.weight.points.find(p => p.date === d.date) || {}).trend, 3), outlier: !!(st.weight.points.find(p => p.date === d.date) || {}).outlier, intakeKcal: Math.round(d.intake), p: r2(d.p,1), c: r2(d.c,1), f: r2(d.f,1), entries: d.entries, status: d.status, userFlag: d.userFlag, targetKcal: d.target, waterMl: (hyd[d.date] || {}).waterMl, otherDrinksMl: (hyd[d.date] || {}).drinksMl, waterGoalMl: (hyd[d.date] || {}).goalMl, steps: (hyd[d.date] || {}).steps ?? null, trainingMarked: !!(hyd[d.date] || {}).train, heatMarked: !!(hyd[d.date] || {}).heat, diffKcal: d.entries && d.target ? Math.round(d.intake - d.target) : null })),
       weightTrendLevelKg: r2(st.weight.level, 3), bulkStart: st.weight.start, rate, targetRange: st.range,
       intakeWindow: { ...st.intake, mean: r2(st.intake.mean,1), sd: r2(st.intake.sd,1) }, adherence: st.adherence, adherenceLast7: st.adherence7,
       status: st.status, confidence: st.confidence, dataQuality: st.dataQuality, personalMedianIntake: r2(st.personalMedian, 0),
@@ -4273,9 +4378,9 @@ function diagnosticTables(rep){
   ].map(([k, v]) => ({ key: k, value: v }));
   return {
     'resumen.csv': [summary, ['key','value']],
-    'diario.csv': [C.daily, ['date','firstWeighInKg','weighTime','weighIns','trendKg','outlier','intakeKcal','p','c','f','entries','status','userFlag','targetKcal','diffKcal']],
+    'diario.csv': [C.daily, ['date','firstWeighInKg','weighTime','weighIns','trendKg','outlier','intakeKcal','p','c','f','entries','status','userFlag','targetKcal','waterMl','otherDrinksMl','waterGoalMl','steps','trainingMarked','heatMarked','diffKcal']],
     'pesajes.csv': [O.weighIns, ['date','time','kg','id','createdAt','updatedAt','deletedAt','edits']],
-    'comidas.csv': [O.foodEntries, ['date','time','label','kcal','p','c','f','s','source','corrected','originalText','id','createdAt','updatedAt','deletedAt','aiEstimate']],
+    'comidas.csv': [O.foodEntries, ['date','time','label','kcal','p','c','f','s','liquidMl','weighed','eatenOut','source','corrected','originalText','id','createdAt','updatedAt','deletedAt','aiEstimate']],
     'objetivo_timeline.csv': [O.targetTimeline, ['date','kcal','prev','delta','source','approx','reason','decisionId','id']],
     'decisiones.csv': [dec, ['date','action','reasonCode','prevTarget','newTarget','delta','needed','migrated','rateKgWk','ciLow','ciHigh','maintenance','maintenanceSd','intakeMean','adherence','confidence','status','reason']],
     'correcciones_ia.csv': [O.aiCorrections.map(c => ({ ...c, aiKcal: c.ai?.kcal, finalKcal: c.final?.kcal })), ['date','text','label','aiKcal','finalKcal','deltaKcal','deltaPct','model','promptVersion','entryId']],
