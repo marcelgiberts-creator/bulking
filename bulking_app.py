@@ -417,6 +417,16 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .assistant-kicker { font-size:.62rem; letter-spacing:.1em; text-transform:uppercase; font-weight:700; color:var(--accent); margin-bottom:8px; }
   .assistant-title { font-family:'Space Grotesk', sans-serif; font-size:1rem; font-weight:600; color:var(--text); margin-bottom:8px; line-height:1.4; letter-spacing:-0.02em; }
   .assistant-body { font-size:.87rem; line-height:1.65; color:var(--text-mid); }
+  .missing-card { padding:24px 26px; }
+  .missing-card h3 { margin-bottom:14px; }
+  .miss-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px; }
+  .miss-cell { background:var(--glass-bg-raised); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:10px 6px; text-align:center; }
+  .miss-cell b { display:block; font-family:'Space Grotesk',sans-serif; font-size:1.15rem; color:var(--text); }
+  .miss-cell span { font-size:.62rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); font-weight:700; }
+  .fill-table { width:100%; border-collapse:collapse; font-size:.86rem; margin-bottom:10px; }
+  .fill-table td { padding:7px 4px; border-bottom:1px solid var(--glass-border); color:var(--text-mid); }
+  .fill-table td:last-child { text-align:right; color:var(--text); font-weight:600; white-space:nowrap; }
+  .fill-note { font-size:.78rem; color:var(--text-dim); line-height:1.55; margin:8px 0 14px; }
 
   .food-review { margin-top:20px; padding:20px; border:1px solid var(--accent-line); border-radius:var(--radius-md); background:var(--accent-soft); text-align:left; }
   .food-review-grid { display:grid; grid-template-columns:2fr repeat(5, minmax(50px, 1fr)); gap:8px; margin:14px 0; }
@@ -571,6 +581,9 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .est-question { margin-top:12px; padding:10px 12px; border-radius:var(--radius-sm); border:1px solid var(--accent-line); background:var(--accent-soft); font-size:.82rem; }
   .scale-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:-4px 0 14px; font-size:.7rem; color:var(--text-dim); } .scale-row span { margin-right:4px; text-transform:uppercase; letter-spacing:.06em; font-weight:600; }
   .scale-row button { padding:6px 10px; font-size:.74rem; }
+  .scale-row .chk { display:inline-flex; align-items:center; gap:6px; font-size:.78rem; color:var(--text-mid); cursor:pointer; margin:0; text-transform:none; letter-spacing:0; }
+  .scale-row .chk input { width:auto; margin:0; padding:0; }
+  .scale-row .chk small { color:var(--text-dim); }
   .cmp-bar { display:flex; justify-content:space-between; align-items:center; padding:12px 14px; margin:12px 0; border-radius:8px; background:rgba(255,255,255,0.04); border:1px solid var(--glass-border); font-size:.85rem; }
   @media (max-width: 760px){ .pred-grid { grid-template-columns:1fr; } .status-nums { grid-template-columns:repeat(3,1fr); } .sn-val { font-size:1.02rem; } }
 </style>
@@ -591,14 +604,16 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div id="day-flag-banner" class="alert warn" style="display:none;"></div>
     <div id="favorite-suggestion" class="alert" style="display:none;"></div>
     <div id="backup-reminder" class="alert" style="display:none;"></div>
+    <div id="measure-reminder" class="alert" style="display:none;"></div>
     <div id="daily-assistant" class="daily-assistant" style="display:none;"></div>
+    <div id="missing-today" class="glass-card missing-card" style="display:none;"></div>
 
     <div class="dashboard-grid">
     <div class="glass-card card-hero" style="padding-top: 30px;">
       <div class="kcal-main">
         <div>
           <div class="kcal-number" id="ui-kcal-consumed">0</div>
-          <div class="kcal-target">Ingeridas</div>
+          <div class="kcal-target">Ingeridas <span id="ui-kcal-err" title="Incertidumbre estimada del registro (intervalo ~80 %)" style="text-transform:none; letter-spacing:0; font-weight:500;"></span></div>
         </div>
         <div style="text-align: right;">
           <div class="kcal-number" id="ui-kcal-remaining" style="font-size: 3.8rem; color: var(--accent);">0</div>
@@ -645,6 +660,13 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="macro-bar-bg"><div class="macro-bar-fill sugar-fill" id="bar-sugar"></div></div>
       </div>
 
+      <div class="quick-adjust steps-row" aria-label="Pasos del día">
+        <span>👟 Pasos</span>
+        <div class="quick-adjust-controls">
+          <input type="number" id="input-steps" min="0" step="100" placeholder="0" style="margin:0; width:110px; padding:9px 12px;">
+          <button class="secondary" onclick="saveSteps()">Guardar</button>
+        </div>
+      </div>
       <div class="quick-adjust" aria-label="Ajuste rapido del objetivo">
         <span>Ajustar hoy</span>
         <div class="quick-adjust-controls">
@@ -838,7 +860,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <!-- MEDIDAS CORPORALES (OPCIONAL) -->
 <div class="glass-card">
       <h3>Medidas corporales</h3>
-      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:16px;">Cuello y cintura desbloquean el % de grasa medido.</p>
+      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:16px;">Cuello y cintura desbloquean el % de grasa medido. Brazo, muslo y pecho sirven para ver si el peso que subes es músculo. Una vez por semana, siempre igual.</p>
       <div class="form-row" style="margin-bottom: 12px;">
         <div class="form-group"><label>Fecha</label><input type="date" id="input-measure-date" style="margin-bottom:0;"></div>
       </div>
@@ -847,8 +869,23 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="form-group"><label>Cintura (cm)</label><input type="number" step="0.1" id="input-waist" placeholder="Ej: 82" style="margin-bottom:0;"></div>
         <div class="form-group"><label>Cadera (cm)</label><input type="number" step="0.1" id="input-hip" placeholder="Ej: 95" style="margin-bottom:0;"></div>
       </div>
+      <div class="form-row" style="margin-bottom: 12px;">
+        <div class="form-group"><label>Brazo (cm)</label><input type="number" step="0.1" id="input-arm" placeholder="Ej: 32" style="margin-bottom:0;"></div>
+        <div class="form-group"><label>Muslo (cm)</label><input type="number" step="0.1" id="input-thigh" placeholder="Ej: 55" style="margin-bottom:0;"></div>
+        <div class="form-group"><label>Pecho (cm)</label><input type="number" step="0.1" id="input-chest" placeholder="Ej: 95" style="margin-bottom:0;"></div>
+      </div>
       <button class="secondary" onclick="addBodyMeasure()" style="width:100%; margin-bottom:16px;">Guardar medidas</button>
       <div id="measure-day-list"></div>
+      <div class="sub-title" style="margin-top:22px;">Tendencia de medidas (¿músculo o grasa?)</div>
+      <div id="measure-trends"></div>
+    </div>
+
+    <!-- ACTIVIDAD (PASOS / NEAT) -->
+    <div class="glass-card">
+      <h3>Actividad · pasos</h3>
+      <div id="steps-summary"></div>
+      <div class="chart-container"><canvas id="stepsChart"></canvas></div>
+      <div class="muted-line">Los pasos se registran en la pestaña Hoy (fila «Pasos», para el día que estés viendo). Solo informan: no cambian el objetivo de kcal, pero el motor avisa si caen con el bulk (menos NEAT).</div>
     </div>
 
     <!-- FOTOS DE PROGRESO -->
@@ -909,6 +946,11 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="form-group"><label>Inicio del bulk</label><input type="date" id="prof-bulk-start"></div>
         <div class="form-group"><label>Comidas al día</label><input type="number" min="3" max="8" id="prof-meals" placeholder="5"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group"><label>Proteína (g por kg de peso)</label><input type="number" step="0.1" min="1.2" max="3" id="prof-protein-kg" placeholder="2.0"></div>
+        <div class="form-group"><label>Grasas (g por kg de peso)</label><input type="number" step="0.1" min="0.5" max="1.5" id="prof-fat-kg" placeholder="1.0"></div>
+      </div>
+      <p class="muted-line" id="macro-dyn-note" style="margin:0 0 12px;"></p>
       <div class="form-group" style="margin-bottom:16px;"><label>Preferencias y restricciones</label><textarea id="prof-preferences" rows="2" placeholder="Ej: sin lactosa, económico, no pescado..."></textarea></div>
       <p class="muted-line" style="margin:0 0 8px;">El peso de referencia se actualiza solo con tus pesajes; solo se usa si aún no hay tendencia. Los días de entreno fijan el mantenimiento inicial (1,2 + 0,075 × días); después manda tu balance real.</p>
 
@@ -928,6 +970,32 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <!-- ========================================================================= -->
   <!-- 💾 TAB 5: DATOS Y BACKUP                                                  -->
   <!-- ========================================================================= -->
+  <!-- ========================================================================= -->
+  <!-- 🏋️ TAB GYM (RESERVADA: miniapp futura dentro de Bulking OS)                -->
+  <!-- ========================================================================= -->
+  <!-- Sin lógica todavía. Convención reservada para cuando se desarrolle:
+       · claves de almacenamiento con prefijo `gym:` (p. ej. `gym:session:YYYY-MM-DD`, `gym:exercises`, `gym:routines`)
+         → entran solas en el export/import JSON y en la sincronización, sin tocar el motor de kcal.
+       · los pasos ya existen (`steps:YYYY-MM-DD`) y se reutilizarán aquí.
+       · el cruce con nutrición se hará leyendo getEngineState() (kcal, peso tendencia, superávit) en modo solo lectura. -->
+  <div id="tab-gym" class="section">
+    <h2>Gym <span class="subtitle">próximamente</span></h2>
+    <div class="glass-card">
+      <div class="section-kicker">Miniapp en preparación</div>
+      <h3>Entrenamiento integrado con tu bulk</h3>
+      <p style="font-size:.9rem; color:var(--text-mid); margin-bottom:16px;">Esta pestaña será un módulo propio dentro de Bulking OS para registrar tu entrenamiento y cruzarlo con la nutrición y el peso. Todavía no está desarrollada.</p>
+      <div class="q-list">
+        <div class="kv-row"><span>Registro</span><b>Sesiones · ejercicios · series · kg · repeticiones · RIR</b></div>
+        <div class="kv-row"><span>Volumen</span><b>Series efectivas por grupo muscular y semana</b></div>
+        <div class="kv-row"><span>Fuerza</span><b>1RM estimado y progresión por ejercicio</b></div>
+        <div class="kv-row"><span>Actividad</span><b>Pasos y gasto de movimiento (ya tienes los pasos en Hoy)</b></div>
+        <div class="kv-row"><span>Cruce con comida</span><b>Kcal, proteína y peso tendencia vs. rendimiento</b></div>
+        <div class="kv-row"><span>IA</span><b>Resúmenes semanales y detección de estancamientos</b></div>
+      </div>
+      <p class="muted-line" style="margin-top:14px;">Diseño previsto: datos con prefijo <code>gym:</code>, incluidos en la copia de seguridad y en la sincronización, y sin tocar el motor de kcal.</p>
+    </div>
+  </div>
+
   <div id="tab-data" class="section">
     <h2>Datos</h2>
     <div class="glass-card">
@@ -966,6 +1034,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="nav-item" data-tab="plan" onclick="nav('plan')"><span class="nav-icon">🛒</span>Menú</div>
   <div class="nav-item" data-tab="chat" onclick="nav('chat')"><span class="nav-icon">💬</span>Coach</div>
   <div class="nav-item" data-tab="body" onclick="nav('body')"><span class="nav-icon">📈</span>Progreso</div>
+  <div class="nav-item" data-tab="gym" onclick="nav('gym')"><span class="nav-icon">🏋️</span>Gym</div>
   <div class="nav-item" data-tab="data" onclick="nav('data')"><span class="nav-icon">💾</span>Datos</div>
 </div>
 
@@ -1005,10 +1074,17 @@ const CONFIG = Object.freeze({
   WEIGHT_PLAUSIBLE: [25, 250],
   COMPLETE_MIN_ENTRIES: 2, COMPLETE_MIN_FRACTION_OF_MEDIAN: 0.6,
   PRIOR_SD_FRACTION: 0.12,           // incertidumbre de Mifflin-St Jeor × actividad
-  LOGGING_SYSTEMATIC_FRACTION: 0.05, // error sistemático de registro asumido
+  // Error de REGISTRO (las estimaciones de la IA son dispares; se asume bastante error a propósito).
+  // · Sistemático (común a todos los días, NO se promedia): 15 % de la ingesta media.
+  // · Aleatorio por entrada (independiente, se promedia entre días): según rango de la IA, confianza y origen.
+  LOGGING_SYSTEMATIC_FRACTION: 0.15,
+  ENTRY_ERR: { AI_RANGE_INFLATION: 1.6, Z80: 1.2816, FLOOR: { alta: 0.15, media: 0.22, baja: 0.32 },
+    CACHED: 0.15, MANUAL: 0.12, LABEL: 0.05, WEIGHED: 0.06, DEFAULT: 0.18, EATEN_OUT_MULT: 1.4 },
+  ACTIVITY_DROP_WARN: -0.15,         // pasos −15 % vs. las 3 semanas previas → aviso de NEAT (solo informativo)
   RATE_PRESETS: { conservador: [0.15, 0.30], estandar: [0.25, 0.50], rapido: [0.50, 0.75] },
   DEFAULT_RATE_PRESET: 'estandar',   // 0,25–0,50 % peso/sem (Iraki et al., 2019)
-  ADHERENCE_MIN: 0.90,
+  ADHERENCE_MIN: 0.85,               // por debajo: no se sube (el problema es llegar)
+  ADHERENCE_FULL: 0.92,              // desde aquí se fía del peso para subir aunque el mantenimiento modelado diga que sobra
   DEADBAND_KCAL: 50,
   STEP_MAX: { MEDIA: 100, ALTA: 150 },
   COOLDOWN_DAYS: 7, NO_REVERSAL_DAYS: 21,
@@ -1049,6 +1125,24 @@ function targetOn(timeline, date, fallback){
   for(const e of (timeline||[])) if(e.date <= date && Number.isFinite(Number(e.kcal))) t = Number(e.kcal);
   return t;
 }
+// Incertidumbre (1 desviación típica, en kcal) de UNA entrada registrada. Se ensancha a propósito:
+// rango de la IA × 1,6, con un suelo por confianza; báscula/etiqueta lo reducen; comer fuera lo aumenta.
+function entryErrorSd(e){
+  const k = Number(e && e.kcal) || 0; if(k <= 0) return 0;
+  const C = CONFIG.ENTRY_ERR, ai = e.ai || null, src = String(e.source || '');
+  let frac;
+  if(e.weighed) frac = C.WEIGHED;
+  else if(ai && ai.explicitBasis) frac = C.LABEL;
+  else if(ai) frac = C.FLOOR[ai.confidence] ?? C.DEFAULT;
+  else if(/cach|favorit|confirmado/i.test(src)) frac = C.CACHED;
+  else frac = /manual/i.test(src) ? C.MANUAL : C.DEFAULT;
+  let sdv = frac * k;
+  if(ai && ai.range && !e.weighed && !ai.explicitBasis){
+    const lo = Number(ai.range.low), hi = Number(ai.range.high);
+    if(hi > lo) sdv = Math.max(sdv, (hi - lo) / 2 / C.Z80 * C.AI_RANGE_INFLATION);
+  }
+  return e.eatenOut ? sdv * C.EATEN_OUT_MULT : sdv;
+}
 function buildDays(raw, asOf){
   const weights = raw.weights||{}, logs = raw.logs||{};
   const all = [...Object.keys(weights), ...Object.keys(logs)].filter(d => d <= asOf).sort();
@@ -1082,7 +1176,7 @@ function buildDays(raw, asOf){
     const target = targetOn(raw.timeline, d, raw.fallbackTarget);
     const override = Number((raw.overrides||{})[d]) || 0;
     out.push({ date:d, weight: w ? w.kg : null, weightTime: w ? w.time : null, weighIns: w ? w.count : 0,
-      intake, p: sum(act.map(e=>Number(e.p)||0)), c: sum(act.map(e=>Number(e.c)||0)), f: sum(act.map(e=>Number(e.f)||0)),
+      intake, errSd: Math.sqrt(sum(act.map(e => entryErrorSd(e) ** 2))), p: sum(act.map(e=>Number(e.p)||0)), c: sum(act.map(e=>Number(e.c)||0)), f: sum(act.map(e=>Number(e.f)||0)),
       entries: act.length, status, autoStatus, userFlag: flag === undefined ? null : flag,
       target: Number.isFinite(target) ? target : null, override,
       targetEffective: Number.isFinite(target) ? target + override : null });
@@ -1145,7 +1239,12 @@ function intakeStats(days, from, to){
   const win = days.filter(d => d.date >= from && d.date <= to && d.status !== 'open');
   const comp = win.filter(d => d.status === 'complete');
   const vals = comp.map(d=>d.intake);
-  return { from, to, n: comp.length, mean: mean(vals), sd: sd(vals), totalDays: win.length,
+  const errSdDay = comp.length ? Math.sqrt(mean(comp.map(d => (d.errSd || 0) ** 2))) : 0;
+  const m = mean(vals), sysSd = m ? CONFIG.LOGGING_SYSTEMATIC_FRACTION * m : 0;
+  const errAvgSd = comp.length ? errSdDay / Math.sqrt(comp.length) : 0;
+  const errTotalSd = Math.sqrt(sysSd ** 2 + errAvgSd ** 2);
+  return { from, to, n: comp.length, mean: m, sd: sd(vals), totalDays: win.length,
+    errSdDay, errSysSd: sysSd, errAvgSd, errTotalSd, errTotalPct: m ? errTotalSd / m : null,
     doubtful: win.filter(d=>d.status==='doubtful').map(d=>d.date),
     incomplete: win.filter(d=>d.status==='incomplete').map(d=>d.date),
     empty: win.filter(d=>d.status==='empty').map(d=>d.date),
@@ -1157,6 +1256,15 @@ function adherence(days, from, to){
   const ti = sum(comp.map(d=>d.intake)), tt = sum(comp.map(d=>d.targetEffective));
   return { n: comp.length, ratio: ti/tt, within10: comp.filter(d=>Math.abs(d.intake-d.targetEffective) <= 0.1*d.targetEffective).length,
     meanGap: (tt-ti)/comp.length, meanTarget: tt/comp.length, meanIntake: ti/comp.length };
+}
+
+// ------------------------------------------- 3b) actividad (pasos / NEAT)
+// Solo informativo: no altera la decisión de kcal. Sirve para explicar por qué se frena el peso.
+function activityStats(steps, asOf){
+  const vals = (a, b) => { const o = []; for(let d = a; d <= b; d = addDays(d, 1)){ const v = Number((steps||{})[d]); if(Number.isFinite(v) && v > 0) o.push(v); } return o; };
+  const cur = vals(addDays(asOf, -7), addDays(asOf, -1)), prev = vals(addDays(asOf, -28), addDays(asOf, -8));
+  const avg7 = cur.length >= 3 ? mean(cur) : null, avgPrev = prev.length >= 5 ? mean(prev) : null;
+  return { avg7, avgPrev, n7: cur.length, nPrev: prev.length, changePct: avg7 && avgPrev ? avg7 / avgPrev - 1 : null };
 }
 
 // ------------------------------------------ 4) mantenimiento (ESTIMATED)
@@ -1172,7 +1280,7 @@ function maintenanceEstimate(profile, weightKg, rate, intake, confLevel){
     method: 'formula', activityFactor: activityFactor(profile.trainingDays), bmr: mifflin(profile, weightKg) };
   if(!rate || !intake || !intake.n || confLevel === 'BAJA') return out;
   const obs = intake.mean - rate.slopePerDay * CONFIG.KCAL_PER_KG;
-  const obsSd = Math.sqrt((intake.sd**2)/intake.n + (rate.sePerDay*CONFIG.KCAL_PER_KG)**2 + (CONFIG.LOGGING_SYSTEMATIC_FRACTION*intake.mean)**2);
+  const obsSd = Math.sqrt((intake.sd**2)/intake.n + (rate.sePerDay*CONFIG.KCAL_PER_KG)**2 + (CONFIG.LOGGING_SYSTEMATIC_FRACTION*intake.mean)**2 + ((intake.errSdDay||0)**2)/intake.n);
   const wObs = 1/obsSd**2, wPri = 1/priorSd**2;
   return { ...out, obs, obsSd, posterior: (obs*wObs + prior*wPri)/(wObs+wPri), posteriorSd: Math.sqrt(1/(wObs+wPri)),
     dataWeight: wObs/(wObs+wPri), method: 'bayes' };
@@ -1256,18 +1364,28 @@ function decide(state, currentTarget, lastChange, opts={}){
   const M_txt = `${fmt(M.posterior)} ±${fmt(M.posteriorSd)} kcal`;
   if(opts.paused) return { ...base, reasonCode:'PAUSADO', reason:'Ajuste automático pausado por ti. No se toca el objetivo.' };
   if(st === 'SIN_DATOS') return { ...base, action:'SIN_DATOS', reasonCode:'DATOS_INSUFICIENTES', reason:`Datos insuficientes (confianza baja: ${conf.reasons.join('; ') || 'tendencia no calculable'}). No se toca el objetivo.` };
+  // El PESO manda: como las kcal registradas tienen error, el mantenimiento modelado se apoya mucho en la fórmula.
+  // Para que eso no frene indefinidamente a quien no gana, con adherencia ≥ ADHERENCE_FULL se sube al menos la mitad
+  // de la brecha de ritmo (kg/sem que faltan × 7700/7). Nunca si la adherencia registrada es dudosa.
+  const gapUp = r ? Math.max(0, R.mid - r.perWeek) * CONFIG.KCAL_PER_KG / 7 : 0;
+  const gapDown = r ? Math.max(0, r.perWeek - R.mid) * CONFIG.KCAL_PER_KG / 7 : 0;
+  const boost = (adh.ratio !== null && adh.ratio >= CONFIG.ADHERENCE_FULL) ? 0.5 * gapUp : 0;
+  const needUp = Math.max(needed, roundTo(T + boost, CONFIG.TARGET_ROUND));
   let proposal = 0, code = '', why = '';
   if(st === 'DENTRO'){ code='EN_RANGO'; why=`Tu ritmo ${rateTxt} está dentro del rango (${rangeTxt}). Se mantiene.`; }
   else if(st === 'INCIERTO'){ code='INCIERTO'; why=`Tu ritmo ${rateTxt} ${state.status.lean==='below'?'apunta a estar por debajo':'apunta a estar por encima'} del rango (${rangeTxt}), pero el intervalo aún se solapa con él. Se espera a tener más evidencia.`; }
   else if(st === 'POR_DEBAJO'){
     if(adh.ratio !== null && adh.ratio < CONFIG.ADHERENCE_MIN){ code='ADHERENCIA'; why=`Ganas por debajo del rango (${rateTxt} vs ${rangeTxt}), pero solo alcanzas el ${adhTxt}. Subir el objetivo no ayuda si no se alcanza: la prioridad es llegar a ${fmt(T)} kcal. Con tu mantenimiento estimado (${M_txt}) necesitarías ~${fmt(needed)} kcal sostenidas.`; }
-    else if(needed - T < CONFIG.DEADBAND_KCAL){ code='OBJETIVO_SUFICIENTE'; why=`Ganas por debajo del rango, pero tu objetivo actual (${fmt(T)}) ya cubre lo estimado como necesario (~${fmt(needed)} = mantenimiento ${M_txt} + superávit ${fmt(surplus)}). Nunca se baja estando por debajo del rango.`; }
-    else { proposal = Math.min(needed - T, CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA); code='SUBIR'; why=`Ganas por debajo del rango (${rateTxt} vs ${rangeTxt}) cumpliendo el objetivo (${adhTxt}). Necesario estimado ~${fmt(needed)} kcal (mantenimiento ${M_txt} + superávit ${fmt(surplus)}). Subida limitada a ${CONFIG.STEP_MAX[conf.level]} kcal por ajuste (confianza ${conf.level}).`; }
+    else if(needUp - T < CONFIG.DEADBAND_KCAL){ code='OBJETIVO_SUFICIENTE'; why=`Ganas por debajo del rango, pero tu objetivo actual (${fmt(T)}) ya cubre lo estimado como necesario (~${fmt(needed)} = mantenimiento ${M_txt} + superávit ${fmt(surplus)}). Nunca se baja estando por debajo del rango.`; }
+    else { proposal = Math.min(needUp - T, CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA); code='SUBIR'; why=`Ganas por debajo del rango (${rateTxt} vs ${rangeTxt}) cumpliendo el objetivo (${adhTxt}). Necesario estimado ~${fmt(needed)} kcal (mantenimiento ${M_txt} + superávit ${fmt(surplus)}). Subida limitada a ${CONFIG.STEP_MAX[conf.level]} kcal por ajuste (confianza ${conf.level}).`; }
   } else if(st === 'POR_ENCIMA'){
     const floor = Math.max(CONFIG.FLOOR_KCAL, roundTo(M.posterior, CONFIG.TARGET_ROUND));
     if(T - needed < CONFIG.DEADBAND_KCAL){ code='SOBRE_OBJETIVO'; why=`Ganas por encima del rango (${rateTxt} vs ${rangeTxt}) aunque tu objetivo (${fmt(T)}) no está por encima de lo necesario (~${fmt(needed)}); tu media real es ${adhTxt}. El ajuste es comer más cerca del objetivo, no bajarlo.`; }
-    else { proposal = -Math.min(T - needed, CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA); if(T + proposal < floor) proposal = floor - T; code='BAJAR'; why=`Ganas por encima del rango (${rateTxt} vs ${rangeTxt}). Necesario estimado ~${fmt(needed)} kcal. Bajada limitada a ${CONFIG.STEP_MAX[conf.level]} kcal por ajuste y nunca por debajo del mantenimiento estimado (${fmt(floor)}).`; }
+    else { proposal = -Math.min(T - needed, gapDown, CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA); if(T + proposal < floor) proposal = floor - T; code='BAJAR'; why=`Ganas por encima del rango (${rateTxt} vs ${rangeTxt}). Necesario estimado ~${fmt(needed)} kcal. Bajada limitada a ${CONFIG.STEP_MAX[conf.level]} kcal por ajuste y nunca por debajo del mantenimiento estimado (${fmt(floor)}).`; }
   }
+  const act = state.activity;
+  if(act && act.changePct !== null && act.changePct <= CONFIG.ACTIVITY_DROP_WARN && (st === 'POR_DEBAJO' || st === 'INCIERTO'))
+    why += ` Nota: tus pasos bajaron un ${fmt(-act.changePct*100)} % (${fmt(act.avg7)} vs ${fmt(act.avgPrev)}/día); parte del freno puede ser menor gasto por movimiento (NEAT), no solo falta de kcal.`;
   proposal = roundTo(proposal, CONFIG.TARGET_ROUND);
   if(proposal === 0) return { ...base, reasonCode: code, reason: why };
   if(lastChange && lastChange.date){
@@ -1341,7 +1459,7 @@ function computeState(raw, profile, asOf, opts={}){
   const state = { engineVersion: VERSION, asOf, config: CONFIG, days, personalMedian: built.personalMedian ?? null,
     weight: { points: trend, level, start: startTrend ? { date:startTrend.date, kg:startTrend.trend } : null, lastRaw: points.length ? points[points.length-1] : null },
     rate, range, intake, intake7, adherence: adh, adherence7: adh7, confidence: conf, maintenance, status, predictions: pred,
-    goalKg: Number.isFinite(goalKg) && goalKg>0 ? goalKg : null };
+    goalKg: Number.isFinite(goalKg) && goalKg>0 ? goalKg : null, activity: activityStats(raw.steps, asOf) };
   state.dataQuality = dataQuality(raw, days, points, trend, asOf);
   if(opts.currentTarget !== undefined){
     state.currentTarget = opts.currentTarget;
@@ -1378,7 +1496,19 @@ function buildInsights(s){
     a: conf.level==='ALTA' ? 'Sí: histórico consistente.' : conf.level==='MEDIA' ? `Tendencia preliminar fiable. Para confianza alta faltan: ${(conf.missing||[]).join(', ')}.` : `Todavía no: ${conf.reasons.join('; ')}.` });
   // 6. ¿Mantenimiento correcto?
   out.push({ id:'maintenance', q:'¿Mi mantenimiento estimado parece correcto?', tone: M.method==='bayes' ? (M.posteriorSd<150?'ok':'warn') : 'neutral', value: `${fmt(M.posterior)} ±${fmt(M.posteriorSd)}`,
-    a: M.method==='bayes' ? `Fórmula ${fmt(M.prior)} kcal; tus datos dicen ${fmt(M.obs)} ±${fmt(M.obsSd)}. Estimación combinada ${fmt(M.posterior)} ±${fmt(M.posteriorSd)} (tus datos pesan un ${fmt(M.dataWeight*100)} %).` : `Solo fórmula (Mifflin-St Jeor × ${fmt(M.activityFactor,3)} por tus días de entreno): ${fmt(M.prior)} ±${fmt(M.priorSd)} kcal. Se personalizará con datos.` });
+    a: M.method==='bayes' ? `Fórmula ${fmt(M.prior)} kcal; tus datos dicen ${fmt(M.obs)} ±${fmt(M.obsSd)} (incluye el error de registro). Estimación combinada ${fmt(M.posterior)} ±${fmt(M.posteriorSd)} (tus datos pesan un ${fmt(M.dataWeight*100)} %).` : `Solo fórmula (Mifflin-St Jeor × ${fmt(M.activityFactor,3)} por tus días de entreno): ${fmt(M.prior)} ±${fmt(M.priorSd)} kcal. Se personalizará con datos.` });
+  // 6b. ¿Cuánto me fío de lo que registro?
+  if(s.intake.n && s.intake.errTotalPct !== null){
+    const pct = s.intake.errTotalPct * 100;
+    out.push({ id:'logerr', q:'¿Cuánto me fío de lo que registro?', tone: pct <= 12 ? 'ok' : pct <= 20 ? 'warn' : 'bad', value: `±${fmt(pct)} %`,
+      a: `Se asume un error de registro de ±${fmt(pct)} % (≈ ±${fmt(s.intake.errTotalSd)} kcal/día sobre tu media de ${fmt(s.intake.mean)}): ${fmt(CONFIG.LOGGING_SYSTEMATIC_FRACTION*100)} % sistemático (la IA puede infra/sobrestimar siempre igual) + ${fmt(s.intake.errAvgSd)} kcal aleatorios. Ese error se traslada al mantenimiento observado, así que el motor confía más en tu PESO que en las kcal registradas. Pesar en báscula o usar etiquetas lo reduce.` });
+  }
+  // 6c. Actividad (pasos)
+  if(s.activity && s.activity.avg7){
+    const a = s.activity, ch = a.changePct;
+    out.push({ id:'steps', q:'¿Me estoy moviendo menos al subir kcal?', tone: ch === null ? 'neutral' : ch <= CONFIG.ACTIVITY_DROP_WARN ? 'warn' : 'ok', value: `${fmt(a.avg7)} pasos/día`,
+      a: ch === null ? `Media de los últimos 7 días: ${fmt(a.avg7)} pasos/día. Aún faltan días previos para comparar.` : `Últimos 7 días: ${fmt(a.avg7)} pasos/día vs ${fmt(a.avgPrev)} en las 3 semanas anteriores (${fmtSigned(ch*100,0)} %). ${ch <= CONFIG.ACTIVITY_DROP_WARN ? 'Bajada notable: al comer más el cuerpo tiende a moverse menos (NEAT), lo que puede frenar el peso.' : 'Sin caída relevante de actividad.'}` });
+  }
   // 7. ¿Hay que cambiar kcal?
   if(s.decision) out.push({ id:'change', q:'¿Hay que cambiar mis kcal? ¿Cuánto? ¿Por qué?', tone: s.decision.delta ? 'warn' : 'ok',
     value: s.decision.delta ? `${s.decision.delta>0?'+':''}${s.decision.delta} kcal` : 'No', a: s.decision.reason });
@@ -1458,7 +1588,7 @@ const legacy = (function(){
 // contra el objetivo que el usuario realmente veía (timeline observado).
 function filterRawBefore(raw, date){
   const pick = obj => Object.fromEntries(Object.entries(obj||{}).filter(([k])=>k < date));
-  return { ...raw, weights: pick(raw.weights), logs: pick(raw.logs), dayFlags: pick(raw.dayFlags), overrides: pick(raw.overrides),
+  return { ...raw, weights: pick(raw.weights), logs: pick(raw.logs), dayFlags: pick(raw.dayFlags), overrides: pick(raw.overrides), steps: pick(raw.steps),
     timeline: (raw.timeline||[]).filter(e=>e.date < date) };
 }
 function backtest(raw, profile, { from, to, initialTarget, legacyProfile }){
@@ -1488,7 +1618,7 @@ function backtest(raw, profile, { from, to, initialTarget, legacyProfile }){
 
 const api = { VERSION, CONFIG, computeState, decide, buildDays, hampel, trendSeries, weightRate, intakeStats, adherence,
   maintenanceEstimate, activityFactor, mifflin, targetRange, confidence, rateStatus, predictions, buildInsights, dataQuality,
-  backtest, filterRawBefore, legacy, targetOn, STATUS_LABEL,
+  backtest, filterRawBefore, legacy, targetOn, STATUS_LABEL, entryErrorSd, activityStats,
   util: { addDays, diffDays, parseKey, keyOf, median, mean, sd, fmt, fmtSigned, monthLabel, idToTimestamp, roundTo } };
 if(typeof module !== 'undefined' && module.exports) module.exports = api; else root.BulkEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1555,9 +1685,23 @@ function runEngineTests(E, log){
   { const s = synth({ days:35, patch: raw => { Object.keys(raw.logs).forEach((d,i)=>{ if(i%6) delete raw.logs[d]; }); } }); const st = state(s);
     check('G · pocos días de comida → confianza BAJA, solo fórmula', st.confidence.level==='BAJA' && st.maintenance.method==='formula' && st.decision.delta===0, `${st.confidence.level} n=${st.intake.n}`); }
   // ---- CASO H: objetivo 2500, come 2200, peso estable → mantener (nunca bajar)
+  { const s = synth({ days:35, rate:0, intake:2100, target:2500, seed:8 }); const st = state(s);
+    check('H · baja adherencia (84 %) → MANTENER por ADHERENCIA', st.decision.delta===0 && st.decision.reasonCode==='ADHERENCIA', `${st.decision.reasonCode}`);
+    check('H · mantenimiento observado ≈ 2100 (no 2500)', Math.abs(st.maintenance.obs - 2100) < 150, Math.round(st.maintenance.obs)); }
+  // ---- CASO H2: 88 % de adherencia (dentro del ruido de registro) y peso plano → no sube el objetivo si comes bastante menos
   { const s = synth({ days:35, rate:0, intake:2200, target:2500, seed:8 }); const st = state(s);
-    check('H · baja adherencia → MANTENER por ADHERENCIA', st.decision.delta===0 && st.decision.reasonCode==='ADHERENCIA', `${st.decision.reasonCode}`);
-    check('H · mantenimiento aprendido ≈ 2200 (no 2500)', Math.abs(st.maintenance.obs - 2200) < 150, Math.round(st.maintenance.obs)); }
+    check('H2 · 88 % de adherencia y peso plano → no sube el objetivo', st.decision.delta <= 0, `${st.decision.reasonCode} ${st.decision.delta}`); }
+  // ---- CASO R: error de registro alto → el motor confía menos en las kcal registradas
+  { const s = synth({ days:35, rate:0.1, intake:2600, target:2600, seed:21 }); const lo = state(s);
+    const s2 = synth({ days:35, rate:0.1, intake:2600, target:2600, seed:21, patch: raw => { for(const d in raw.logs) raw.logs[d].forEach(e => { e.eatenOut = true; e.ai = { confidence:'baja', range:{ low: e.kcal*0.5, high: e.kcal*1.6 } }; }); } }); const hi = state(s2);
+    check('R · más error de registro → mantenimiento observado más incierto', hi.maintenance.obsSd > lo.maintenance.obsSd, `${Math.round(lo.maintenance.obsSd)} → ${Math.round(hi.maintenance.obsSd)}`);
+    check('R · más error de registro → tus datos pesan menos', hi.maintenance.dataWeight < lo.maintenance.dataWeight, `${lo.maintenance.dataWeight.toFixed(2)} → ${hi.maintenance.dataWeight.toFixed(2)}`);
+    check('R · error asumido ≥ 15 % de la ingesta', lo.intake.errTotalPct >= 0.15, lo.intake.errTotalPct.toFixed(3));
+    check('R · con error alto, la subida sigue acotada (≤150 kcal)', hi.decision.delta <= 150, hi.decision.delta); }
+  // ---- CASO S: pasos bajan >15 % → aviso informativo (no cambia el objetivo)
+  { const s = synth({ days:35, rate:0.03, intake:2600, target:2600, seed:4, patch: raw => { raw.steps = {}; for(let i=0;i<35;i++){ raw.steps[U.addDays('2026-01-01', i)] = i < 21 ? 9000 : 6500; } } }); const st = state(s);
+    check('S · caída de pasos detectada (<−15 %)', st.activity && st.activity.changePct < -0.15, st.activity && st.activity.changePct);
+    check('S · aviso NEAT en el motivo de la decisión', /NEAT/.test(st.decision.reason), st.decision.reasonCode); }
   // ---- CASO I: outlier de peso
   { const base = synth({ days:35, rate:0.2, seed:9 }); const s = synth({ days:35, rate:0.2, seed:9, patch: raw => { raw.weights[U.addDays('2026-01-01',20)][0].kg += 3; } });
     const a = state(base), b = state(s);
@@ -1955,13 +2099,42 @@ function calcSugarTargetG(kcal){
 
 // Macros desde las kcal. Proteína y grasa por kg de PESO TENDENCIA (no del
 // último pesaje, que salta ±0,5 kg de un día a otro).
+// DINÁMICOS: proteína y grasa = g/kg configurables (por defecto 2,0 y 1,0) × peso TENDENCIA; carbohidratos = lo que
+// resta de las kcal; azúcar = 5 % de las kcal. Se recalculan cuando cambian las kcal o el peso tendencia cambia
+// de forma considerable (ver syncDynamicMacros).
+const DEFAULT_PROTEIN_PER_KG = 2.0, DEFAULT_FAT_PER_KG = 1.0;
+const MACRO_RECALC_KG = 1.0, MACRO_RECALC_PCT = 0.015; // umbral: el mayor de 1 kg o 1,5 % del peso de referencia
+function macroPerKg(p){
+  const pp = Number(p.proteinPerKg), fp = Number(p.fatPerKg);
+  return { protein: pp >= 1.2 && pp <= 3.0 ? pp : DEFAULT_PROTEIN_PER_KG, fat: fp >= 0.5 && fp <= 1.5 ? fp : DEFAULT_FAT_PER_KG };
+}
 function recomputeMacrosFromKcal(p, weightKg){
-  const w = Number(weightKg) || Number(p.weight);
-  p.targetProtein = w * 2.0; // 2 g/kg (rango óptimo 1,6-2,2)
-  p.targetFat = w * 1.0;     // 1 g/kg mínimo salud hormonal
+  const w = Number(weightKg) || Number(p.weight), k = macroPerKg(p);
+  p.targetProtein = w * k.protein; // 2 g/kg (rango óptimo 1,6-2,2)
+  p.targetFat = w * k.fat;         // 1 g/kg mínimo salud hormonal
   p.targetCarbs = Math.max(0, (p.targetKcal - (p.targetProtein*4) - (p.targetFat*9))/4);
   p.targetSugar = calcSugarTargetG(p.targetKcal);
+  p.macroWeightKg = w;
   return p;
+}
+// Recalcula P/C/G/azúcar si el peso tendencia se ha movido ≥ umbral desde el último cálculo (sube o baja).
+// Histéresis a propósito: los macros no bailan con el ruido diario. Devuelve true si cambió algo.
+async function syncDynamicMacros(force = false){
+  if(!profile || !profile.targetKcal) return false;
+  let level = Number(profile.weight);
+  try { const l = getEngineState().weight.level; if(Number.isFinite(l) && l > 0) level = l; } catch(e){}
+  if(!Number.isFinite(level) || level <= 0) return false;
+  const ref = Number(profile.macroWeightKg), hasRef = Number.isFinite(ref) && ref > 0;
+  if(!force && hasRef && Math.abs(level - ref) < Math.max(MACRO_RECALC_KG, ref * MACRO_RECALC_PCT)) return false;
+  const m = recomputeMacrosFromKcal({ ...profile }, level), k = macroPerKg(profile);
+  await updateProfile({ targetProtein: m.targetProtein, targetFat: m.targetFat, targetCarbs: m.targetCarbs, targetSugar: m.targetSugar, macroWeightKg: level });
+  const tl = (await safeGet('macroTimeline')) || [];
+  tl.push({ id: 'mt' + Date.now().toString(36), date: todayStr(), at: Date.now(), weightFrom: hasRef ? +ref.toFixed(2) : null, weightTo: +level.toFixed(2), kcal: Math.round(profile.targetKcal),
+    p: Math.round(m.targetProtein), c: Math.round(m.targetCarbs), f: Math.round(m.targetFat), s: Math.round(m.targetSugar), force: !!force });
+  if(tl.length > 100) tl.splice(0, tl.length - 100);
+  await safeSet('macroTimeline', tl);
+  if(hasRef && !force) showAdjustAlert(`⚖️ Peso tendencia ${fmtN(ref,1)} → ${fmtN(level,1)} kg: macros recalculados. Proteína ${Math.round(m.targetProtein)} g (${fmtN(k.protein,1)} g/kg) · Grasas ${Math.round(m.targetFat)} g (${fmtN(k.fat,1)} g/kg) · Carbohidratos ${Math.round(m.targetCarbs)} g · Azúcar ${Math.round(m.targetSugar)} g.`);
+  return true;
 }
 
 function getTargets(override=0){
@@ -2065,9 +2238,9 @@ async function getDailyWeightSeries(days = 28){
 // =========================================
 // Todo lo que se muestra (dashboard, gráficos, IA, PDF/JSON/CSV) sale de
 // getEngineState(): un único cálculo por cambio de datos.
-const RAW_PREFIXES = new Set(['weight', 'log', 'dayflag', 'override']);
+const RAW_PREFIXES = new Set(['weight', 'log', 'dayflag', 'override', 'steps']);
 function collectRaw(){
-  const raw = { weights:{}, logs:{}, dayFlags:{}, overrides:{}, timeline:[], fallbackTarget: Number(profile && profile.targetKcal) || 2500,
+  const raw = { weights:{}, logs:{}, dayFlags:{}, overrides:{}, steps:{}, timeline:[], fallbackTarget: Number(profile && profile.targetKcal) || 2500,
     startDate: (profile && profile.bulkStartDate) || null, tzOffsetMin: -new Date().getTimezoneOffset() };
   for(let i = 0; i < localStorage.length; i++){
     const k = localStorage.key(i); if(!k) continue;
@@ -2079,6 +2252,7 @@ function collectRaw(){
     else if(prefix === 'log' && Array.isArray(v)) raw.logs[date] = v;
     else if(prefix === 'dayflag' && (v === true || v === false)) raw.dayFlags[date] = v;
     else if(prefix === 'override' && Number(v)) raw.overrides[date] = Number(v);
+    else if(prefix === 'steps' && Number(v) > 0) raw.steps[date] = Number(v);
   }
   try { raw.timeline = (JSON.parse(localStorage.getItem('targetTimeline') || '[]') || []).slice().sort((a,b) => a.date === b.date ? (Number(a.at)||0) - (Number(b.at)||0) : a.date.localeCompare(b.date)); } catch(e){}
   return raw;
@@ -2111,7 +2285,7 @@ async function setTargetKcal(newKcal, source, reason, decisionId = null){
   let level = Number(profile.weight);
   try { level = getEngineState().weight.level || level; } catch(e){}
   const m = recomputeMacrosFromKcal({ ...profile, targetKcal: kcal }, level);
-  await updateProfile({ targetKcal: kcal, targetProtein: m.targetProtein, targetFat: m.targetFat, targetCarbs: m.targetCarbs, targetSugar: m.targetSugar });
+  await updateProfile({ targetKcal: kcal, targetProtein: m.targetProtein, targetFat: m.targetFat, targetCarbs: m.targetCarbs, targetSugar: m.targetSugar, macroWeightKg: level });
   const tl = (await safeGet('targetTimeline')) || [];
   tl.push({ id: 'tl' + Date.now().toString(36), date: todayStr(), at: Date.now(), kcal, prev, delta: prev ? kcal - prev : 0, source, reason: reason || '', decisionId });
   await safeSet('targetTimeline', tl);
@@ -2238,7 +2412,7 @@ async function migrateToV2(){
   if(restore) fresh.targetKcal = restore;
   await safeSet('profile', fresh);
   profile = await loadProfile();
-  if(restore){ const mm = recomputeMacrosFromKcal({ ...profile }, profile.weight); await updateProfile({ targetProtein: mm.targetProtein, targetFat: mm.targetFat, targetCarbs: mm.targetCarbs, targetSugar: mm.targetSugar }); }
+  if(restore){ const mm = recomputeMacrosFromKcal({ ...profile }, profile.weight); await updateProfile({ targetProtein: mm.targetProtein, targetFat: mm.targetFat, targetCarbs: mm.targetCarbs, targetSugar: mm.targetSugar, macroWeightKg: mm.macroWeightKg }); }
   await safeSet('migrationReport', report);
   await safeSet('schemaVersion', 2);
   return report;
@@ -2473,6 +2647,118 @@ async function renderDailyAssistant(sums, target, logsCount, date, logs){
   }
 }
 
+// =========================================
+// 👟 PASOS / NEAT
+// =========================================
+async function getSteps(date){ const v = Number(await safeGet('steps:' + date)); return Number.isFinite(v) && v > 0 ? v : null; }
+window.saveSteps = async () => {
+  const raw = String($('input-steps').value || '').replace(/[.,]/g, '').trim(), v = Number(raw);
+  if(!raw){ await safeRemove('steps:' + selectedLogDate); showToast('Pasos borrados'); }
+  else if(!Number.isFinite(v) || v < 0 || v > 80000){ showToast('Pasos no válidos (0–80.000).', true); return; }
+  else { await safeSet('steps:' + selectedLogDate, Math.round(v)); showToast(`${Math.round(v).toLocaleString('es-ES')} pasos guardados (${formatDateLabel(selectedLogDate).toLowerCase()})`); }
+  __dataVersion++; __engineCache = null; await refreshInsights();
+};
+let stepsChartInstance = null;
+async function renderStepsCard(){
+  const sum = $('steps-summary'); if(!sum) return;
+  const st = getEngineState(), a = st.activity || {}, today = todayStr(), days = [];
+  for(let i = 27; i >= 0; i--){ const d = BulkEngine.util.addDays(today, -i); days.push({ date: d, v: await getSteps(d) }); }
+  sum.innerHTML = a.avg7 ? kv('Media 7 días', `${fmtN(a.avg7)} pasos/día`, `${a.n7} días con dato`) + kv('3 semanas previas', a.avgPrev ? `${fmtN(a.avgPrev)} pasos/día` : '—', a.changePct !== null ? `${fmtS(a.changePct*100,0)} % vs. ahora` : 'faltan días para comparar') : '<div class="muted-line">Aún no hay pasos. Regístralos en Hoy → fila «Pasos».</div>';
+  const canvas = $('stepsChart'); if(!canvas || typeof Chart === 'undefined') return;
+  if(stepsChartInstance){ stepsChartInstance.destroy(); stepsChartInstance = null; }
+  if(!days.some(d => d.v)) return;
+  const o = cleanChartOptions(); o.plugins.tooltip.callbacks = { label: it => ` ${Math.round(it.parsed.y).toLocaleString('es-ES')} pasos` };
+  stepsChartInstance = new Chart(canvas.getContext('2d'), { type: 'bar', data: { labels: days.map(d => shortDate(d.date)), datasets: [ { label: 'Pasos', data: days.map(d => d.v), backgroundColor: 'rgba(138,162,200,0.55)', borderRadius: 4 } ] }, options: o });
+}
+
+// =========================================
+// 🎯 LO QUE TE FALTA HOY (relleno exacto, calculado en código, sin IA)
+// =========================================
+// Catálogo por 100 g (valores de etiqueta típicos). Solo se usan los que aparezcan en FILLER_FOODS (lista editable).
+const FILL_CATALOG = [
+  { id:'malto',  re:/maltodextrin/i,       name:'maltodextrina',        kcal:380, p:0,  c:95, f:0,   s:5,  role:'carb', maxG:100, how:'en el batido' },
+  { id:'crema_a',re:/crema de arroz/i,     name:'crema de arroz',       kcal:370, p:7,  c:80, f:1,   s:0.5,role:'carb', maxG:100, how:'en crudo, cocinada con agua o leche' },
+  { id:'harina_a',re:/harina de arroz/i,   name:'harina de arroz',      kcal:360, p:6,  c:80, f:1,   s:0,  role:'carb', maxG:80,  how:'en crudo, cocinada' },
+  { id:'miel',   re:/\bmiel\b/i,           name:'miel',                 kcal:300, p:0,  c:80, f:0,   s:80, role:'carb', maxG:40,  how:'a cucharadas' },
+  { id:'cacah',  re:/cacah|cacahu/i,       name:'crema de cacahuete',   kcal:600, p:25, c:15, f:50,  s:6,  role:'fat',  maxG:40,  how:'2-3 cucharadas' },
+  { id:'aceite', re:/aceite/i,             name:'aceite de oliva virgen extra', kcal:900, p:0, c:0, f:100, s:0, role:'fat', maxG:20, how:'2 cucharadas soperas' },
+  { id:'whey',   re:/whey/i,               name:'whey protein',         kcal:400, p:78, c:8,  f:6,   s:5,  role:'prot', scoopG:30, how:'1 cacito = 30 g' },
+  { id:'clear',  re:/clear|hydro/i,        name:'clear/hydro protein',  kcal:350, p:85, c:3,  f:0,   s:1,  role:'prot', scoopG:25, how:'1 cacito = 25 g' }
+];
+let __lastFill = null;
+function availableFillers(){
+  const txt = typeof FILLER_FOODS === 'string' ? FILLER_FOODS : '';
+  return FILL_CATALOG.filter(c => c.re.test(txt));
+}
+const r5 = g => Math.max(0, Math.round(g / 5) * 5);
+function fillMacros(f, g){ const k = g / 100; return { kcal: f.kcal*k, p: f.p*k, c: f.c*k, f: f.f*k, s: f.s*k }; }
+function buildFillProposal(rem, hour){
+  const F = availableFillers(); const items = []; const tot = { kcal:0, p:0, c:0, f:0, s:0 };
+  const add = (f, g) => { g = f.scoopG ? Math.round(g / f.scoopG) * f.scoopG : r5(g); if(g <= 0) return 0; const m = fillMacros(f, g); items.push({ f, g, m }); for(const k in tot) tot[k] += m[k]; return m.kcal; };
+  const FILL_MAX_KCAL = 900; // una tanda razonable de relleno (2 batidos/snacks); el resto, comida normal
+  let budget = Math.min(rem.kcal, FILL_MAX_KCAL); if(hour >= 22) budget = Math.min(budget, 700);
+  // 1) proteína pendiente: whey (o clear) en cacitos enteros, sin pasarse de la proteína que queda
+  const prot = F.find(x => x.id === 'whey') || F.find(x => x.id === 'clear');
+  if(prot && rem.p >= 15){
+    const perScoop = prot.p / 100 * prot.scoopG; const n = Math.min(2, Math.max(1, Math.round(rem.p / perScoop)));
+    add(prot, n * prot.scoopG);
+  }
+  // 2) hidratos primero (lo menos saciante), respetando los hidratos que quedan; 3) grasa con lo que sobre
+  let left = budget - tot.kcal, carbRoom = Math.max(0, rem.c - tot.c), fatRoom = Math.max(0, rem.f * 1.1 - tot.f);
+  let riceUsed = false;
+  for(const f of F.filter(x => x.role === 'carb')){
+    if(left < 60 || carbRoom < 10) break;
+    if((f.id === 'crema_a' || f.id === 'harina_a') && riceUsed) continue; // una sola harina/crema de arroz
+    if(f.id === 'miel' && items.some(i => i.f.role === 'carb') && left < 150) continue;
+    const g = Math.min(f.maxG, left / (f.kcal/100), carbRoom / (f.c/100)); if(g < 10) continue;
+    const used = add(f, g); const m = items[items.length-1] ? items[items.length-1].m : null; left -= used; if(m) carbRoom -= m.c;
+    if(f.id === 'crema_a' || f.id === 'harina_a') riceUsed = true;
+  }
+  for(const f of F.filter(x => x.role === 'fat')){
+    if(left < 60 || fatRoom < 4) break;
+    const g = Math.min(f.maxG, left / (f.kcal/100), fatRoom / (f.f/100)); if(g < 5) continue;
+    const used = add(f, g); const m = items[items.length-1] ? items[items.length-1].m : null; left -= used; if(m) fatRoom -= m.f;
+  }
+  return { items, tot, uncovered: Math.max(0, Math.round(rem.kcal - tot.kcal)), capped: hour >= 22 && rem.kcal > 700, batchCapped: rem.kcal > FILL_MAX_KCAL && hour < 22, hasFillers: F.length > 0 };
+}
+async function renderMissingToday(sums, tgt, date, logs){
+  const el = $('missing-today'); if(!el) return;
+  if(date !== todayStr()){ el.style.display = 'none'; return; }
+  const rem = { kcal: tgt.kcal - sums.kcal, p: Math.max(0, tgt.p - sums.p), c: Math.max(0, tgt.c - sums.c), f: Math.max(0, tgt.f - sums.f) };
+  if(rem.kcal <= 100){ el.style.display = 'none'; return; }
+  const now = new Date(), hour = now.getHours() + now.getMinutes() / 60, show = hour >= 16 || window.__fillShowNow;
+  const cells = `<div class="miss-grid"><div class="miss-cell"><b>${Math.round(rem.kcal)}</b><span>kcal</span></div><div class="miss-cell"><b>${Math.round(rem.p)} g</b><span>proteína</span></div><div class="miss-cell"><b>${Math.round(rem.c)} g</b><span>hidratos</span></div><div class="miss-cell"><b>${Math.round(rem.f)} g</b><span>grasas</span></div></div>`;
+  let body = '';
+  if(!show){
+    body = `<div class="fill-note">Sin prisa: la propuesta de relleno aparece a partir de las 16:00.</div><button class="secondary" style="width:100%;" onclick="window.__fillShowNow=true; updateDashboardUI();">Ver propuesta de relleno ya</button>`;
+    __lastFill = null;
+  } else {
+    const pr = buildFillProposal(rem, hour); __lastFill = pr.items.length ? pr : null;
+    if(!pr.hasFillers) body = `<div class="fill-note">No hay alimentos de relleno reconocidos en tu lista (FILLER_FOODS). Añade p. ej. maltodextrina, whey, crema de arroz, crema de cacahuete o aceite.</div>`;
+    else if(!pr.items.length) body = `<div class="fill-note">Con lo que queda, los macros ya están casi al límite: cubre las kcal con comida normal, no con relleno.</div>`;
+    else {
+      const rows = pr.items.map(i => `<tr><td><b>${i.f.scoopG ? `${Math.round(i.g / i.f.scoopG)} cacito${i.g / i.f.scoopG > 1 ? 's' : ''} (${i.g} g)` : `${i.g} g`}</b> ${i.f.name}<br><small style="color:var(--text-dim)">${i.f.how}</small></td><td>${Math.round(i.m.kcal)} kcal</td></tr>`).join('');
+      const after = sums.kcal + pr.tot.kcal;
+      body = `<table class="fill-table"><tbody>${rows}<tr><td><b>Total propuesta</b> · P ${Math.round(pr.tot.p)} g · C ${Math.round(pr.tot.c)} g · G ${Math.round(pr.tot.f)} g</td><td>${Math.round(pr.tot.kcal)} kcal</td></tr></tbody></table>
+        <div class="fill-note">Quedarías en <b>${Math.round(after)} kcal</b> (${Math.round(after / tgt.kcal * 100)} % del objetivo).${pr.uncovered > 40 ? (pr.batchCapped ? ` El relleno se limita a ~900 kcal por tanda: quedan ~${pr.uncovered} kcal para comida normal.` : ` Faltarían ~${pr.uncovered} kcal que no caben en los macros que quedan sin pasarte: cúbrelas con comida normal.`) : ''}${pr.capped ? ' Es tarde: he limitado la propuesta a 700 kcal; no fuerces más.' : ''} Mezclar hidratos + proteína en un solo batido con 400-500 ml de agua o leche es lo menos saciante.</div>
+        <button class="primary" style="width:100%; padding:12px;" onclick="logFillProposal()">➕ Registrar propuesta (pesado con báscula)</button>`;
+    }
+  }
+  el.innerHTML = `<h3>🎯 Lo que te falta hoy</h3>${cells}${body}`;
+  el.style.display = 'block';
+}
+window.logFillProposal = async () => {
+  const pr = __lastFill; if(!pr || !pr.items.length) return;
+  const now = Date.now(), entries = await getLog(selectedLogDate);
+  const label = 'Relleno: ' + pr.items.map(i => `${i.g} g ${i.f.name}`).join(' + ');
+  entries.push({ id: now.toString(36), createdAt: now, updatedAt: now, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}),
+    label: label.slice(0, 120), kcal: Math.round(pr.tot.kcal), p: +pr.tot.p.toFixed(1), c: +pr.tot.c.toFixed(1), f: +pr.tot.f.toFixed(1), s: +pr.tot.s.toFixed(1),
+    originalText: '', source: 'Relleno (báscula)', ai: null, corrected: false, weighed: true, eatenOut: false });
+  await setLog(selectedLogDate, entries);
+  showToast(`+${Math.round(pr.tot.kcal)} kcal de relleno registradas`);
+  await updateDashboardUI(); await refreshInsights();
+};
+
 async function updateDashboardUI(){
   const t = selectedLogDate;
   const logs = await getLog(t);
@@ -2490,6 +2776,14 @@ async function updateDashboardUI(){
   else { noteEl.style.display='none'; }
 
   $('ui-kcal-consumed').innerText = Math.round(sums.kcal);
+  { const el = $('ui-kcal-err');
+    if(el){
+      if(sums.kcal > 0){
+        const rnd = Math.sqrt(logs.reduce((a, e) => a + BulkEngine.entryErrorSd(e) ** 2, 0)), sys = BulkEngine.CONFIG.LOGGING_SYSTEMATIC_FRACTION * sums.kcal;
+        const half = Math.round(1.2816 * Math.sqrt(rnd * rnd + sys * sys) / 10) * 10;
+        el.innerText = `· ≈ ±${half} kcal`;
+      } else el.innerText = '';
+    } }
   $('ui-kcal-target').innerText = Math.round(tgt.kcal);
   let kcalPct = (sums.kcal/tgt.kcal)*100;
   const progFill = $('ui-progress');
@@ -2520,6 +2814,9 @@ async function updateDashboardUI(){
   };
   bar(sums.p, tgt.p, 'bar-pro','txt-pro','rem-pro'); bar(sums.c, tgt.c, 'bar-car','txt-car','rem-car'); bar(sums.f, tgt.f, 'bar-fat','txt-fat','rem-fat'); bar(sums.s, tgt.s, 'bar-sugar','txt-sugar','rem-sugar');
   await renderDailyAssistant(sums, tgt, logs.length, t, logs);
+  await renderMissingToday(sums, tgt, t, logs);
+  { const si = $('input-steps'); if(si && document.activeElement !== si){ const v = await getSteps(t); si.value = v || ''; } }
+  checkMeasureReminder();
   await renderMetricStrip();
 
   const list = $('log-list');
@@ -2695,7 +2992,7 @@ function normalizeAiEstimate(res, text){
   const r1 = x => Math.round(x * 10) / 10;
   let low = numOr0(res.kcal_low), high = numOr0(res.kcal_high);
   if(explicit){ low = high = tot.kcal; }
-  else { if(!(low > 0 && low <= tot.kcal)) low = tot.kcal * 0.85; if(!(high >= tot.kcal)) high = tot.kcal * 1.15; }
+  else { if(!(low > 0 && low <= tot.kcal)) low = tot.kcal * 0.8; if(!(high >= tot.kcal)) high = tot.kcal * 1.25; }
   const warnings = []; let fixKcal = null;
   const macroK = 4*tot.p + 4*tot.c + 9*tot.f;
   if(tot.kcal > 60 && Math.abs(macroK - tot.kcal) > 0.2 * tot.kcal) warnings.push(`Las kcal (${Math.round(tot.kcal)}) no cuadran con los macros (4·P+4·C+9·G = ${Math.round(macroK)}).`);
@@ -2724,7 +3021,7 @@ Reglas:
 3. Grasas ocultas: en platos caseros fritos, salteados, a la plancha, guisos o con salsa, incluye el aceite como alimento propio (por defecto 10 g por ración; 15 g en fritos de sartén) salvo que el texto diga otra cosa, y decláralo en "assumptions". Incluye salsas, mahonesa, queso, pan y bebidas si se mencionan.
 4. Tablas de composición españolas (BEDCA). Bebidas: 1 ml ≈ 1 g.
 5. Coherencia por alimento: kcal ≈ 4·p + 4·c + 9·f. "s" = azúcares totales (0 si no lleva).
-6. Incertidumbre honesta: "kcal_low"/"kcal_high" = rango razonable de lo descrito (más ancho cuanto menos precise el texto: ración, aceite, marca). "confidence": "alta" si hay cantidades o etiqueta; "media" si hay que suponer la ración; "baja" si es muy ambiguo.
+6. Incertidumbre honesta: "kcal_low"/"kcal_high" = rango del ~90 % de lo descrito. Tus estimaciones suelen ser dispares, así que sé HONESTO y AMPLIO: nunca menos de ±15 % si hay que suponer ración, aceite o marca, y ±30 % o más si es un plato mixto, de restaurante o ambiguo. "confidence": "alta" si hay cantidades o etiqueta; "media" si hay que suponer la ración; "baja" si es muy ambiguo.
 7. "question": SOLO si una única aclaración cambiaría el total más de un 25 % (p. ej. "¿Cuántos gramos eran aproximadamente?", "¿Frito o a la plancha?"). Si no, null.
 ${corr ? `8. Correcciones previas de ESTE usuario a estimaciones tuyas (calibra raciones y productos parecidos):\n${corr}\n` : ''}Si el texto no describe comida, devuelve "items": [] y explica el motivo en "label".
 
@@ -2772,7 +3069,11 @@ function reviewInputsHTML(e){
       <input id="review-f" type="number" min="0" step="0.1" value="${e.f}" aria-label="Grasas">
       <input id="review-sugar" type="number" min="0" step="0.1" value="${e.s || 0}" aria-label="Azúcar">
     </div>
-    <div class="scale-row"><span>Ajustar ración</span>${[0.5, 0.75, 1.25, 1.5, 2].map(k => `<button class="secondary" onclick="scaleReview(${k})">×${String(k).replace('.', ',')}</button>`).join('')}</div>`;
+    <div class="scale-row"><span>Ajustar ración</span>${[0.5, 0.75, 1.25, 1.5, 2].map(k => `<button class="secondary" onclick="scaleReview(${k})">×${String(k).replace('.', ',')}</button>`).join('')}</div>
+    <div class="scale-row err-flags"><span>Precisión</span>
+      <label class="chk"><input type="checkbox" id="review-weighed" ${e.weighed ? 'checked' : ''}> ⚖️ Pesado con báscula / etiqueta <small>(error ↓)</small></label>
+      <label class="chk"><input type="checkbox" id="review-out" ${e.eatenOut ? 'checked' : ''}> 🍽️ Comida fuera de casa <small>(error ↑)</small></label>
+    </div>`;
 }
 function estimateDetailsHTML(est){
   if(!est || !est.range) return '';
@@ -2853,6 +3154,7 @@ const differsFrom = (a, b) => Math.abs((a.kcal||0) - (b.kcal||0)) >= 1 || ['p','
 window.confirmFoodReview = async () => {
   if(!pendingFoodEntry) return;
   const final = { label: $('review-label').value.trim(), kcal: Number($('review-kcal').value), p: Number($('review-p').value), c: Number($('review-c').value), f: Number($('review-f').value), s: Number($('review-sugar').value) || 0 };
+  const flagWeighed = !!($('review-weighed') && $('review-weighed').checked), flagOut = !!($('review-out') && $('review-out').checked);
   if(!validateFoodEntry(final) || final.kcal <= 0){ showToast('Revisa los valores de la comida.', true); return; }
   const now = Date.now();
   const entries = await getLog(selectedLogDate);
@@ -2867,13 +3169,13 @@ window.confirmFoodReview = async () => {
     const corrected = ai ? differsFrom(ai, final) : !!before.corrected;
     if(corrected && ai && differsFrom(before, final)) await recordAiCorrection({ date: selectedLogDate, entryId: before.id, text: before.originalText || before.label, label: final.label, ai: { kcal: ai.kcal, p: ai.p, c: ai.c, f: ai.f }, final: { kcal: final.kcal, p: final.p, c: final.c, f: final.f }, deltaKcal: Math.round(final.kcal - ai.kcal), deltaPct: ai.kcal ? +((final.kcal - ai.kcal) / ai.kcal * 100).toFixed(1) : null, model: ai.model, promptVersion: ai.promptVersion });
     const edits = [...(before.edits || []), { at: now, from: { kcal: before.kcal, p: before.p, c: before.c, f: before.f }, to: { kcal: final.kcal, p: final.p, c: final.c, f: final.f } }].slice(-10);
-    saved = entries[idx] = { ...before, ...final, updatedAt: now, ai, corrected, edits, source: freshAI ? src.source : before.source };
+    saved = entries[idx] = { ...before, ...final, weighed: flagWeighed, eatenOut: flagOut, updatedAt: now, ai, corrected, edits, source: freshAI ? src.source : before.source };
     await setLog(selectedLogDate, entries);
     showToast('Registro actualizado');
   } else {
     const ai = src.fromAI ? aiSnapshot(src) : null;
     const corrected = ai ? differsFrom(ai, final) : false;
-    saved = { id: now.toString(36), createdAt: now, updatedAt: now, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), ...final, originalText: src.originalText || '', source: src.source || 'Manual', ai, corrected };
+    saved = { id: now.toString(36), createdAt: now, updatedAt: now, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), ...final, originalText: src.originalText || '', source: src.source || 'Manual', ai, corrected, weighed: flagWeighed, eatenOut: flagOut };
     if(corrected) await recordAiCorrection({ date: selectedLogDate, entryId: saved.id, text: saved.originalText, label: final.label, ai: { kcal: ai.kcal, p: ai.p, c: ai.c, f: ai.f }, final: { kcal: final.kcal, p: final.p, c: final.c, f: final.f }, deltaKcal: Math.round(final.kcal - ai.kcal), deltaPct: ai.kcal ? +((final.kcal - ai.kcal) / ai.kcal * 100).toFixed(1) : null, model: ai.model, promptVersion: ai.promptVersion });
     entries.push(saved);
     await setLog(selectedLogDate, entries);
@@ -2886,7 +3188,7 @@ window.confirmFoodReview = async () => {
     const est = saved.ai;
     const k = est && est.kcal > 0 ? final.kcal / est.kcal : 1;
     await setFoodCache(key, { promptVersion: FOOD_PROMPT_VERSION, corrected: !!saved.corrected, updatedAt: now,
-      result: { ...final, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
+      result: { label: final.label, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
   }
   cancelFoodReview();
   await updateDashboardUI(); await refreshInsights();
@@ -3277,8 +3579,11 @@ async function saveProfile(){
     ratePreset: $('prof-rate').value,
     bulkStartDate: $('prof-bulk-start').value || profile.bulkStartDate,
     preferences: $('prof-preferences').value.trim(),
-    adjustmentPaused: $('prof-pause').checked
+    adjustmentPaused: $('prof-pause').checked,
+    proteinPerKg: (v => v >= 1.2 && v <= 3 ? v : DEFAULT_PROTEIN_PER_KG)(Number(String($('prof-protein-kg').value).replace(',', '.'))),
+    fatPerKg: (v => v >= 0.5 && v <= 1.5 ? v : DEFAULT_FAT_PER_KG)(Number(String($('prof-fat-kg').value).replace(',', '.')))
   });
+  __engineCache = null; await syncDynamicMacros(true);
   updateBodyStats(); await updateDashboardUI(); await refreshInsights();
   showToast('Perfil guardado. El objetivo de kcal no cambia: lo ajusta el motor con tus datos.');
 }
@@ -3309,6 +3614,8 @@ function updateBodyStats(){
   let M = null; try { M = getEngineState().maintenance; } catch(e){}
   $('ui-tdee').innerText = Math.round(M ? M.posterior : calcTDEE(profile, profile.weight));
   const sub = $('ui-tdee-sub'); if(sub) sub.innerText = M && M.method === 'bayes' ? `kcal/día · ±${Math.round(M.posteriorSd)} · fórmula + datos` : 'kcal/día · solo fórmula';
+  { const n = $('macro-dyn-note'), k = macroPerKg(profile), ref = Number(profile.macroWeightKg);
+    if(n) n.innerText = ref > 0 ? `Macros dinámicos: calculados con ${fmtN(ref,1)} kg de peso tendencia (P ${Math.round(profile.targetProtein)} g · G ${Math.round(profile.targetFat)} g · C ${Math.round(profile.targetCarbs)} g · azúcar ${Math.round(profile.targetSugar || 0)} g). Se recalculan solos si el peso tendencia sube o baja ≥ ${fmtN(MACRO_RECALC_KG,1)} kg (o ${fmtN(MACRO_RECALC_PCT*100,1)} %), y con cada cambio de kcal. Carbohidratos = lo que queda; azúcar = 5 % de las kcal.` : ''; }
   const bmi = profile.weight / Math.pow(profile.height/100, 2);
   $('ui-bmi').innerText = bmi.toFixed(1);
   $('ui-bmi-label').innerText = bmi<18.5?'Bajo Peso':bmi<25?'Normopeso':'Sobrepeso';
@@ -3487,12 +3794,69 @@ async function getBodyMeasureSeries(days = 90){
   return series;
 }
 
+const MEASURE_FIELDS = [ { k:'waist', label:'Cintura' }, { k:'arm', label:'Brazo' }, { k:'thigh', label:'Muslo' }, { k:'chest', label:'Pecho' }, { k:'hip', label:'Cadera' }, { k:'neck', label:'Cuello' } ];
+const WAIST_CM_PER_KG_WARN = 1.0; // heurística: > 1 cm de cintura por kg ganado sugiere que parte del peso es grasa
 function measureSummaryLabel(e){
   const parts = [];
   if(e.neck) parts.push(`Cuello ${e.neck}cm`);
   parts.push(`Cintura ${e.waist}cm`);
   if(e.hip) parts.push(`Cadera ${e.hip}cm`);
+  if(e.arm) parts.push(`Brazo ${e.arm}cm`);
+  if(e.thigh) parts.push(`Muslo ${e.thigh}cm`);
+  if(e.chest) parts.push(`Pecho ${e.chest}cm`);
   return parts.join(' · ');
+}
+// Serie por métrica: cada fecha con su último registro que incluya esa métrica.
+async function getMeasureHistory(days = 180){
+  const series = await getBodyMeasureSeries(days); const out = {};
+  for(const f of MEASURE_FIELDS) out[f.k] = series.filter(e => Number(e[f.k]) > 0).map(e => ({ date: e.date, v: Number(e[f.k]) }));
+  return out;
+}
+function trendWeightAt(st, date){
+  const pts = (st.weight.points || []).filter(p => p.trend !== null && p.date <= date);
+  return pts.length ? pts[pts.length - 1].trend : null;
+}
+async function renderMeasureTrends(){
+  const el = $('measure-trends'); if(!el) return;
+  const H = await getMeasureHistory(180); let st = null; try { st = getEngineState(); } catch(e){}
+  const rows = MEASURE_FIELDS.filter(f => H[f.k].length).map(f => {
+    const a = H[f.k][0], b = H[f.k][H[f.k].length - 1], d = b.v - a.v;
+    return H[f.k].length >= 2 ? kv(f.label, `${fmtN(b.v,1)} cm`, `${fmtS(d,1)} cm desde el ${a.date} (${fmtN(a.v,1)} cm)`) : kv(f.label, `${fmtN(b.v,1)} cm`, `1 medida (${b.date}); falta otra para ver tendencia`);
+  });
+  if(!rows.length){ el.innerHTML = '<div class="muted-line">Aún no hay medidas. Mídete una vez por semana, misma hora y mismo punto (cintura a la altura del ombligo, relajado).</div>'; return; }
+  let verdict = '';
+  const W = H.waist;
+  if(st && W.length >= 2){
+    const a = W[0], b = W[W.length - 1], span = BulkEngine.util.diffDays(a.date, b.date);
+    const w0 = trendWeightAt(st, a.date), w1 = trendWeightAt(st, b.date);
+    if(span >= 14 && w0 !== null && w1 !== null){
+      const dW = w1 - w0, dC = b.v - a.v;
+      const armUp = H.arm.length >= 2 ? H.arm[H.arm.length - 1].v - H.arm[0].v : null, thUp = H.thigh.length >= 2 ? H.thigh[H.thigh.length - 1].v - H.thigh[0].v : null;
+      let tone, txt;
+      if(dW > 0.3){
+        const ratio = dC / dW;
+        tone = ratio > WAIST_CM_PER_KG_WARN ? 'warn' : 'ok';
+        txt = `En ${span} días: peso tendencia ${fmtS(dW,1)} kg y cintura ${fmtS(dC,1)} cm → ${fmtN(ratio,1)} cm de cintura por kg ganado. ${ratio > WAIST_CM_PER_KG_WARN ? 'La cintura crece más rápido que el peso: parte de lo que subes puede ser grasa. Considera el rango «conservador» o no subir kcal esta semana.' : 'Ritmo de cintura compatible con un volumen limpio.'}`;
+      } else {
+        tone = dC >= 1.5 ? 'warn' : 'ok';
+        txt = `En ${span} días: peso tendencia ${fmtS(dW,1)} kg y cintura ${fmtS(dC,1)} cm. ${dC >= 1.5 ? 'La cintura sube sin que suba el peso: revisa la técnica de medición o posible retención.' : 'Sin señales de acumulación de grasa.'}`;
+      }
+      if(armUp !== null || thUp !== null) txt += ` Brazo ${armUp !== null ? fmtS(armUp,1) : '—'} cm · muslo ${thUp !== null ? fmtS(thUp,1) : '—'} cm.`;
+      verdict = `<div class="alert${tone === 'warn' ? ' warn' : ''}" style="margin:14px 0 6px;">📏 ${txt}<div class="muted-line" style="margin-top:6px;">Heurística orientativa (umbral ${fmtN(WAIST_CM_PER_KG_WARN,1)} cm/kg): depende de medirte igual cada vez.</div></div>`;
+    } else verdict = `<div class="muted-line" style="margin:12px 0;">Para valorar cintura vs peso hacen falta dos medidas de cintura separadas ≥14 días y peso en ambas fechas.</div>`;
+  }
+  el.innerHTML = rows.join('') + verdict;
+}
+let __measureReminderDay = null;
+async function checkMeasureReminder(){
+  const el = $('measure-reminder'); if(!el) return;
+  const today = todayStr(); if(__measureReminderDay === today && el.dataset.done === '1') return;
+  const last = await getLatestBodyMeasure(60); __measureReminderDay = today; el.dataset.done = '1';
+  const since = last ? BulkEngine.util.diffDays(last.date, today) : null;
+  const started = profile && profile.bulkStartDate ? BulkEngine.util.diffDays(profile.bulkStartDate, today) : 7;
+  if(since !== null && since >= 8){ el.style.display = 'block'; el.innerHTML = `📏 <b>Hace ${since} días que no te mides.</b> Una vez por semana basta: cintura, brazo, muslo y pecho.<button class="secondary" style="margin-top:12px; padding:9px 15px; font-size:.8rem; width:100%;" onclick="nav('body'); setTimeout(()=>$('input-waist').scrollIntoView({behavior:'smooth', block:'center'}), 200);">Medirme ahora</button>`; }
+  else if(since === null && started >= 7){ el.style.display = 'block'; el.innerHTML = `📏 <b>Aún no tienes medidas.</b> Sin cintura ni brazo no puedo distinguir si subes músculo o grasa.<button class="secondary" style="margin-top:12px; padding:9px 15px; font-size:.8rem; width:100%;" onclick="nav('body'); setTimeout(()=>$('input-waist').scrollIntoView({behavior:'smooth', block:'center'}), 200);">Medirme ahora</button>`; }
+  else el.style.display = 'none';
 }
 
 async function renderBodyMeasureDayList(){
@@ -3514,16 +3878,14 @@ async function renderBodyMeasureDayList(){
 async function addBodyMeasure(){
   const waist = parseFloat($('input-waist').value);
   if(!Number.isFinite(waist) || waist <= 0){ showToast('Introduce al menos la cintura', true); return; }
-  const neckRaw = $('input-neck').value, hipRaw = $('input-hip').value;
-  const neck = neckRaw.trim() ? parseFloat(neckRaw) : null;
-  const hip = hipRaw.trim() ? parseFloat(hipRaw) : null;
+  const num = id => { const r = $(id).value; const v = r.trim() ? parseFloat(String(r).replace(',', '.')) : null; return Number.isFinite(v) && v > 0 ? v : null; };
   const date = $('input-measure-date').value || todayStr();
   const arr = await getBodyMeasureEntries(date);
-  arr.push({ neck: Number.isFinite(neck) ? neck : null, waist, hip: Number.isFinite(hip) ? hip : null, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) });
+  arr.push({ neck: num('input-neck'), waist, hip: num('input-hip'), arm: num('input-arm'), thigh: num('input-thigh'), chest: num('input-chest'), time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) });
   await setBodyMeasureEntries(date, arr);
-  $('input-neck').value=''; $('input-waist').value=''; $('input-hip').value='';
+  ['neck','waist','hip','arm','thigh','chest'].forEach(k => { $('input-' + k).value = ''; });
   showToast(`Medidas guardadas (${formatDateLabel(date).toLowerCase()})`);
-  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart();
+  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart(); await renderMeasureTrends(); __measureReminderDay = null; await checkMeasureReminder();
 }
 
 window.editBodyMeasureEntry = async (date, index) => {
@@ -3535,14 +3897,18 @@ window.editBodyMeasureEntry = async (date, index) => {
   if(waistVal === null) return;
   const hipVal = prompt('Cadera (cm), vacío si no aplica:', cur.hip ?? '');
   if(hipVal === null) return;
+  const armVal = prompt('Brazo (cm), vacío si no aplica:', cur.arm ?? ''); if(armVal === null) return;
+  const thighVal = prompt('Muslo (cm), vacío si no aplica:', cur.thigh ?? ''); if(thighVal === null) return;
+  const chestVal = prompt('Pecho (cm), vacío si no aplica:', cur.chest ?? ''); if(chestVal === null) return;
+  const pn = v => { const x = String(v).trim() ? parseFloat(String(v).replace(',', '.')) : null; return Number.isFinite(x) && x > 0 ? x : null; };
   const waist = parseFloat(String(waistVal).replace(',', '.'));
   if(!Number.isFinite(waist) || waist <= 0){ showToast('Cintura inválida', true); return; }
   const neck = neckVal.trim() ? parseFloat(String(neckVal).replace(',', '.')) : null;
   const hip = hipVal.trim() ? parseFloat(String(hipVal).replace(',', '.')) : null;
-  entries[index] = { ...cur, neck: Number.isFinite(neck) ? neck : null, waist, hip: Number.isFinite(hip) ? hip : null };
+  entries[index] = { ...cur, neck: Number.isFinite(neck) ? neck : null, waist, hip: Number.isFinite(hip) ? hip : null, arm: pn(armVal), thigh: pn(thighVal), chest: pn(chestVal) };
   await setBodyMeasureEntries(date, entries);
   showToast('Medidas actualizadas');
-  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart();
+  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart(); await renderMeasureTrends();
 };
 
 window.delBodyMeasureEntry = async (date, index) => {
@@ -3550,7 +3916,7 @@ window.delBodyMeasureEntry = async (date, index) => {
   entries.splice(index, 1);
   await setBodyMeasureEntries(date, entries);
   showToast('Medida eliminada');
-  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart();
+  await renderBodyMeasureDayList(); await renderBodyComposition(); await renderBodyCompositionChart(); await renderMeasureTrends();
 };
 
 // =========================================
@@ -3872,6 +4238,7 @@ async function addWeight(){
 }
 async function afterWeightChange(){
   await refreshProfileWeightFromLatest();
+  __engineCache = null; await syncDynamicMacros();
   await renderWeightDayList(); updateBodyStats(); await updateDashboardUI(); await refreshInsights();
 }
 
@@ -4072,7 +4439,7 @@ async function renderTrendCharts(){
       const col = { complete: 'rgba(217,171,106,0.6)', open: 'rgba(217,171,106,0.22)', doubtful: 'rgba(197,131,122,0.45)', incomplete: 'rgba(111,117,127,0.45)', empty: 'rgba(0,0,0,0)' };
       const o = cleanChartOptions();
       o.plugins.legend = { display: true, position: 'bottom', labels: { color: CHART_TEXT, boxWidth: 10, font: { size: 10 } } };
-      o.plugins.tooltip = { ...o.plugins.tooltip, displayColors: true, callbacks: { afterBody: items => { const d = days[items[0].dataIndex]; return d ? `Estado: ${({complete:'completo', open:'en curso', doubtful:'dudoso (no cuenta)', incomplete:'incompleto (no cuenta)', empty:'sin registro'})[d.status]}` : ''; } } };
+      o.plugins.tooltip = { ...o.plugins.tooltip, displayColors: true, callbacks: { afterBody: items => { const d = days[items[0].dataIndex]; return d ? `Estado: ${({complete:'completo', open:'en curso', doubtful:'dudoso (no cuenta)', incomplete:'incompleto (no cuenta)', empty:'sin registro'})[d.status]}${d.entries ? ` · error de registro ≈ ±${Math.round(1.2816 * Math.sqrt(d.errSd ** 2 + (BulkEngine.CONFIG.LOGGING_SYSTEMATIC_FRACTION * d.intake) ** 2) / 10) * 10} kcal` : ''}` : ''; } } };
       kcalTrendChartInstance = new Chart(canvas.getContext('2d'), { type: 'bar', data: { labels: days.map(d => shortDate(d.date)), datasets: [
         { type: 'line', label: 'Objetivo de ese día', data: days.map(d => d.targetEffective), borderColor: '#d9ab6a', borderWidth: 1.5, pointRadius: 0, stepped: 'middle', order: 0 },
         { type: 'line', label: 'Necesario estimado hoy', data: days.map(() => st.decision.needed), borderColor: 'rgba(127,174,148,0.8)', borderDash: [5,4], borderWidth: 1.5, pointRadius: 0, order: 0 },
@@ -4169,6 +4536,7 @@ async function renderBodyTab(){
   renderBulkStatus('bulk-status-body'); renderPredictionCard(); renderWhyTarget('why-target-body', true); renderInsightsList('insights-body');
   await renderWeightChart(); await renderModelChart(); await renderTrendCharts();
   renderDataQualityCard(); await renderAiStatsCard(); await renderDecisionLog();
+  await renderStepsCard(); await renderMeasureTrends();
 }
 
 // =========================================
@@ -4647,7 +5015,7 @@ async function exportDiagnosticPDF(rep, base){
   rep.backtest.filter(b => b.legacyEvent).forEach(b => para(`! ${b.date} algoritmo anterior: ${b.legacyEvent}`, 7.5));
   // Metodología
   h1('11. Metodología');
-  para('Tendencia: media exponencial temporal (alfa 0,15/día, el peso de cada pesaje depende de los días transcurridos; semilla = mediana de los 3 primeros). Atípicos: filtro de Hampel (±3 días, 3 × MAD, mínimo 0,3 kg). Ritmo: regresión lineal de 28 días sobre pesajes no atípicos; intervalo del 80 % con error estándar corregido por autocorrelación. Día completo: ≥2 registros y ≥60 % de tu mediana, o confirmado por ti; los dudosos no cuentan. Mantenimiento: combinación bayesiana (ponderada por precisión) de Mifflin-St Jeor × actividad (±12 %) y el balance observado (ingesta − pendiente × 7700). Ajuste: solo con confianza media/alta; nunca baja si ganas por debajo del rango; no sube si comes <90 % del objetivo; zona muerta 50 kcal; pasos ≤100/150 kcal; ≥7 días entre cambios; sin invertir el sentido en 21 días; nunca por debajo del mantenimiento estimado.');
+  para('Tendencia: media exponencial temporal (alfa 0,15/día, el peso de cada pesaje depende de los días transcurridos; semilla = mediana de los 3 primeros). Atípicos: filtro de Hampel (±3 días, 3 × MAD, mínimo 0,3 kg). Ritmo: regresión lineal de 28 días sobre pesajes no atípicos; intervalo del 80 % con error estándar corregido por autocorrelación. Día completo: ≥2 registros y ≥60 % de tu mediana, o confirmado por ti; los dudosos no cuentan. Mantenimiento: combinación bayesiana (ponderada por precisión) de Mifflin-St Jeor × actividad (±12 %) y el balance observado (ingesta − pendiente × 7700), cuya incertidumbre incluye el error de registro (15 % sistemático + error aleatorio por entrada según el rango de la IA, báscula y comidas fuera). Ajuste: solo con confianza media/alta; nunca baja si ganas por debajo del rango; no sube si comes <90 % del objetivo; zona muerta 50 kcal; pasos ≤100/150 kcal; ≥7 días entre cambios; sin invertir el sentido en 21 días; nunca por debajo del mantenimiento estimado.');
   if(rep.legacy.migrationReport) para(`Migración v2: ${JSON.stringify(rep.legacy.migrationReport)}`, 7);
   const pages = doc.getNumberOfPages();
   for(let i = 1; i <= pages; i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(140); doc.text(`Bulking OS · diagnóstico ${rep.meta.asOf} · ${i}/${pages}`, W - M0, 292, { align: 'right' }); }
@@ -4795,7 +5163,7 @@ function renderDayStatusRow(date){
 // Otro dispositivo/pestaña cambió datos → recargar perfil y repintar.
 async function onExternalDataChange(){
   profile = await loadProfile(); __engineCache = null;
-  try { updateBodyStats(); await updateDashboardUI(); await refreshInsights(); } catch(e){ console.error(e); }
+  try { await syncDynamicMacros(); updateBodyStats(); await updateDashboardUI(); await refreshInsights(); } catch(e){ console.error(e); }
 }
 let __storageEventTimer = null;
 window.addEventListener('storage', (e) => {
@@ -4823,6 +5191,7 @@ window.onload = async () => {
   $('prof-pause').checked = !!profile.adjustmentPaused;
   $('prof-meals').value = profile.mealsPerDay || 5; $('prof-training-days').value = profile.trainingDays;
   $('prof-preferences').value = profile.preferences || '';
+  { const k = macroPerKg(profile); $('prof-protein-kg').value = k.protein; $('prof-fat-kg').value = k.fat; }
   $('input-weight-date').value = todayStr();
   $('input-goal-weight').value = profile.goalWeightKg || '';
   $('input-measure-date').value = todayStr();
@@ -4836,6 +5205,7 @@ window.onload = async () => {
   await pruneOldCaches();
 
   await runDailyEvaluation();
+  try { await syncDynamicMacros(); } catch(e){ console.error('Macros dinámicos', e); }
   if(migration){
     const parts = [];
     if(migration.correction) parts.push(`se ha deshecho el ajuste del ${migration.correction.date} (${migration.correction.from} → ${migration.correction.to} kcal) causado por un fallo del algoritmo anterior`);
