@@ -164,7 +164,65 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .group-title { display:flex; align-items:center; gap:14px; margin:38px 0 18px; font-family:'Space Grotesk', sans-serif; font-size:.72rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text-dim); }
   .group-title::after { content:''; flex:1; height:1px; background:var(--glass-border); }
   h2 + .group-title, .alert + .group-title { margin-top:0; }
-  .section-kicker { color: var(--text-dim); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; margin-bottom: 8px; }
+
+  /* =========================================
+     🎨 IDENTIDAD POR BLOQUE
+     Mismo sistema (tipografía, radios, cristal); cada pestaña y cada tarjeta
+     lleva su matiz de la paleta + un icono para saber dónde estás de un vistazo.
+     ========================================= */
+  [data-tone="amber"] { --tone: rgb(217,171,106); --tone-rgb: 217,171,106; }
+  [data-tone="green"] { --tone: rgb(127,174,148); --tone-rgb: 127,174,148; }
+  [data-tone="blue"] { --tone: rgb(138,162,200); --tone-rgb: 138,162,200; }
+  [data-tone="rose"] { --tone: rgb(191,148,138); --tone-rgb: 191,148,138; }
+  [data-tone="violet"] { --tone: rgb(178,145,171); --tone-rgb: 178,145,171; }
+  [data-tone="slate"] { --tone: rgb(168,173,182); --tone-rgb: 168,173,182; }
+  #tab-dash { --tone: rgb(217,171,106); --tone-rgb: 217,171,106; }
+  #tab-body { --tone: rgb(127,174,148); --tone-rgb: 127,174,148; }
+  #tab-gym { --tone: rgb(138,162,200); --tone-rgb: 138,162,200; }
+  #tab-settings { --tone: rgb(168,173,182); --tone-rgb: 168,173,182; }
+
+  /* Cabecera de pestaña */
+  h2 { justify-content: flex-start; align-items: center; gap: 14px; border-bottom-color: rgba(var(--tone-rgb), .28); }
+  .tab-chip { flex: none; width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; font-size: 1.25rem; background: rgba(var(--tone-rgb), .14); border: 1px solid rgba(var(--tone-rgb), .32); }
+
+  /* Separador de grupo dentro de la pestaña */
+  .group-title::before { content: ''; width: 4px; height: 14px; border-radius: 2px; background: var(--tone); }
+  .group-title { color: var(--text-mid); }
+
+  /* Tarjeta con matiz: reflejo superior y brillo de esquina en su color */
+  .glass-card[data-tone] { background-image: radial-gradient(460px 150px at 0% 0%, rgba(var(--tone-rgb), .085), transparent 72%); }
+  .glass-card[data-tone]::before { background: linear-gradient(90deg, rgba(var(--tone-rgb), .75), rgba(var(--tone-rgb), 0) 62%); }
+  .glass-card.card-hero[data-tone] { background-image: linear-gradient(168deg, rgba(var(--tone-rgb), .06), rgba(255,255,255,0.028) 46%); }
+
+  /* Cabecera de tarjeta: icono + título + dato resumen */
+  .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+  .card-head .chip { flex: none; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; font-size: 1.05rem; background: rgba(var(--tone-rgb), .13); border: 1px solid rgba(var(--tone-rgb), .3); }
+  .card-head .card-title { min-width: 0; }
+  .card-head h3 { margin: 0; color: var(--text); font-size: .84rem; }
+  .card-head small { display: block; margin-top: 2px; color: var(--text-dim); font-size: .72rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
+  .card-head .card-meta { margin-left: auto; padding-left: 12px; text-align: right; white-space: nowrap; font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; letter-spacing: -0.02em; color: var(--tone); font-variant-numeric: tabular-nums; }
+  .card-head .card-meta:empty { display: none; }
+
+  /* Tarjetas plegables (auditoría): más discretas que las principales */
+  details.glass-card { box-shadow: none; background: rgba(255,255,255,0.016); }
+  details.glass-card > summary { list-style: none; display: flex; align-items: center; gap: 12px; }
+  details.glass-card > summary::-webkit-details-marker { display: none; }
+  details.glass-card > summary::after { content: '›'; margin-left: auto; color: var(--text-dim); font-size: 1.3rem; line-height: 1; transition: transform var(--dur) var(--ease); }
+  details.glass-card[open] > summary::after { transform: rotate(90deg); }
+  details.glass-card > summary .chip { flex: none; width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-size: .95rem; background: rgba(var(--tone-rgb), .12); border: 1px solid rgba(var(--tone-rgb), .26); }
+  details.glass-card > summary .card-title-text { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: .92rem; color: var(--text); }
+
+  /* Próximamente */
+  .glass-card.soon { border-style: dashed; background: transparent; box-shadow: none; }
+  .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pill { padding: 7px 13px; border-radius: 99px; font-size: .74rem; font-weight: 600; color: var(--text-mid); background: rgba(var(--tone-rgb), .1); border: 1px solid rgba(var(--tone-rgb), .24); }
+
+  /* Tira de cifras (Hoy · falta, Ajustes · objetivo) */
+  .stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 8px; margin-bottom: 16px; }
+  .stat-cell { background: var(--glass-bg-raised); border: 1px solid var(--glass-border); border-radius: var(--radius-sm); padding: 10px 6px; text-align: center; }
+  .stat-cell b { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; color: var(--text); }
+  .stat-cell span { font-size: .62rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); font-weight: 700; }
+
 
   /* =========================================
      🧱 TARJETAS — mucho aire, cristal sutil
@@ -282,8 +340,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .favorite-chip .chip-remove { opacity:0.35; font-size:0.7rem; }
   .favorite-chip .chip-remove:hover { opacity:1; color: var(--red); }
 
-  .quality-score-badge { display:flex; align-items:center; gap:18px; padding:18px 20px; border-radius:var(--radius-md); background:var(--glass-bg-raised); border:1px solid var(--glass-border); }
-  .quality-score-num { font-family:'Space Grotesk', sans-serif; font-weight:600; font-size:2.4rem; line-height:1; letter-spacing:-0.04em; font-variant-numeric: tabular-nums; }
 
   /* Tarjetas de insight cortas (salida de IA y métricas derivadas) */
   .insight-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
@@ -362,7 +418,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .section > h2::before { content:''; width:3px; height:24px; border-radius:99px; background:var(--accent); margin-right:14px; align-self:center; }
   .dashboard-grid { display:grid; grid-template-columns:minmax(0, 1.3fr) minmax(290px, .7fr); gap:20px; align-items:start; margin-bottom:20px; }
   .dashboard-grid > .glass-card { margin-bottom:0; }
-  .summary-card { position:relative; overflow:hidden; }
 
   .date-nav { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; }
   .date-nav button { padding:10px 15px; }
@@ -395,10 +450,6 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .assistant-body { font-size:.87rem; line-height:1.65; color:var(--text-mid); }
   .missing-card { padding:24px 26px; }
   .missing-card h3 { margin-bottom:14px; }
-  .miss-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px; }
-  .miss-cell { background:var(--glass-bg-raised); border:1px solid var(--glass-border); border-radius:var(--radius-sm); padding:10px 6px; text-align:center; }
-  .miss-cell b { display:block; font-family:'Space Grotesk',sans-serif; font-size:1.15rem; color:var(--text); }
-  .miss-cell span { font-size:.62rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-dim); font-weight:700; }
   .fill-table { width:100%; border-collapse:collapse; font-size:.86rem; margin-bottom:10px; }
   .fill-table td { padding:7px 4px; border-bottom:1px solid var(--glass-border); color:var(--text-mid); }
   .fill-table td:last-child { text-align:right; color:var(--text); font-weight:600; white-space:nowrap; }
@@ -427,7 +478,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     box-shadow: 0 12px 40px rgba(0,0,0,0.5);
   }
   .nav-item { color: var(--text-dim); text-align: center; font-size: 0.64rem; cursor: pointer; flex: 1; font-weight: 600; transition: all var(--dur) var(--ease); border-radius: 14px; padding: 8px 4px; letter-spacing: 0.02em; }
-  .nav-item.active { color: var(--accent); background: var(--accent-soft); }
+  .nav-item.active { color: var(--tone, var(--accent)); background: rgba(var(--tone-rgb, 217,171,106), .14); }
   .nav-icon { font-size: 1.25rem; margin-bottom: 4px; display: block; filter: grayscale(100%) opacity(0.45); transition: all var(--dur) var(--ease); }
   .nav-item.active .nav-icon { filter: grayscale(0%) opacity(1); }
 
@@ -522,7 +573,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .q-head { display:flex; align-items:baseline; gap:10px; } .q-text { flex:1; font-size:.86rem; font-weight:600; }
   .q-val { font-size:.84rem; color:var(--tone); font-variant-numeric:tabular-nums; white-space:nowrap; }
   .q-dot { display:none; } .q-ans { font-size:.78rem; color:var(--text-mid); margin-top:6px; line-height:1.5; }
-  .card-summary { cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:1.02rem; }
+  .card-summary { cursor:pointer; }
   .pred-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .pred-card { padding:14px; border-radius:var(--radius-sm); background:rgba(255,255,255,.03); border:1px solid var(--glass-border); }
   .pred-lbl { font-size:.66rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.07em; font-weight:600; }
@@ -567,7 +618,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <!-- 📊 HOY · registrar y ejecutar el día                                    -->
   <!-- ========================================================================= -->
   <div id="tab-dash" class="section active">
-    <h2>Hoy</h2>
+    <h2><span class="tab-chip">📊</span>Hoy</h2>
     <div id="no-sync-banner" class="alert warn" style="display:none;"></div>
     <div id="adjust-alert" class="alert" style="display:none;"></div>
     <div id="day-flag-banner" class="alert warn" style="display:none;"></div>
@@ -588,7 +639,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div id="daily-assistant" class="daily-assistant" style="display:none;"></div>
 
     <div class="dashboard-grid">
-    <div class="glass-card card-hero" style="padding-top: 30px;">
+    <div class="glass-card card-hero" data-tone="amber" style="padding-top: 30px;">
       <div class="kcal-main">
         <div>
           <div class="kcal-number" id="ui-kcal-consumed">0</div>
@@ -645,7 +696,8 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
 
     <!-- REGISTRAR COMIDA (voz / texto) -->
-    <div class="glass-card mic-container">
+    <div class="glass-card mic-container" data-tone="rose">
+      <div class="card-head" style="text-align:left;"><span class="chip">🍽️</span><div class="card-title"><h3>Registrar comida</h3><small>Dicta o escribe lo que has comido</small></div></div>
       <button class="mic-btn" id="btn-mic">🎙️</button>
       <div class="ai-status" id="ai-status">Toca para dictar qué has comido</div>
       <div id="favorites-row" class="favorites-row" style="display:none; margin-top:18px;"></div>
@@ -657,9 +709,9 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
     </div>
 
-    <div id="missing-today" class="glass-card missing-card" style="display:none;"></div>
+    <div id="missing-today" class="glass-card missing-card" data-tone="rose" style="display:none;"></div>
 
-    <h3>Comidas del día</h3>
+    <div class="group-title">Comidas del día</div>
     <div class="glass-card" id="log-list" style="padding: 10px 24px;"></div>
   </div>
 
@@ -667,19 +719,19 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <!-- 📈 PROGRESO · cómo evolucionas (peso, ingesta, motor y cuerpo)          -->
   <!-- ========================================================================= -->
   <div id="tab-body" class="section">
-    <h2>Progreso</h2>
+    <h2><span class="tab-chip">📈</span>Progreso</h2>
 
     <div class="group-title">Bulk</div>
-    <div class="glass-card">
-      <h3>Estado del bulk</h3>
+    <div class="glass-card" data-tone="green">
+      <div class="card-head"><span class="chip">🎯</span><div class="card-title"><h3>Estado del bulk</h3><small>Ritmo real frente al rango objetivo</small></div><b class="card-meta" id="meta-bulk"></b></div>
       <div id="bulk-status-body"></div>
       <div class="sub-title" style="margin-top:22px;">¿Cuándo llego a mi objetivo?</div>
       <div class="form-group" style="margin-bottom:10px;"><label>Peso objetivo (kg)</label><input type="number" step="0.1" id="input-goal-weight" placeholder="Ej: 60" style="margin-bottom:0;"></div>
       <button class="secondary" onclick="saveGoalWeight()" style="width:100%; margin-bottom:16px;">Guardar peso objetivo</button>
       <div id="goal-projection-content"></div>
     </div>
-    <div class="glass-card">
-      <h3>Peso</h3>
+    <div class="glass-card" data-tone="blue">
+      <div class="card-head"><span class="chip">⚖️</span><div class="card-title"><h3>Peso</h3><small>Pesajes y tendencia</small></div><b class="card-meta" id="meta-weight"></b></div>
       <div class="form-row" style="margin-bottom: 12px;">
         <div class="form-group"><label>Fecha</label><input type="date" id="input-weight-date" style="margin-bottom:0;"></div>
         <div class="form-group"><label>Peso (kg)</label><input type="number" step="0.1" id="input-weight" placeholder="Ej: 55.4" style="margin-bottom:0;"></div>
@@ -690,9 +742,9 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="muted-line" id="weight-chart-caption"></div>
     </div>
 
-    <div class="group-title">Nutrición</div>
-    <div class="glass-card">
-      <h3>Nutrición real vs objetivo</h3>
+    <div class="group-title">Nutrición y objetivo</div>
+    <div class="glass-card" data-tone="rose">
+      <div class="card-head"><span class="chip">🍽️</span><div class="card-title"><h3>Ingesta vs objetivo</h3><small>Lo que comes frente a lo que toca</small></div><b class="card-meta" id="meta-intake"></b></div>
       <div class="chart-container"><canvas id="kcalTrendChart"></canvas></div>
       <div id="nutrition-stats" style="margin-top:14px;"></div>
       <div id="insights-nutrition" class="q-list" style="margin-top:14px;"></div>
@@ -700,17 +752,16 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div id="weekly-summary-output" style="display:none; margin-top:16px;"></div>
     </div>
 
-    <div class="group-title">Objetivo de kcal</div>
-    <div class="glass-card">
+    <div class="glass-card" data-tone="amber">
+      <div class="card-head"><span class="chip">🧮</span><div class="card-title"><h3>Por qué estas kcal</h3><small>Mantenimiento, superávit y decisión</small></div><b class="card-meta" id="meta-target"></b></div>
       <div id="why-target-body"></div>
       <div class="sub-title" style="margin-top:20px;">Mantenimiento estimado y objetivo en el tiempo</div>
       <div class="chart-container"><canvas id="modelChart"></canvas></div>
-      <div class="muted-line">Cada punto es lo que el motor estimaba ESE día con los datos disponibles hasta entonces (sin mirar al futuro).</div>
     </div>
 
     <div class="group-title">Cuerpo</div>
-    <div class="glass-card">
-      <h3>Composición corporal</h3>
+    <div class="glass-card" data-tone="violet">
+      <div class="card-head"><span class="chip">🧬</span><div class="card-title"><h3>Composición</h3><small>% de grasa, masa magra y FFMI</small></div></div>
       <div id="body-comp-content"></div>
       <div id="body-comp-chart-wrap" style="display:none; margin-top:20px;">
         <div class="form-group" style="max-width:260px; margin-bottom:6px;">
@@ -730,9 +781,9 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <button class="secondary" id="btn-ai-summary" onclick="generateBodySummary()" style="width:100%;">Generar resumen de composición</button>
       <div id="ai-body-summary-output" style="display:none; margin-top:18px;"></div>
     </div>
-    <div class="glass-card">
-      <h3>Medidas corporales</h3>
-      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:16px;">Cuello y cintura desbloquean el % de grasa medido. Brazo, muslo y pecho sirven para ver si el peso que subes es músculo. Una vez por semana, siempre igual.</p>
+    <div class="glass-card" data-tone="green">
+      <div class="card-head"><span class="chip">📏</span><div class="card-title"><h3>Medidas</h3><small>Cintura, brazo, muslo, pecho…</small></div><b class="card-meta" id="meta-measure"></b></div>
+      <p class="muted-line" style="margin:0 0 16px;">Una vez por semana, siempre igual. Cuello y cintura dan el % de grasa medido.</p>
       <div class="form-row" style="margin-bottom: 12px;">
         <div class="form-group"><label>Fecha</label><input type="date" id="input-measure-date" style="margin-bottom:0;"></div>
       </div>
@@ -751,9 +802,8 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div class="sub-title" style="margin-top:22px;">Tendencia de medidas (¿músculo o grasa?)</div>
       <div id="measure-trends"></div>
     </div>
-    <div class="glass-card">
-      <h3>Fotos de progreso</h3>
-      <p style="font-size:0.78rem; color:var(--text-dim); margin-bottom:16px;">Una por día. Se comprime automáticamente.</p>
+    <div class="glass-card" data-tone="slate">
+      <div class="card-head"><span class="chip">📷</span><div class="card-title"><h3>Fotos</h3><small>Comparativa antes / después</small></div><b class="card-meta" id="meta-photos"></b></div>
       <input type="file" accept="image/*" capture="environment" id="input-photo" style="margin-bottom:12px;">
       <button class="secondary" onclick="addProgressPhoto()" style="width:100%; margin-bottom:16px;">Guardar foto de hoy</button>
       <div id="photo-gallery" class="photo-gallery"></div>
@@ -776,11 +826,11 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
        · los pasos ya viven aquí (`steps:YYYY-MM-DD`).
        · el cruce con nutrición se hará leyendo getEngineState() (kcal, peso tendencia, superávit) en modo solo lectura. -->
   <div id="tab-gym" class="section">
-    <h2>Gym</h2>
+    <h2><span class="tab-chip">🏋️</span>Gym</h2>
 
     <div class="group-title">Actividad</div>
-    <div class="glass-card">
-      <h3>Pasos</h3>
+    <div class="glass-card" data-tone="blue">
+      <div class="card-head"><span class="chip">👟</span><div class="card-title"><h3>Pasos</h3><small>Actividad diaria (NEAT)</small></div><b class="card-meta" id="meta-steps"></b></div>
       <div class="form-row" style="margin-bottom: 12px;">
         <div class="form-group"><label>Fecha</label><input type="date" id="input-steps-date" style="margin-bottom:0;"></div>
         <div class="form-group"><label>Pasos del día</label><input type="number" id="input-steps" min="0" step="100" placeholder="Ej: 9000" style="margin-bottom:0;"></div>
@@ -789,22 +839,15 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <div id="steps-summary"></div>
       <div class="chart-container"><canvas id="stepsChart"></canvas></div>
       <div id="steps-insight" class="q-list" style="margin-top:14px;"></div>
-      <div class="muted-line">Informativo: los pasos no cambian el objetivo de kcal, pero el motor avisa si caen durante el bulk (menos gasto por movimiento, NEAT).</div>
+      <div class="muted-line">Solo informativo: los pasos no cambian el objetivo de kcal.</div>
     </div>
 
     <div class="group-title">Entrenamiento</div>
-    <div class="glass-card">
-      <div class="section-kicker">Próximamente</div>
-      <h3>Miniapp de entrenamiento</h3>
-      <p style="font-size:.9rem; color:var(--text-mid); margin-bottom:16px;">Módulo propio dentro de Bulking OS para registrar tu entrenamiento y cruzarlo con la nutrición y el peso. Todavía no está desarrollado.</p>
-      <div class="q-list">
-        <div class="kv-row"><span>Registro</span><b>Sesiones · ejercicios · series · kg · repeticiones · RIR</b></div>
-        <div class="kv-row"><span>Volumen</span><b>Series efectivas por grupo muscular y semana</b></div>
-        <div class="kv-row"><span>Fuerza</span><b>1RM estimado y progresión por ejercicio</b></div>
-        <div class="kv-row"><span>Cruce con comida</span><b>Kcal, proteína y peso tendencia vs. rendimiento</b></div>
-        <div class="kv-row"><span>IA</span><b>Resúmenes semanales y detección de estancamientos</b></div>
+    <div class="glass-card soon" data-tone="violet">
+      <div class="card-head"><span class="chip">🏋️</span><div class="card-title"><h3>Entrenamiento</h3><small>Módulo en preparación</small></div></div>
+      <div class="pill-row">
+        <span class="pill">Sesiones y series</span><span class="pill">Volumen semanal</span><span class="pill">Fuerza · 1RM</span><span class="pill">Cruce con kcal y peso</span><span class="pill">Resúmenes con IA</span>
       </div>
-      <p class="muted-line" style="margin-top:14px;">Diseño previsto: datos con prefijo <code>gym:</code>, incluidos en la copia de seguridad y en la sincronización, sin tocar el motor de kcal.</p>
     </div>
   </div>
 
@@ -812,11 +855,11 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <!-- ⚙️ AJUSTES · perfil, datos, auditoría y herramientas                   -->
   <!-- ========================================================================= -->
   <div id="tab-settings" class="section">
-    <h2>Ajustes</h2>
+    <h2><span class="tab-chip">⚙️</span>Ajustes</h2>
 
     <div class="group-title">Perfil y objetivo</div>
-    <div class="glass-card">
-      <h3>Perfil</h3>
+    <div class="glass-card" data-tone="blue">
+      <div class="card-head"><span class="chip">👤</span><div class="card-title"><h3>Perfil</h3><small>Datos base para la fórmula</small></div></div>
       <div class="form-row">
         <div class="form-group"><label>Edad</label><input type="number" id="prof-age" placeholder="24"></div>
         <div class="form-group"><label>Altura (cm)</label><input type="number" id="prof-height" placeholder="175"></div>
@@ -844,11 +887,11 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
         <div class="form-group"><label>Comidas al día</label><input type="number" min="3" max="8" id="prof-meals" placeholder="5"></div>
       </div>
       <div class="form-group" style="margin-bottom:16px;"><label>Preferencias y restricciones</label><textarea id="prof-preferences" rows="2" placeholder="Ej: sin lactosa, económico, no pescado..."></textarea></div>
-      <p class="muted-line" style="margin:0 0 8px;">El peso de referencia se actualiza solo con tus pesajes; solo se usa si aún no hay tendencia. Los días de entreno fijan el mantenimiento inicial (1,2 + 0,075 × días); después manda tu balance real.</p>
+      <p class="muted-line" style="margin:0 0 8px;">El peso de referencia solo se usa hasta que haya tendencia.</p>
       <button class="secondary" onclick="saveProfile()" style="width:100%; margin-top:8px;">Guardar perfil</button>
     </div>
-    <div class="glass-card">
-      <h3>Objetivo de kcal y macros</h3>
+    <div class="glass-card" data-tone="amber">
+      <div class="card-head"><span class="chip">🎚️</span><div class="card-title"><h3>Objetivo y macros</h3><small>Kcal, proteína y grasa por kg</small></div><b class="card-meta" id="meta-goal"></b></div>
       <div id="objective-summary" style="margin-bottom:16px;"></div>
       <div class="form-row">
         <div class="form-group"><label>Proteína (g por kg de peso)</label><input type="number" step="0.1" min="1.2" max="3" id="prof-protein-kg" placeholder="2.0"></div>
@@ -867,12 +910,12 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
 
     <div class="group-title">Datos</div>
-    <div class="glass-card">
-      <h3>Sincronización</h3>
+    <div class="glass-card" data-tone="green">
+      <div class="card-head"><span class="chip">☁️</span><div class="card-title"><h3>Sincronización</h3><small>Mismos datos en todos tus dispositivos</small></div></div>
       <div id="sync-status-content"></div>
     </div>
-    <div class="glass-card">
-      <h3>Backup local</h3>
+    <div class="glass-card" data-tone="violet">
+      <div class="card-head"><span class="chip">💾</span><div class="card-title"><h3>Copia de seguridad</h3><small>Exportar e importar JSON</small></div></div>
       <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Los datos viven en este navegador. Exporta de vez en cuando.</p>
       <button class="secondary" onclick="exportData()" style="width:100%; margin-bottom:12px;">⬇️ Exportar JSON</button>
       <label style="display:block; text-align:center; padding:14px; border-radius:var(--radius-sm); border:1px dashed var(--glass-border); color:var(--text-dim); font-size:0.9rem; cursor:pointer;">
@@ -882,36 +925,28 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
 
     <div class="group-title">Auditoría del motor</div>
-    <details class="glass-card">
-      <summary class="card-summary">🧹 Calidad de datos</summary>
+    <details class="glass-card" data-tone="slate">
+      <summary class="card-summary"><span class="chip">🧹</span><span class="card-title-text">Calidad de datos</span></summary>
       <div id="dq-content" style="margin-top:16px;"></div>
     </details>
-    <details class="glass-card">
-      <summary class="card-summary">🤖 IA de comidas: precisión y correcciones</summary>
+    <details class="glass-card" data-tone="slate">
+      <summary class="card-summary"><span class="chip">🤖</span><span class="card-title-text">IA de comidas · precisión</span></summary>
       <div id="ai-stats-content" style="margin-top:16px;"></div>
     </details>
-    <details class="glass-card">
-      <summary class="card-summary">🕘 Historial de decisiones (auditoría)</summary>
+    <details class="glass-card" data-tone="slate">
+      <summary class="card-summary"><span class="chip">🕘</span><span class="card-title-text">Historial de decisiones</span></summary>
       <div id="decision-log-content" style="margin-top:16px;"></div>
     </details>
-    <details class="glass-card">
-      <summary class="card-summary">🧪 Backtest: algoritmo anterior vs nuevo</summary>
-      <button class="secondary" onclick="runBacktestUI()" style="width:100%; margin-top:16px;">Ejecutar backtest con mis datos</button>
-      <div id="backtest-content" style="margin-top:16px;"></div>
-    </details>
-
     <div class="group-title">Herramientas</div>
-    <div class="glass-card">
-      <h3>Diagnóstico técnico</h3>
-      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Informe completo para revisar tu evolución o pasárselo a una IA: datos observados, cálculos, estimaciones, predicciones, decisiones y backtest. Sin API keys, sin enlace de sincronización y sin fotos.</p>
-      <button class="secondary diag-btn" onclick="exportDiagnostics('pdf')" style="width:100%; margin-bottom:10px;">📄 Informe PDF</button>
-      <button class="secondary diag-btn" onclick="exportDiagnostics('json')" style="width:100%; margin-bottom:10px;">🧾 Datos JSON (etiquetados)</button>
-      <button class="secondary diag-btn" onclick="exportDiagnostics('csv')" style="width:100%;">📊 Tablas CSV (ZIP)</button>
-    </div>
-    <div class="glass-card">
-      <h3>Tests del motor</h3>
-      <p style="font-size:0.8rem; color:var(--text-dim); margin-bottom:16px;">Ejecuta en tu navegador la batería de tests de los cálculos (casos A–S y regresiones).</p>
-      <button class="secondary" onclick="runEngineTestsUI()" style="width:100%;">Ejecutar tests</button>
+    <div class="glass-card" data-tone="slate">
+      <div class="card-head"><span class="chip">🩺</span><div class="card-title"><h3>Informes y tests</h3><small>Diagnóstico técnico del motor</small></div></div>
+      <p class="muted-line" style="margin:0 0 14px;">Datos, cálculos y decisiones para revisar o pasar a una IA. Sin API keys, enlace de sincronización ni fotos.</p>
+      <div class="pill-row" style="margin-bottom:14px;">
+        <button class="secondary diag-btn" onclick="exportDiagnostics('pdf')" style="flex:1;">📄 PDF</button>
+        <button class="secondary diag-btn" onclick="exportDiagnostics('json')" style="flex:1;">🧾 JSON</button>
+        <button class="secondary diag-btn" onclick="exportDiagnostics('csv')" style="flex:1;">📊 CSV</button>
+      </div>
+      <button class="secondary" onclick="runEngineTestsUI()" style="width:100%;">🧪 Ejecutar tests del motor</button>
       <div id="tests-output" style="display:none; margin-top:14px;"></div>
     </div>
   </div>
@@ -921,10 +956,10 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
 
 <!-- BOTTOM NAVIGATION -->
 <div class="bottom-nav">
-  <div class="nav-item active" data-tab="dash" onclick="nav('dash')"><span class="nav-icon">📊</span>Hoy</div>
-  <div class="nav-item" data-tab="body" onclick="nav('body')"><span class="nav-icon">📈</span>Progreso</div>
-  <div class="nav-item" data-tab="gym" onclick="nav('gym')"><span class="nav-icon">🏋️</span>Gym</div>
-  <div class="nav-item" data-tab="settings" onclick="nav('settings')"><span class="nav-icon">⚙️</span>Ajustes</div>
+  <div class="nav-item active" data-tab="dash" data-tone="amber" onclick="nav('dash')"><span class="nav-icon">📊</span>Hoy</div>
+  <div class="nav-item" data-tab="body" data-tone="green" onclick="nav('body')"><span class="nav-icon">📈</span>Progreso</div>
+  <div class="nav-item" data-tab="gym" data-tone="blue" onclick="nav('gym')"><span class="nav-icon">🏋️</span>Gym</div>
+  <div class="nav-item" data-tab="settings" data-tone="slate" onclick="nav('settings')"><span class="nav-icon">⚙️</span>Ajustes</div>
 </div>
 
 <!-- ========================================================================= -->
@@ -939,9 +974,9 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
 // siempre como parámetro asOf). Esto lo hace:
 //   · testeable en Node (python bulking_app.py --test),
 //   · reproducible (mismos datos + misma fecha = mismo resultado),
-//   · libre de fuga de datos en el backtest por construcción (asOf filtra todo),
+//   · libre de fuga de datos por construcción (asOf filtra todo),
 //   · reutilizable tal cual en un futuro backend (Workers).
-// Dashboard, gráficos, prompts de IA, PDF/JSON/CSV y backtest consumen el MISMO
+// Dashboard, gráficos, prompts de IA, PDF/JSON/CSV y reconstrucción diaria consumen el MISMO
 // objeto que devuelve computeState(). Si ves "kg/semana = X" en dos sitios,
 // sale de la misma función.
 // Nomenclatura de datos: OBSERVED (lo registrado), CALCULATED (derivado
@@ -1412,90 +1447,24 @@ function buildInsights(s){
   return out;
 }
 
-// ------------------------------------ 11) algoritmo ANTIGUO (solo backtest)
-// Port fiel de bulking_app.py previo (incluido el bug Number(null)→0), validado
-// contra el código original: reproduce 2591,72 → 2342 del 21-sep-2026.
-const legacy = (function(){
-  function isoWeekKey(k){
-    const d = new Date(parseKey(k)); const dayNum = (d.getUTCDay()+6)%7; d.setUTCDate(d.getUTCDate()-dayNum+3);
-    const firstThursday = new Date(Date.UTC(d.getUTCFullYear(),0,4));
-    const week = 1 + Math.round(((d - firstThursday)/DAY_MS - 3 + ((firstThursday.getUTCDay()+6)%7))/7);
-    return `${d.getUTCFullYear()}-W${String(week).padStart(2,'0')}`;
-  }
-  function series(weights, asOf, days){ const out=[]; for(let i=days-1;i>=0;i--){ const k=addDays(asOf,-i); const e=(weights[k]||[]).filter(isActive); if(e.length) out.push({date:k, kg: sum(e.map(x=>Number(x.kg)))/e.length}); } return out; }
-  function ema(s, a=0.25){ let v=null; return s.map(p=>{ v = v===null ? p.kg : a*p.kg+(1-a)*v; return {date:p.date, kg:p.kg, ema:v}; }); }
-  function slope(pts){ const n=pts.length; if(n<2) return null; const mx=mean(pts.map(p=>p.x)), my=mean(pts.map(p=>p.y)); let num=0,den=0; for(const p of pts){ num+=(p.x-mx)*(p.y-my); den+=(p.x-mx)**2; } return den===0?null:num/den; }
-  function dynamic(weights, logs, asOf, profile){
-    const dw = series(weights, asOf, 21); if(dw.length < 8) return null;
-    const es = ema(dw), first = es[0], last = es[es.length-1]; const elapsed = diffDays(first.date, last.date); if(elapsed < 10) return null;
-    let n=0, tot=0; const mpd = Number(profile.mealsPerDay)||5, floorK = (profile.targetKcal||2000)*0.6;
-    for(let k=first.date; k<=last.date; k=addDays(k,1)){ const act=(logs[k]||[]).filter(isActive); const kc=sum(act.map(e=>Number(e.kcal)||0)); if(kc>0 && (act.length>=Math.max(2,mpd-1) || kc>=floorK)){ n++; tot+=kc; } }
-    if(n < 8) return null;
-    const avg = tot/n, pts = es.map(p=>({x: diffDays(first.date,p.date), y:p.ema})), sl = slope(pts);
-    const change = sl!==null ? sl*elapsed : last.ema-first.ema;
-    return { estimatedMaintenance: avg - (change*7700)/elapsed, avgIntake: avg, weightChangeKg: change, elapsedDays: elapsed, intakeDays: n, weightDays: dw.length,
-      confidence: Math.min(1, (dw.length/14)*0.5 + (n/14)*0.5) };
-  }
-  function projection(weights, asOf){
-    const d = series(weights, asOf, 21); if(d.length<6) return {status:'cold'}; const es=ema(d), first=es[0], last=es[es.length-1];
-    const el = diffDays(first.date,last.date); if(el<6) return {status:'cold'};
-    const sl = slope(es.map(p=>({x:diffDays(first.date,p.date), y:p.ema})));
-    return { status:'ok', currentEma:last.ema, ratePerWeek: sl!==null ? sl*7 : ((last.ema-first.ema)/el)*7, dataPoints:d.length, elapsedDays: el };
-  }
-  // Evalúa como lo hacía adjustWeeklyTarget(). profile: {targetKcal, emaMaintenanceKcal, lastAdjustmentWeek, weeklyGainGoalKg, mealsPerDay, adjustmentPaused}
-  function adjust(profileIn, weights, logs, asOf, { fixNullBug=false }={}){
-    const p = { ...profileIn }; const wk = isoWeekKey(asOf);
-    if(!p.targetKcal || p.lastAdjustmentWeek === wk || p.adjustmentPaused) return { profile:p, record:null };
-    let days=0; for(let i=0;i<7;i++){ if((weights[addDays(asOf,-i)]||[]).filter(isActive).length) days++; }
-    if(days < 4) return { profile:p, record:null };
-    const goal = Number(p.weeklyGainGoalKg)||0.3, dyn = dynamic(weights, logs, asOf, p);
-    if(dyn){
-      const stored = p.emaMaintenanceKcal;
-      const prev = fixNullBug ? (Number.isFinite(stored) && stored!==null ? stored : dyn.estimatedMaintenance)
-                              : (Number.isFinite(Number(stored)) ? Number(stored) : dyn.estimatedMaintenance); // Number(null) === 0 → el bug
-      const smoothed = 0.4*dyn.estimatedMaintenance + 0.6*prev; p.emaMaintenanceKcal = smoothed;
-      const raw = smoothed + goal*7700/7, prevT = p.targetKcal, step = Math.round(100 + dyn.confidence*150);
-      const fin = Math.max(1600, Math.round(Math.max(prevT-step, Math.min(prevT+step, raw))));
-      p.targetKcal = fin; p.lastAdjustmentWeek = wk;
-      return { profile:p, record:{ date:asOf, week:wk, mode:'dinamico', prevTarget:prevT, newTarget:fin, rawMaintenance:dyn.estimatedMaintenance, smoothedMaintenance:smoothed, dyn } };
-    }
-    const s = series(weights, asOf, 28); if(s.length < 8) return { profile:p, record:null };
-    const es = ema(s), last = es[es.length-1]; let wa=null;
-    for(let j=es.length-1;j>=0;j--){ if(diffDays(es[j].date,last.date) >= 6){ wa=es[j]; break; } }
-    if(!wa) return { profile:p, record:null };
-    const ch = last.ema - wa.ema; let delta = 0; if(ch < goal-0.05) delta=150; else if(ch > goal+0.05) delta=-150;
-    p.lastAdjustmentWeek = wk; const prevT = p.targetKcal; if(delta) p.targetKcal = Math.max(1600, p.targetKcal+delta);
-    return { profile:p, record:{ date:asOf, week:wk, mode:'basico', prevTarget:prevT, newTarget:p.targetKcal, weeklyChange:ch } };
-  }
-  return { isoWeekKey, dynamic, adjust, projection };
-})();
-
-// ------------------------------------------------ 12) backtest sin fuga
+// ------------------------------------------------ 11) reconstrucción día a día (sin fuga)
 // Cada día D solo ve datos ANTERIORES a D (decisión por la mañana, antes de
-// pesarse y de comer). Ambos algoritmos parten del mismo objetivo inicial y
-// evolucionan con sus propias decisiones. La adherencia se mide siempre
-// contra el objetivo que el usuario realmente veía (timeline observado).
+// pesarse y de comer). Parte del objetivo inicial y evoluciona con sus propias
+// decisiones. La adherencia se mide contra el objetivo que el usuario veía.
 function filterRawBefore(raw, date){
   const pick = obj => Object.fromEntries(Object.entries(obj||{}).filter(([k])=>k < date));
   return { ...raw, weights: pick(raw.weights), logs: pick(raw.logs), dayFlags: pick(raw.dayFlags), overrides: pick(raw.overrides), steps: pick(raw.steps),
     timeline: (raw.timeline||[]).filter(e=>e.date < date) };
 }
-function backtest(raw, profile, { from, to, initialTarget, legacyProfile }){
+function replay(raw, profile, { from, to, initialTarget }){
   const rows = []; let tNew = initialTarget, lastChange = null;
-  let lp = { ...(legacyProfile||{}), targetKcal: initialTarget };
   for(let d = from; d <= to; d = addDays(d,1)){
     const r = filterRawBefore(raw, d);
     const st = computeState(r, profile, d, { currentTarget: tNew, lastChange });
     const dec = st.decision;
     if(dec.delta){ lastChange = { date:d, delta: dec.delta }; tNew = dec.newTarget; }
-    const lg = legacy.adjust(lp, r.weights, r.logs, d); lp = lg.profile;
-    const lproj = legacy.projection(r.weights, d);
     rows.push({ date:d, weighIns: st.rate ? st.rate.n : st.days.filter(x=>x.weight!==null).length, completeDays: st.intake.n,
       observedTarget: targetOn(raw.timeline, d, initialTarget),
-      legacyTarget: lp.targetKcal, legacyEvent: !lg.record ? '' : lg.record.mode==='dinamico'
-        ? `${Math.round(lg.record.prevTarget)}→${lg.record.newTarget} (mant. bruto ${Math.round(lg.record.rawMaintenance)}, suavizado ${Math.round(lg.record.smoothedMaintenance)})`
-        : `${Math.round(lg.record.prevTarget)}→${lg.record.newTarget} (básico, EMA ${lg.record.weeklyChange>=0?'+':''}${lg.record.weeklyChange.toFixed(2)} kg/sem)`,
-      legacyRate: lproj.status==='ok' ? lproj.ratePerWeek : null,
       newTarget: tNew, newAction: dec.action, newReason: dec.reasonCode, newReasonText: dec.reason,
       rate: st.rate ? st.rate.perWeek : null, ciLow: st.rate ? st.rate.ciLow : null, ciHigh: st.rate ? st.rate.ciHigh : null,
       status: st.status.code, confidence: st.confidence.level,
@@ -1507,7 +1476,7 @@ function backtest(raw, profile, { from, to, initialTarget, legacyProfile }){
 
 const api = { VERSION, CONFIG, computeState, decide, buildDays, hampel, trendSeries, weightRate, intakeStats, adherence,
   maintenanceEstimate, activityFactor, mifflin, targetRange, confidence, rateStatus, predictions, buildInsights, dataQuality,
-  backtest, filterRawBefore, legacy, targetOn, STATUS_LABEL, entryErrorSd, activityStats,
+  replay, filterRawBefore, targetOn, STATUS_LABEL, entryErrorSd, activityStats,
   util: { addDays, diffDays, parseKey, keyOf, median, mean, sd, fmt, fmtSigned, monthLabel, idToTimestamp, roundTo } };
 if(typeof module !== 'undefined' && module.exports) module.exports = api; else root.BulkEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1638,14 +1607,10 @@ function runEngineTests(E, log){
     check('O · días incompletos → marcados dudosos y fuera del cálculo', b.dataQuality.doubtful.length===4 && b.intake.doubtful.length===3, `${b.dataQuality.doubtful.length}/${b.intake.doubtful.length}`);
     check('O · mantenimiento no sesgado a la baja (<40 kcal)', Math.abs(a.maintenance.posterior - b.maintenance.posterior) < 40, Math.round(b.maintenance.posterior - a.maintenance.posterior)); }
 
-  // ---- REGRESIÓN: bug Number(null)→0 del algoritmo antiguo (documentado con el port)
+  // ---- REGRESIÓN: el objetivo nunca queda por debajo del mantenimiento estimado
   { const s = synth({ days:30, rate:0, intake:2300, target:2600, intakeNoise:0, noise:0, seed:16 });
-    const lp = { targetKcal:2600, emaMaintenanceKcal:null, lastAdjustmentWeek:null, weeklyGainGoalKg:0.3, mealsPerDay:5 };
-    const bug = E.legacy.adjust(lp, s.raw.weights, s.raw.logs, s.asOf), fix = E.legacy.adjust(lp, s.raw.weights, s.raw.logs, s.asOf, { fixNullBug:true });
-    check('Legacy · reproduce el bug (suavizado = 0,4 × bruto)', Math.abs(bug.record.smoothedMaintenance - 0.4*bug.record.rawMaintenance) < 1e-6, bug.record.smoothedMaintenance);
-    check('Legacy · sin el bug el objetivo sería mant. + 330', fix.record.newTarget === Math.round(fix.record.rawMaintenance + 330), fix.record.newTarget);
     const st = state(s, 2600);
-    check('Nuevo motor · sin estado recursivo: nunca propone < mantenimiento estimado', st.decision.newTarget >= Math.round(st.maintenance.posterior) - 10, `${st.decision.newTarget} vs ${Math.round(st.maintenance.posterior)}`); }
+    check('Motor · sin estado recursivo: nunca propone < mantenimiento estimado', st.decision.newTarget >= Math.round(st.maintenance.posterior) - 10, `${st.decision.newTarget} vs ${Math.round(st.maintenance.posterior)}`); }
   // ---- Controlador: guardas explícitas
   { const s = synth({ days:35, rate:0, intake:2500, target:2500, seed:17 });
     const st = state(s, 2500, { lastChange:{ date: U.addDays(s.asOf,-3), delta:100 } });
@@ -1659,7 +1624,7 @@ function runEngineTests(E, log){
     const a = E.computeState(E.filterRawBefore(s.raw, d), s.profile, d, { currentTarget:2500 });
     const mod = JSON.parse(JSON.stringify(s.raw)); for(let i=30;i<40;i++){ const k=U.addDays('2026-01-01',i); mod.weights[k][0].kg += 5; mod.logs[k].forEach(e=>e.kcal*=3); }
     const b = E.computeState(E.filterRawBefore(mod, d), s.profile, d, { currentTarget:2500 });
-    check('Backtest · cambiar datos FUTUROS no altera el estado del día D', JSON.stringify([a.rate,a.maintenance,a.decision]) === JSON.stringify([b.rate,b.maintenance,b.decision])); }
+    check('Sin fuga · cambiar datos FUTUROS no altera el estado del día D', JSON.stringify([a.rate,a.maintenance,a.decision]) === JSON.stringify([b.rate,b.maintenance,b.decision])); }
   // ---- Predicciones
   { const st = state(synth({ days:35, rate:0.3, seed:20 }));
     check('Predicción · ritmo claro → rango de fechas en meses', st.predictions.current.available && /\d{4}/.test(st.predictions.current.text), st.predictions.current.text);
@@ -2278,9 +2243,8 @@ async function migrateToV2(){
   }
   await safeSet('targetTimeline', tl);
   await safeSet('decisionLog', decisions);
-  // 5) Parámetros del algoritmo anterior (solo para el backtest) y limpieza del perfil
+  // 5) Limpieza del perfil (campos del algoritmo anterior)
   const fresh = (await safeGet('profile')) || {};
-  await safeSet('legacySnapshot', { weeklyGainGoalKg: Number(fresh.weeklyGainGoalKg) || 0.3, goalOffset: fresh.goalOffset ?? null, activity: fresh.activity ?? null, mealsPerDay: fresh.mealsPerDay || 5, initialTarget: tl.length ? tl[0].kcal : null, emaMaintenanceKcalAtMigration: fresh.emaMaintenanceKcal ?? null });
   ['activity', 'goalOffset', 'weeklyGainGoalKg', 'emaMaintenanceKcal', 'lastAdjustmentWeek', 'geminiModel'].forEach(k => delete fresh[k]);
   fresh.ratePreset = fresh.ratePreset || 'estandar';
   fresh.bulkStartDate = fresh.bulkStartDate || firstDate;
@@ -2537,6 +2501,7 @@ async function renderStepsCard(){
   const sum = $('steps-summary'); if(!sum) return;
   const st = getEngineState(), a = st.activity || {}, today = todayStr(), days = [];
   for(let i = 27; i >= 0; i--){ const d = BulkEngine.util.addDays(today, -i); days.push({ date: d, v: await getSteps(d) }); }
+  setMeta('meta-steps', a.avg7 ? `${fmtN(a.avg7)} /día` : '');
   sum.innerHTML = a.avg7 ? kv('Media 7 días', `${fmtN(a.avg7)} pasos/día`, `${a.n7} días con dato`) + kv('3 semanas previas', a.avgPrev ? `${fmtN(a.avgPrev)} pasos/día` : '—', a.changePct !== null ? `${fmtS(a.changePct*100,0)} % vs. ahora` : 'faltan días para comparar') : '<div class="muted-line">Aún no hay pasos. Regístralos en Hoy → fila «Pasos».</div>';
   const canvas = $('stepsChart'); if(!canvas || typeof Chart === 'undefined') return;
   if(stepsChartInstance){ stepsChartInstance.destroy(); stepsChartInstance = null; }
@@ -2601,7 +2566,7 @@ async function renderMissingToday(sums, tgt, date, logs){
   const rem = { kcal: tgt.kcal - sums.kcal, p: Math.max(0, tgt.p - sums.p), c: Math.max(0, tgt.c - sums.c), f: Math.max(0, tgt.f - sums.f) };
   if(rem.kcal <= 100){ el.style.display = 'none'; return; }
   const now = new Date(), hour = now.getHours() + now.getMinutes() / 60, show = hour >= 16 || window.__fillShowNow;
-  const cells = `<div class="miss-grid"><div class="miss-cell"><b>${Math.round(rem.kcal)}</b><span>kcal</span></div><div class="miss-cell"><b>${Math.round(rem.p)} g</b><span>proteína</span></div><div class="miss-cell"><b>${Math.round(rem.c)} g</b><span>hidratos</span></div><div class="miss-cell"><b>${Math.round(rem.f)} g</b><span>grasas</span></div></div>`;
+  const cells = `<div class="stat-strip"><div class="stat-cell"><b>${Math.round(rem.kcal)}</b><span>kcal</span></div><div class="stat-cell"><b>${Math.round(rem.p)} g</b><span>proteína</span></div><div class="stat-cell"><b>${Math.round(rem.c)} g</b><span>hidratos</span></div><div class="stat-cell"><b>${Math.round(rem.f)} g</b><span>grasas</span></div></div>`;
   let body = '';
   if(!show){
     body = `<div class="fill-note">Sin prisa: la propuesta de relleno aparece a partir de las 16:00.</div><button class="secondary" style="width:100%;" onclick="window.__fillShowNow=true; updateDashboardUI();">Ver propuesta de relleno ya</button>`;
@@ -2618,7 +2583,7 @@ async function renderMissingToday(sums, tgt, date, logs){
         <button class="primary" style="width:100%; padding:12px;" onclick="logFillProposal()">➕ Registrar propuesta (pesado con báscula)</button>`;
     }
   }
-  el.innerHTML = `<h3>🎯 Lo que te falta hoy</h3>${cells}${body}`;
+  el.innerHTML = `${'<div class="card-head"><span class="chip">🎯</span><div class="card-title"><h3>Lo que te falta hoy</h3><small>Cerrar el día sin saturarte</small></div></div>'}${cells}${body}`;
   el.style.display = 'block';
 }
 window.logFillProposal = async () => {
@@ -3169,16 +3134,14 @@ async function setManualTarget(){
   await updateDashboardUI(); await refreshInsights(); showToast(`Objetivo fijado en ${k} kcal`);
 }
 // Objetivo actual (Ajustes): kcal y macros dinámicos con su base de cálculo.
+function setMeta(id, text){ const el = $(id); if(el) el.textContent = text || ''; }
 function renderObjectiveSummary(){
   const el = $('objective-summary'); if(!el) return;
-  const k = macroPerKg(profile), ref = Number(profile.macroWeightKg), T = getTargets();
-  el.innerHTML = kv('Objetivo diario', `${Math.round(T.kcal)} kcal`, 'lo ajusta el motor con tu peso (ver Progreso)')
-    + kv('Proteína', `${Math.round(T.p)} g`, `${fmtN(k.protein,1)} g por kg`)
-    + kv('Grasas', `${Math.round(T.f)} g`, `${fmtN(k.fat,1)} g por kg`)
-    + kv('Carbohidratos', `${Math.round(T.c)} g`, 'lo que resta de las kcal')
-    + kv('Azúcar', `${Math.round(T.s)} g`, '5 % de las kcal');
-  const n = $('macro-dyn-note');
-  if(n) n.innerText = ref > 0 ? `Macros dinámicos: calculados con ${fmtN(ref,1)} kg de peso tendencia. Se recalculan solos si ese peso sube o baja ≥ ${fmtN(MACRO_RECALC_KG,1)} kg (o ${fmtN(MACRO_RECALC_PCT*100,1)} %) y con cada cambio de kcal.` : '';
+  const T = getTargets(), cell = (v, l) => `<div class="stat-cell"><b>${v}</b><span>${l}</span></div>`;
+  el.innerHTML = `<div class="stat-strip">${cell(Math.round(T.kcal), 'kcal')}${cell(Math.round(T.p) + ' g', 'proteína')}${cell(Math.round(T.c) + ' g', 'hidratos')}${cell(Math.round(T.f) + ' g', 'grasas')}${cell(Math.round(T.s) + ' g', 'azúcar')}</div>`;
+  setMeta('meta-goal', `${Math.round(T.kcal)} kcal`);
+  const n = $('macro-dyn-note'), ref = Number(profile.macroWeightKg);
+  if(n) n.textContent = ref > 0 ? `Macros dinámicos: calculados con ${fmtN(ref,1)} kg de peso tendencia. Se recalculan si ese peso sube o baja ≥ ${fmtN(MACRO_RECALC_KG,1)} kg (o ${fmtN(MACRO_RECALC_PCT*100,1)} %) y con cada cambio de kcal. Carbohidratos = lo que resta; azúcar = 5 % de las kcal.` : '';
 }
 
 // =========================================
@@ -3382,6 +3345,7 @@ async function renderMeasureTrends(){
     const a = H[f.k][0], b = H[f.k][H[f.k].length - 1], d = b.v - a.v;
     return H[f.k].length >= 2 ? kv(f.label, `${fmtN(b.v,1)} cm`, `${fmtS(d,1)} cm desde el ${a.date} (${fmtN(a.v,1)} cm)`) : kv(f.label, `${fmtN(b.v,1)} cm`, `1 medida (${b.date}); falta otra para ver tendencia`);
   });
+  setMeta('meta-measure', H.waist.length ? `${fmtN(H.waist[H.waist.length-1].v, 1)} cm` : '');
   if(!rows.length){ el.innerHTML = '<div class="muted-line">Aún no hay medidas. Mídete una vez por semana, misma hora y mismo punto (cintura a la altura del ombligo, relajado).</div>'; return; }
   let verdict = '';
   const W = H.waist;
@@ -4040,24 +4004,6 @@ async function renderDecisionLog(){
   html += log.length ? log.map(d => `<details class="decision-item"><summary><span>${d.date}</span><b class="act-${String(d.action).toLowerCase()}">${d.action}</b><span>${d.prevTarget}${d.delta ? ` → ${d.newTarget}` : ''} kcal</span>${d.legacy ? '<span class="mini-tag">v1</span>' : ''}</summary><div class="decision-reason">${escAttr(d.reason)}</div>${d.inputs ? `<pre class="trace">${escAttr(JSON.stringify(d.inputs, null, 2))}</pre>` : ''}</details>`).join('') : '<div class="muted-line">Sin evaluaciones todavía.</div>';
   el.innerHTML = html;
 }
-window.runBacktestUI = async () => {
-  const el = $('backtest-content'); if(!el) return;
-  const st = getEngineState(); const U = BulkEngine.util;
-  if(st.days.length < 3){ el.innerHTML = '<div class="muted-line">Necesitas al menos unos días de datos.</div>'; return; }
-  const snap = (await safeGet('legacySnapshot')) || {};
-  const tl = st.raw.timeline;
-  const initial = tl.length ? tl[0].kcal : Math.round(profile.targetKcal);
-  const rows = BulkEngine.backtest(st.raw, profile, { from: U.addDays(st.days[0].date, 1), to: st.asOf, initialTarget: initial,
-    legacyProfile: { emaMaintenanceKcal: null, lastAdjustmentWeek: null, weeklyGainGoalKg: snap.weeklyGainGoalKg || 0.3, mealsPerDay: profile.mealsPerDay || 5 } });
-  window.__lastBacktest = rows;
-  const tone = r => r.newAction === 'SUBIR' ? 'act-subir' : r.newAction === 'BAJAR' ? 'act-bajar' : '';
-  el.innerHTML = `<div class="muted-line" style="margin-top:0;">Cada día solo "ve" los datos anteriores a ese día (decisión por la mañana). Ambos algoritmos parten de ${initial} kcal y evolucionan con sus propias decisiones; "real" es lo que mostraba la app.</div>
-    <div class="table-wrap"><table class="data-table audit"><thead><tr><th>Día</th><th>Real</th><th>Antiguo</th><th>Nuevo</th><th>Motivo nuevo</th><th>Ritmo [IC80]</th><th>Conf.</th><th>Mant.</th></tr></thead><tbody>
-    ${rows.map(r => `<tr title="${escAttr(r.newReasonText)}"><td>${shortDate(r.date)}</td><td>${Math.round(r.observedTarget)}</td><td>${Math.round(r.legacyTarget)}${r.legacyEvent ? ' ⚠' : ''}</td><td class="${tone(r)}">${r.newTarget}</td><td>${r.newReason}</td><td>${r.rate !== null ? `${fmtS(r.rate)} [${fmtS(r.ciLow)}, ${fmtS(r.ciHigh)}]` : '—'}</td><td>${r.confidence}</td><td>${fmtN(r.maintenance)}</td></tr>`).join('')}
-    </tbody></table></div>
-    ${rows.filter(r => r.legacyEvent).map(r => `<div class="muted-line">⚠ ${r.date} algoritmo antiguo: ${r.legacyEvent}</div>`).join('')}
-    <div class="muted-line">Antiguo = port fiel del algoritmo anterior (incluido el fallo Number(null)=0), validado contra su código original. Simula un único dispositivo sin sobrescrituras de sincronización.</div>`;
-};
 
 // Refresca lo que depende del motor: aviso de días dudosos (Hoy) y la pestaña abierta (Progreso, Gym o Ajustes).
 async function refreshInsights(){
@@ -4071,6 +4017,11 @@ async function refreshInsights(){
 }
 // Progreso · análisis (cambia con cada dato nuevo)
 async function renderBodyTab(){
+  { const st = getEngineState();
+    setMeta('meta-bulk', st.rate && st.confidence.level !== 'BAJA' ? `${fmtS(st.rate.perWeek)} kg/sem` : '—');
+    setMeta('meta-weight', st.weight.points.length ? `${fmtN(st.weight.level, 1)} kg` : '—');
+    setMeta('meta-intake', st.intake.n ? `${fmtN(st.intake.mean)} kcal` : '—');
+    setMeta('meta-target', `${Math.round(profile.targetKcal || 0)} kcal`); }
   renderBulkStatus('bulk-status-body'); renderPredictionCard();
   await renderWeightChart();
   await renderTrendCharts(); renderInsightsList('insights-nutrition', ['eating', 'logerr']);
@@ -4295,6 +4246,7 @@ async function renderPhotoGallery(){
   const controls = $('photo-compare-controls');
   if(!gallery) return;
   const dates = await getPhotoDates();
+  setMeta('meta-photos', dates.length ? `${dates.length} foto${dates.length === 1 ? '' : 's'}` : '');
   if(!dates.length){
     gallery.innerHTML = '<div class="empty-state">Aún no has guardado ninguna foto.</div>';
     if(controls) controls.style.display = 'none';
@@ -4375,10 +4327,9 @@ async function buildDiagnosticReport(){
   const weighIns = [], food = [];
   for(const [date, arr] of Object.entries(st.raw.weights).sort()) (arr || []).forEach(e => weighIns.push({ date, time: e.time || null, kg: e.kg, id: e.id || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, edits: e.edits || [] }));
   for(const [date, arr] of Object.entries(st.raw.logs).sort()) (arr || []).forEach(e => food.push({ date, id: e.id, time: e.time || null, label: e.label, kcal: r2(e.kcal,1), p: r2(e.p,1), c: r2(e.c,1), f: r2(e.f,1), s: r2(e.s || 0,1), source: e.source || null, originalText: e.originalText || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, corrected: !!e.corrected, aiEstimate: e.ai ? { kcal: e.ai.kcal, range: e.ai.range, confidence: e.ai.confidence, assumptions: e.ai.assumptions, model: e.ai.model, promptVersion: e.ai.promptVersion } : null }));
-  const snap = (await safeGet('legacySnapshot')) || {};
   const tl = st.raw.timeline;
-  let backtest = [];
-  try { if(st.days.length >= 3) backtest = BulkEngine.backtest(st.raw, profile, { from: U.addDays(st.days[0].date, 1), to: st.asOf, initialTarget: tl.length ? tl[0].kcal : Math.round(profile.targetKcal), legacyProfile: { emaMaintenanceKcal: null, lastAdjustmentWeek: null, weeklyGainGoalKg: snap.weeklyGainGoalKg || 0.3, mealsPerDay: profile.mealsPerDay || 5 } }); } catch(e){ console.error(e); }
+  let replay = [];
+  try { if(st.days.length >= 3) replay = BulkEngine.replay(st.raw, profile, { from: U.addDays(st.days[0].date, 1), to: st.asOf, initialTarget: tl.length ? tl[0].kcal : Math.round(profile.targetKcal) }); } catch(e){ console.error(e); }
   const rate = st.rate ? { kgPerWeek: r2(st.rate.perWeek,4), ciLow80: r2(st.rate.ciLow,4), ciHigh80: r2(st.rate.ciHigh,4), pctBodyweightPerWeek: r2(st.rate.perWeek / st.weight.level * 100, 3), weighIns: st.rate.n, spanDays: st.rate.span, window: [st.rate.firstDate, st.rate.lastDate], residualSdKg: r2(st.rate.residualSD,3), lag1Autocorrelation: r2(st.rate.rho,3), effectiveN: r2(st.rate.nEff,1), method: 'OLS sobre pesajes no atípicos (28 días), SE corregido por autocorrelación AR(1)' } : null;
   const M = st.maintenance;
   return {
@@ -4400,12 +4351,12 @@ async function buildDiagnosticReport(){
     ESTIMATED: {
       maintenance: { method: M.method, bmrMifflin: r2(M.bmr,0), activityFactor: r2(M.activityFactor,3), formulaKcal: r2(M.prior,0), formulaSd: r2(M.priorSd,0), observedKcal: r2(M.obs,0), observedSd: r2(M.obsSd,0), estimateKcal: r2(M.posterior,0), estimateSd: r2(M.posteriorSd,0), dataWeight: r2(M.dataWeight,3),
         formula: 'observado = ingesta media (días completos) − pendiente(kg/día) × 7700; estimación = media ponderada por precisión de fórmula y observado' },
-      maintenanceHistory: backtest.map(b => ({ date: b.date, estimateKcal: r2(b.maintenance,0), sd: r2(b.maintenanceSd,0), method: b.maintenanceMethod }))
+      maintenanceHistory: replay.map(b => ({ date: b.date, estimateKcal: r2(b.maintenance,0), sd: r2(b.maintenanceSd,0), method: b.maintenanceMethod }))
     },
     PREDICTED: st.predictions,
     insights: st.insights,
-    backtest,
-    legacy: { targetHistory: (await safeGet('targetHistory')) || [], legacySnapshot: snap, migrationReport: (await safeGet('migrationReport')) || null }
+    replay,
+    migration: (await safeGet('migrationReport')) || null
   };
 }
 
@@ -4428,7 +4379,7 @@ function toCSV(rows, cols){
 }
 function diagnosticTables(rep){
   const C = rep.CALCULATED, O = rep.OBSERVED;
-  const dec = C.decisionLog.map(d => ({ date: d.date, action: d.action, reasonCode: d.reasonCode, prevTarget: d.prevTarget, newTarget: d.newTarget, delta: d.delta, needed: d.needed, legacy: !!d.legacy, reason: d.reason, rateKgWk: d.inputs?.rate?.kgPerWeek, ciLow: d.inputs?.rate?.ciLow, ciHigh: d.inputs?.rate?.ciHigh, maintenance: d.inputs?.maintenance?.estimateKcal, maintenanceSd: d.inputs?.maintenance?.estimateSd, intakeMean: d.inputs?.intake?.meanKcal, adherence: d.inputs?.adherence?.ratio, confidence: d.inputs?.confidence?.level, status: d.inputs?.status }));
+  const dec = C.decisionLog.map(d => ({ date: d.date, action: d.action, reasonCode: d.reasonCode, prevTarget: d.prevTarget, newTarget: d.newTarget, delta: d.delta, needed: d.needed, migrated: !!d.legacy, reason: d.reason, rateKgWk: d.inputs?.rate?.kgPerWeek, ciLow: d.inputs?.rate?.ciLow, ciHigh: d.inputs?.rate?.ciHigh, maintenance: d.inputs?.maintenance?.estimateKcal, maintenanceSd: d.inputs?.maintenance?.estimateSd, intakeMean: d.inputs?.intake?.meanKcal, adherence: d.inputs?.adherence?.ratio, confidence: d.inputs?.confidence?.level, status: d.inputs?.status }));
   const summary = [
     ['asOf', rep.meta.asOf], ['engineVersion', rep.meta.engineVersion], ['weightTrendKg', C.weightTrendLevelKg], ['rateKgPerWeek', C.rate?.kgPerWeek], ['rateCiLow80', C.rate?.ciLow80], ['rateCiHigh80', C.rate?.ciHigh80],
     ['rangeLowKgWk', +C.targetRange.low.toFixed(3)], ['rangeHighKgWk', +C.targetRange.high.toFixed(3)], ['status', C.status.code], ['confidence', C.confidence.level],
@@ -4442,9 +4393,9 @@ function diagnosticTables(rep){
     'pesajes.csv': [O.weighIns, ['date','time','kg','id','createdAt','updatedAt','deletedAt','edits']],
     'comidas.csv': [O.foodEntries, ['date','time','label','kcal','p','c','f','s','source','corrected','originalText','id','createdAt','updatedAt','deletedAt','aiEstimate']],
     'objetivo_timeline.csv': [O.targetTimeline, ['date','kcal','prev','delta','source','approx','reason','decisionId','id']],
-    'decisiones.csv': [dec, ['date','action','reasonCode','prevTarget','newTarget','delta','needed','legacy','rateKgWk','ciLow','ciHigh','maintenance','maintenanceSd','intakeMean','adherence','confidence','status','reason']],
+    'decisiones.csv': [dec, ['date','action','reasonCode','prevTarget','newTarget','delta','needed','migrated','rateKgWk','ciLow','ciHigh','maintenance','maintenanceSd','intakeMean','adherence','confidence','status','reason']],
     'correcciones_ia.csv': [O.aiCorrections.map(c => ({ ...c, aiKcal: c.ai?.kcal, finalKcal: c.final?.kcal })), ['date','text','label','aiKcal','finalKcal','deltaKcal','deltaPct','model','promptVersion','entryId']],
-    'backtest.csv': [rep.backtest, ['date','weighIns','completeDays','observedTarget','legacyTarget','legacyEvent','newTarget','newAction','newReason','rate','ciLow','ciHigh','status','confidence','maintenance','maintenanceSd','intakeMean','adherence']]
+    'reconstruccion.csv': [rep.replay, ['date','weighIns','completeDays','observedTarget','newTarget','newAction','newReason','rate','ciLow','ciHigh','status','confidence','maintenance','maintenanceSd','intakeMean','adherence']]
   };
 }
 async function exportDiagnosticCSV(rep, base){
@@ -4540,7 +4491,7 @@ async function exportDiagnosticPDF(rep, base){
   if(E.maintenanceHistory.length){
     ensure(55); y += 5; pdfChart(doc, M0 + 10, y, W - 2*M0 - 10, 40, { series: [
       { type: 'line', points: E.maintenanceHistory.map((m, i) => ({ x: i, y: m.estimateKcal })), color: [90,110,170], width: 0.8, label: 'Mantenimiento estimado (a fecha de cada día)' },
-      { type: 'line', points: rep.backtest.map((b, i) => ({ x: i, y: b.observedTarget })), color: [200,150,60], width: 0.6, label: 'Objetivo real' }
+      { type: 'line', points: rep.replay.map((b, i) => ({ x: i, y: b.observedTarget })), color: [200,150,60], width: 0.6, label: 'Objetivo real' }
     ], yFmt: v => v.toFixed(0), xLabels: [{ x: 0, text: E.maintenanceHistory[0].date }, { x: E.maintenanceHistory.length - 1, text: E.maintenanceHistory[E.maintenanceHistory.length-1].date }] }); y += 50;
   }
   // Objetivo
@@ -4563,15 +4514,14 @@ async function exportDiagnosticPDF(rep, base){
   para(`${O.foodEntries.filter(e => !e.deletedAt).length} registros activos, ${O.foodEntries.filter(e => e.deletedAt).length} borrados (se conservan para auditoría), ${O.foodEntries.filter(e => e.aiEstimate).length} con estimación v2 guardada, ${corr.length} correcciones tuyas.`);
   if(corr.length) table(['Fecha', 'Texto', 'IA', 'Final', 'Dif.'], corr.map(c => [c.date, c.text, f(c.ai?.kcal), f(c.final?.kcal), `${c.deltaKcal > 0 ? '+' : ''}${c.deltaKcal}`]));
   table(['Fecha', 'Hora', 'Comida', 'Kcal', 'P', 'C', 'G', 'Fuente', 'Estado', 'Texto original'], O.foodEntries.map(e => [e.date, e.time || '', e.label, f(e.kcal), f(e.p), f(e.c), f(e.f), e.source || '', e.deletedAt ? 'borrada' : e.corrected ? 'corregida' : '', e.originalText || '']), { fs: 6, columnStyles: { 9: { cellWidth: 45 } } });
-  // Backtest
-  h1('10. Backtest sin fuga de datos (algoritmo anterior vs nuevo)');
-  para('Cada día D solo usa datos anteriores a D. Ambos algoritmos parten del mismo objetivo y evolucionan con sus decisiones; "real" es lo que mostraba la app. El algoritmo anterior es un port fiel (incluido el fallo Number(null)=0) validado contra el código original.');
-  if(rep.backtest.length) table(['Día', 'Real', 'Antiguo', 'Nuevo', 'Acción', 'Motivo', 'Ritmo', 'IC80', 'Conf.', 'Mant.'], rep.backtest.map(b => [b.date, Math.round(b.observedTarget), Math.round(b.legacyTarget) + (b.legacyEvent ? ' !' : ''), b.newTarget, b.newAction, b.newReason, f(b.rate,3), b.rate !== null ? `${f(b.ciLow,2)}..${f(b.ciHigh,2)}` : '', b.confidence, f(b.maintenance)]), { fs: 6.5 });
-  rep.backtest.filter(b => b.legacyEvent).forEach(b => para(`! ${b.date} algoritmo anterior: ${b.legacyEvent}`, 7.5));
+  // Reconstrucción diaria
+  h1('10. Reconstrucción día a día (sin fuga de datos)');
+  para('Cada día D solo usa datos anteriores a D. "Real" es el objetivo que mostraba la app; "Nuevo" es lo que habría decidido el motor actual partiendo del mismo objetivo inicial.');
+  if(rep.replay.length) table(['Día', 'Real', 'Nuevo', 'Acción', 'Motivo', 'Ritmo', 'IC80', 'Conf.', 'Mant.'], rep.replay.map(b => [b.date, Math.round(b.observedTarget), b.newTarget, b.newAction, b.newReason, f(b.rate,3), b.rate !== null ? `${f(b.ciLow,2)}..${f(b.ciHigh,2)}` : '', b.confidence, f(b.maintenance)]), { fs: 6.5 });
   // Metodología
   h1('11. Metodología');
   para('Tendencia: media exponencial temporal (alfa 0,15/día, el peso de cada pesaje depende de los días transcurridos; semilla = mediana de los 3 primeros). Atípicos: filtro de Hampel (±3 días, 3 × MAD, mínimo 0,3 kg). Ritmo: regresión lineal de 28 días sobre pesajes no atípicos; intervalo del 80 % con error estándar corregido por autocorrelación. Día completo: ≥2 registros y ≥60 % de tu mediana, o confirmado por ti; los dudosos no cuentan. Mantenimiento: combinación bayesiana (ponderada por precisión) de Mifflin-St Jeor × actividad (±12 %) y el balance observado (ingesta − pendiente × 7700), cuya incertidumbre incluye el error de registro (15 % sistemático + error aleatorio por entrada según el rango de la IA, báscula y comidas fuera). Ajuste: solo con confianza media/alta; nunca baja si ganas por debajo del rango; no sube si comes <90 % del objetivo; zona muerta 50 kcal; pasos ≤100/150 kcal; ≥7 días entre cambios; sin invertir el sentido en 21 días; nunca por debajo del mantenimiento estimado.');
-  if(rep.legacy.migrationReport) para(`Migración v2: ${JSON.stringify(rep.legacy.migrationReport)}`, 7);
+  if(rep.migration) para(`Migración v2: ${JSON.stringify(rep.migration)}`, 7);
   const pages = doc.getNumberOfPages();
   for(let i = 1; i <= pages; i++){ doc.setPage(i); doc.setFontSize(7); doc.setTextColor(140); doc.text(`Bulking OS · diagnóstico ${rep.meta.asOf} · ${i}/${pages}`, W - M0, 292, { align: 'right' }); }
   doc.save(`${base}.pdf`);
