@@ -516,6 +516,26 @@
   #weight-day-list, #measure-day-list { margin-top: 6px; }
   #steps-summary:empty { display: none; }
   @media (max-width: 760px) { .glass-card { padding: 16px 16px; border-radius: 18px; margin-bottom: 10px; } }
+
+  /* Agua */
+  .water-row { display: flex; align-items: center; gap: 20px; }
+  .bottle { width: 68px; height: 136px; flex: none; overflow: visible; }
+  .bottle.full { --tone: rgb(127,174,148); }
+  .water-level { transition: transform 1s cubic-bezier(.22,.8,.3,1); }
+  .wave { animation: wave 3.4s linear infinite; }
+  @keyframes wave { to { transform: translateX(-40px); } }
+  @media (prefers-reduced-motion: reduce) { .wave { animation: none; } .water-level { transition: none; } }
+  .water-side { flex: 1; min-width: 0; }
+  .water-num { font-family: 'Space Grotesk', sans-serif; font-size: .95rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .water-num b { font-size: 2.3rem; font-weight: 600; letter-spacing: -0.04em; color: var(--text); }
+  .water-sub { margin-top: 2px; font-size: .74rem; color: var(--text-dim); min-height: 1.1em; }
+  .water-sub.done { color: var(--green); }
+  .water-btns { display: flex; gap: 6px; margin-top: 12px; }
+  .water-btns button { flex: 1; padding: 10px 0; font-size: .8rem; }
+  .water-btns .undo { flex: 0 0 40px; font-size: 1rem; }
+  .water-chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+  .chip-toggle { padding: 5px 11px; border-radius: 99px; background: none; border: 1px solid var(--glass-border); color: var(--text-dim); font-size: .7rem; font-weight: 600; cursor: pointer; }
+  .chip-toggle.on { color: var(--tone); border-color: rgba(var(--tone-rgb), .5); background: rgba(var(--tone-rgb), .12); }
 </style>
 </head>
 <body>
@@ -570,6 +590,42 @@
       <div class="ai-status" id="ai-status"></div>
       <div id="favorites-row" class="favorites-row" style="display:none;"></div>
       <div id="food-review" class="food-review" style="display:none;"></div>
+    </div>
+
+    <div class="glass-card water" id="water-card" data-tone="blue">
+      <div class="card-head"><h3>Agua</h3><b class="card-meta" id="meta-water"></b></div>
+      <div class="water-row">
+        <svg class="bottle" id="water-bottle" viewBox="0 0 80 160" aria-hidden="true">
+          <defs>
+            <clipPath id="bottle-clip"><path d="M33 14H47V28C47 34 68 38 68 54V146Q68 154 60 154H20Q12 154 12 146V54C12 38 33 34 33 28Z"/></clipPath>
+            <linearGradient id="water-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--tone); stop-opacity:.9"/><stop offset="1" style="stop-color:var(--tone); stop-opacity:.5"/></linearGradient>
+          </defs>
+          <g clip-path="url(#bottle-clip)">
+            <rect x="0" y="0" width="80" height="160" fill="rgba(255,255,255,0.03)"/>
+            <g id="water-level" class="water-level" style="transform: translateY(170px)">
+              <g class="wave"><path d="M0 5Q10 0 20 5T40 5T60 5T80 5T100 5T120 5T140 5T160 5V170H0Z" fill="url(#water-grad)"/></g>
+            </g>
+            <g stroke="rgba(255,255,255,0.32)" stroke-width="1"><line x1="57" x2="68" y1="124" y2="124"/><line x1="52" x2="68" y1="94" y2="94"/><line x1="57" x2="68" y1="64" y2="64"/></g>
+          </g>
+          <path d="M33 14H47V28C47 34 68 38 68 54V146Q68 154 60 154H20Q12 154 12 146V54C12 38 33 34 33 28Z" fill="none" stroke="rgba(255,255,255,0.3)" stroke-width="1.6" stroke-linejoin="round"/>
+          <rect x="31" y="4" width="18" height="10" rx="3" fill="rgba(255,255,255,0.18)"/>
+        </svg>
+        <div class="water-side">
+          <div class="water-num"><b id="water-now">0</b><span> / <span id="water-goal">--</span> L</span></div>
+          <div class="water-sub" id="water-sub"></div>
+          <div class="water-btns">
+            <button class="secondary" onclick="addWater(250)">+250</button>
+            <button class="secondary" onclick="addWater(500)">+500</button>
+            <button class="secondary" onclick="addWater(750)">+750</button>
+            <button class="secondary undo" id="water-undo" onclick="undoWater()" aria-label="Deshacer">↶</button>
+          </div>
+          <div class="water-chips">
+            <button class="chip-toggle" id="chip-train" onclick="toggleWaterCtx('train')">Entreno +0,5 L</button>
+            <button class="chip-toggle" id="chip-heat" onclick="toggleWaterCtx('heat')">Calor +0,5 L</button>
+          </div>
+        </div>
+      </div>
+      <details class="sub"><summary>Cómo se calcula</summary><div id="water-detail"></div></details>
     </div>
 
     <details id="missing-today" class="glass-card fold" data-tone="rose" style="display:none;"></details>
@@ -1286,7 +1342,30 @@ function replay(raw, profile, { from, to, initialTarget }){
   return rows;
 }
 
-const api = { VERSION, CONFIG, computeState, decide, buildDays, hampel, trendSeries, weightRate, intakeStats, adherence,
+// ------------------------------------------------ 11b) agua (objetivo diario de líquidos)
+// Agua TOTAL de referencia = la MAYOR de tres cifras (criterio conservador, sin sumarlas):
+//   · Ingesta adecuada EFSA 2010 (adultos ≥14 años): 2,5 L hombres · 2,0 L mujeres. La edad adulta no la cambia.
+//   · Regla de peso: 35 mL/kg (habitual en nutrición clínica; escala con el peso corporal).
+//   · Regla de energía: ~1 mL por kcal del objetivo (regla clásica; en un bulk se come más y hace falta más agua).
+// Solo una parte se BEBE: EFSA/IOM estiman ~20 % del agua total en la comida (verduras, fruta, arroz…).
+// Ajustes por día: entreno (+0,5 L, conservador: la sudoración va de 0,4 a 1,8 L/h según ACSM 2007) y calor (+0,5 L).
+// Cuenta cualquier líquido (agua, infusiones, café…). No es un requisito individual: la sed y el color de la orina mandan.
+const WATER = Object.freeze({ AI_TOTAL_ML: { m: 2500, f: 2000 }, ML_PER_KG: 35, ML_PER_KCAL: 1, FOOD_SHARE: 0.20,
+  TRAIN_ML: 500, HEAT_ML: 500, MIN_ML: 1500, MAX_ML: 4500, ROUND_ML: 50 });
+function waterGoal(profile, { weightKg, kcal, train = false, heat = false } = {}){
+  const sex = profile && profile.sex === 'f' ? 'f' : 'm';
+  const w = Number(weightKg) > 0 ? Number(weightKg) : (Number(profile && profile.weight) || 0);
+  const k = Number(kcal) > 0 ? Number(kcal) : 0;
+  const refs = { efsa: WATER.AI_TOTAL_ML[sex], weight: w * WATER.ML_PER_KG, energy: k * WATER.ML_PER_KCAL };
+  const basis = Object.keys(refs).reduce((best, key) => refs[key] > refs[best] ? key : best, 'efsa');
+  const totalMl = refs[basis];
+  const drinkMl = totalMl * (1 - WATER.FOOD_SHARE);
+  const extraMl = (train ? WATER.TRAIN_ML : 0) + (heat ? WATER.HEAT_ML : 0);
+  const goalMl = Math.max(WATER.MIN_ML, Math.min(WATER.MAX_ML, roundTo(drinkMl + extraMl, WATER.ROUND_ML)));
+  return { goalMl, totalMl, drinkMl, extraMl, basis, refs };
+}
+
+const api = { VERSION, CONFIG, WATER, waterGoal, computeState, decide, buildDays, hampel, trendSeries, weightRate, intakeStats, adherence,
   maintenanceEstimate, activityFactor, mifflin, targetRange, confidence, rateStatus, predictions, buildInsights, dataQuality,
   replay, filterRawBefore, targetOn, STATUS_LABEL, entryErrorSd, activityStats,
   util: { addDays, diffDays, parseKey, keyOf, median, mean, sd, fmt, fmtSigned, monthLabel, idToTimestamp, roundTo } };
@@ -1372,6 +1451,19 @@ function runEngineTests(E, log){
   { const s = synth({ days:35, rate:0.03, intake:2600, target:2600, seed:4, patch: raw => { raw.steps = {}; for(let i=0;i<35;i++){ raw.steps[U.addDays('2026-01-01', i)] = i < 21 ? 9000 : 6500; } } }); const st = state(s);
     check('S · caída de pasos detectada (<−15 %)', st.activity && st.activity.changePct < -0.15, st.activity && st.activity.changePct);
     check('S · aviso NEAT en el motivo de la decisión', /NEAT/.test(st.decision.reason), st.decision.reasonCode); }
+
+  // ---- CASO W: objetivo de agua
+  { const M = { sex:'m', age:25, weight:71 }, F = { sex:'f', age:25, weight:55 };
+    const a = E.waterGoal(M, { weightKg:71, kcal:2900 });
+    check('W · hombre 71 kg, 2900 kcal → 2300 mL de líquidos (manda la energía)', a.goalMl === 2300 && a.basis === 'energy', `${a.goalMl} ${a.basis}`);
+    const b = E.waterGoal(F, { weightKg:55, kcal:2000 });
+    check('W · mujer 55 kg, 2000 kcal → 1600 mL (mínimo EFSA 2,0 L totales − 20 %)', b.goalMl === 1600 && b.basis === 'efsa', `${b.goalMl} ${b.basis}`);
+    check('W · entreno suma 500 mL', E.waterGoal(M, { weightKg:71, kcal:2900, train:true }).goalMl === 2800);
+    check('W · entreno + calor suman 1000 mL', E.waterGoal(M, { weightKg:71, kcal:2900, train:true, heat:true }).goalMl === 3300);
+    check('W · tope de seguridad 4500 mL', E.waterGoal(M, { weightKg:150, kcal:6000, train:true, heat:true }).goalMl === 4500);
+    check('W · sin datos usa el mínimo EFSA (hombre 2000 mL)', E.waterGoal({ sex:'m' }, {}).goalMl === 2000);
+    check('W · más peso nunca baja el objetivo', E.waterGoal(M, { weightKg:95, kcal:2500 }).goalMl >= E.waterGoal(M, { weightKg:70, kcal:2500 }).goalMl);
+    check('W · la edad adulta no cambia el objetivo (EFSA)', E.waterGoal({ ...M, age:70 }, { weightKg:71, kcal:2900 }).goalMl === a.goalMl); }
   // ---- CASO I: outlier de peso
   { const base = synth({ days:35, rate:0.2, seed:9 }); const s = synth({ days:35, rate:0.2, seed:9, patch: raw => { raw.weights[U.addDays('2026-01-01',20)][0].kg += 3; } });
     const a = state(base), b = state(s);
@@ -2264,6 +2356,61 @@ async function renderDailyAssistant(sums, target, logsCount, date, logs){
 }
 
 // =========================================
+// 💧 AGUA (registro por botones, sin IA)
+// =========================================
+// Se guarda por día: `water:YYYY-MM-DD` = [{ id, ml, time, createdAt }] y `waterctx:YYYY-MM-DD` = { train, heat }.
+// El objetivo lo calcula BulkEngine.waterGoal (peso tendencia, kcal objetivo, sexo y ajustes del día).
+const fmtL = ml => (Math.round(ml / 10) / 100).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+async function getWater(date){ const v = await safeGet('water:' + date); return Array.isArray(v) ? v.filter(e => e && Number(e.ml) > 0) : []; }
+async function getWaterCtx(date){ const v = await safeGet('waterctx:' + date); return { train: !!(v && v.train), heat: !!(v && v.heat) }; }
+const waterTotal = arr => arr.reduce((a, e) => a + Number(e.ml || 0), 0);
+window.addWater = async ml => {
+  ml = Number(ml); if(!Number.isFinite(ml) || ml <= 0 || ml > 3000) return;
+  const arr = await getWater(selectedLogDate), now = Date.now();
+  arr.push({ id: now.toString(36), ml: Math.round(ml), time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }), createdAt: now });
+  await safeSet('water:' + selectedLogDate, arr);
+  if(navigator.vibrate) navigator.vibrate(12);
+  await renderWater(selectedLogDate);
+};
+window.undoWater = async () => {
+  const arr = await getWater(selectedLogDate); if(!arr.length) return;
+  arr.pop();
+  if(arr.length) await safeSet('water:' + selectedLogDate, arr); else await safeRemove('water:' + selectedLogDate);
+  await renderWater(selectedLogDate);
+};
+window.toggleWaterCtx = async key => {
+  if(key !== 'train' && key !== 'heat') return;
+  const ctx = await getWaterCtx(selectedLogDate); ctx[key] = !ctx[key];
+  if(ctx.train || ctx.heat) await safeSet('waterctx:' + selectedLogDate, ctx); else await safeRemove('waterctx:' + selectedLogDate);
+  await renderWater(selectedLogDate);
+};
+async function renderWater(date){
+  const card = $('water-card'); if(!card) return;
+  let weightKg = Number(profile.weight) || 0; try { const l = getEngineState().weight.level; if(l > 0) weightKg = l; } catch(e){}
+  const kcal = getTargets().kcal, goalFor = ctx => BulkEngine.waterGoal(profile, { weightKg, kcal, train: ctx.train, heat: ctx.heat });
+  const arr = await getWater(date), total = waterTotal(arr), ctx = await getWaterCtx(date), g = goalFor(ctx);
+  const f = g.goalMl > 0 ? total / g.goalMl : 0, fill = Math.max(0, Math.min(1, f)), left = g.goalMl - total;
+  $('water-level').style.transform = `translateY(${fill <= 0 ? 170 : 154 - 120 * fill}px)`;
+  $('water-bottle').classList.toggle('full', f >= 1);
+  $('water-now').textContent = fmtL(total); $('water-goal').textContent = fmtL(g.goalMl);
+  const sub = $('water-sub'); sub.classList.toggle('done', left <= 0);
+  sub.textContent = left > 0 ? `quedan ${fmtL(left)} L` : left === 0 ? 'objetivo cumplido' : `objetivo cumplido · +${fmtL(-left)} L`;
+  setMeta('meta-water', total > 0 ? `${Math.round(f * 100)} %` : '');
+  $('chip-train').classList.toggle('on', ctx.train); $('chip-heat').classList.toggle('on', ctx.heat);
+  $('water-undo').disabled = !arr.length;
+  // detalle: de dónde sale el objetivo + media de 7 días
+  const W = BulkEngine.WATER; let sum = 0, hits = 0;
+  for(let i = 0; i < 7; i++){ const d = BulkEngine.util.addDays(date, -i), t = waterTotal(await getWater(d)); sum += t; if(t >= goalFor(await getWaterCtx(d)).goalMl) hits++; }
+  const names = { efsa: 'mínimo EFSA', weight: `${W.ML_PER_KG} mL/kg`, energy: '1 mL/kcal' };
+  $('water-detail').innerHTML =
+      kv('Agua total de referencia', `${fmtL(g.totalMl)} L`, `la mayor de: EFSA ${fmtL(g.refs.efsa)} · ${W.ML_PER_KG} mL/kg ${fmtL(g.refs.weight)} · 1 mL/kcal ${fmtL(g.refs.energy)} (manda ${names[g.basis]})`)
+    + kv('Solo líquidos', `${fmtL(g.drinkMl)} L`, `descontando ~${Math.round(W.FOOD_SHARE * 100)} % que llega en la comida`)
+    + (g.extraMl ? kv('Entreno / calor', `+${fmtL(g.extraMl)} L`) : '')
+    + kv('Media 7 días', `${fmtL(sum / 7)} L`, `${hits}/7 días con objetivo`)
+    + `<div class="muted-line">Cuenta cualquier líquido (agua, infusiones, café). Se recalcula con tu peso tendencia y tus kcal. La edad adulta no lo cambia (EFSA). Es una referencia, no una obligación: tu sed y el color de la orina mandan. Base: EFSA 2010, IOM 2004 y ACSM 2007.</div>`;
+}
+
+// =========================================
 // 👟 PASOS / NEAT
 // =========================================
 async function getSteps(date){ const v = Number(await safeGet('steps:' + date)); return Number.isFinite(v) && v > 0 ? v : null; }
@@ -2418,6 +2565,7 @@ async function updateDashboardUI(){
   bar(sums.p, tgt.p, 'bar-pro', 'txt-pro'); bar(sums.c, tgt.c, 'bar-car', 'txt-car'); bar(sums.f, tgt.f, 'bar-fat', 'txt-fat'); bar(sums.s, tgt.s, 'bar-sugar', 'txt-sugar');
   await renderDailyAssistant(sums, tgt, logs.length, t, logs);
   await renderMissingToday(sums, tgt, t, logs);
+  await renderWater(t);
   checkMeasureReminder();
 
   const list = $('log-list');
