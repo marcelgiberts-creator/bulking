@@ -899,6 +899,10 @@
         <div>Pausar ajuste automático</div>
         <label class="switch"><input type="checkbox" id="prof-pause"><span class="slider"></span></label>
       </div>
+      <div class="toggle-row">
+        <div>Me peso siempre en ayunas<div class="muted-line" style="margin:2px 0 0;">La hora a la que lo registro no importa.</div></div>
+        <label class="switch"><input type="checkbox" id="prof-fasted"><span class="slider"></span></label>
+      </div>
       <button class="primary" onclick="saveProfile()">Guardar</button>
       <div class="inline-form">
         <button class="secondary" onclick="recalcTargetFromModel()" style="flex:1;">Recalcular kcal</button>
@@ -984,7 +988,7 @@ const CONFIG = Object.freeze({
   // · Aleatorio por entrada (independiente, se promedia entre días): según rango de la IA, confianza y origen.
   LOGGING_SYSTEMATIC_FRACTION: 0.15,
   ENTRY_ERR: { AI_RANGE_INFLATION: 1.6, Z80: 1.2816, FLOOR: { alta: 0.15, media: 0.22, baja: 0.32 },
-    CACHED: 0.15, MANUAL: 0.12, LABEL: 0.03, WEIGHED: 0.03, DEFAULT: 0.18, EATEN_OUT_MULT: 1.4 },
+    CACHED: 0.15, MANUAL: 0.12, LABEL: 0.03, WEIGHED: 0.03, USER_KCAL: 0.08, DEFAULT: 0.18, EATEN_OUT_MULT: 1.4 },
   ACTIVITY_DROP_WARN: -0.15,         // pasos −15 % vs. las 3 semanas previas → aviso de NEAT (solo informativo)
   RATE_PRESETS: { conservador: [0.15, 0.30], estandar: [0.25, 0.50], rapido: [0.50, 0.75] },
   DEFAULT_RATE_PRESET: 'estandar',   // 0,25–0,50 % peso/sem (Iraki et al., 2019)
@@ -1036,17 +1040,20 @@ function entryErrorSd(e){
   const k = Number(e && e.kcal) || 0; if(k <= 0) return 0;
   const C = CONFIG.ENTRY_ERR, ai = e.ai || null, src = String(e.source || '');
   let frac;
-  if(e.weighed) frac = C.WEIGHED;
-  else if(ai && ai.explicitBasis) frac = C.LABEL;
+  const prec = e.precision || (e.weighed ? 'weighed' : null);
+  const stated = prec === 'weighed' || prec === 'label' || prec === 'kcal' || !!(ai && ai.explicitBasis);
+  if(prec === 'weighed') frac = C.WEIGHED;
+  else if(prec === 'label' || (ai && ai.explicitBasis && /etiqueta/i.test(ai.explicitBasis))) frac = C.LABEL;
+  else if(prec === 'kcal' || (ai && ai.explicitBasis)) frac = C.USER_KCAL;
   else if(ai) frac = C.FLOOR[ai.confidence] ?? C.DEFAULT;
   else if(/cach|favorit|confirmado/i.test(src)) frac = C.CACHED;
   else frac = /manual/i.test(src) ? C.MANUAL : C.DEFAULT;
   let sdv = frac * k;
-  if(ai && ai.range && !e.weighed && !ai.explicitBasis){
+  if(ai && ai.range && !stated){
     const lo = Number(ai.range.low), hi = Number(ai.range.high);
     if(hi > lo) sdv = Math.max(sdv, (hi - lo) / 2 / C.Z80 * C.AI_RANGE_INFLATION);
   }
-  return e.eatenOut ? sdv * C.EATEN_OUT_MULT : sdv;
+  return (e.eatenOut && !stated) ? sdv * C.EATEN_OUT_MULT : sdv;
 }
 function buildDays(raw, asOf){
   const weights = raw.weights||{}, logs = raw.logs||{};
@@ -1274,11 +1281,15 @@ function decide(state, currentTarget, lastChange, opts={}){
   const gapDown = r ? Math.max(0, r.perWeek - R.mid) * CONFIG.KCAL_PER_KG / 7 : 0;
   const boost = (adh.ratio !== null && adh.ratio >= CONFIG.ADHERENCE_FULL) ? 0.5 * gapUp : 0;
   const needUp = Math.max(needed, roundTo(T + boost, CONFIG.TARGET_ROUND));
+  // Estancamiento: 3 semanas con la tendencia sin avanzar ni la mitad del mínimo esperado y aún por debajo del rango.
+  const stagnant = st === 'POR_DEBAJO' && !!state.stagnation && state.stagnation.gain21 !== null && state.stagnation.gain21 < 0.5 * state.stagnation.expected21;
   let proposal = 0, code = '', why = '';
   if(st === 'DENTRO'){ code='EN_RANGO'; why=`Tu ritmo ${rateTxt} está dentro del rango (${rangeTxt}). Se mantiene.`; }
   else if(st === 'INCIERTO'){ code='INCIERTO'; why=`Tu ritmo ${rateTxt} ${state.status.lean==='below'?'apunta a estar por debajo':'apunta a estar por encima'} del rango (${rangeTxt}), pero el intervalo aún se solapa con él. Se espera a tener más evidencia.`; }
   else if(st === 'POR_DEBAJO'){
     if(adh.ratio !== null && adh.ratio < CONFIG.ADHERENCE_MIN){ code='ADHERENCIA'; why=`Ganas por debajo del rango (${rateTxt} vs ${rangeTxt}), pero solo alcanzas el ${adhTxt}. Subir el objetivo no ayuda si no se alcanza: la prioridad es llegar a ${fmt(T)} kcal. Con tu mantenimiento estimado (${M_txt}) necesitarías ~${fmt(needed)} kcal sostenidas.`; }
+    else if(stagnant && adh.ratio >= CONFIG.ADHERENCE_FULL){ proposal = Math.min(Math.max(needUp - T, 100), CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA); code='ESTANCADO'; why=`Llevas 3 semanas sin avanzar hacia el rango (tendencia ${fmtSigned(state.stagnation.gain21)} kg en 21 días; esperado al menos ${fmt(state.stagnation.expected21 * 0.5, 2)} kg) y cumples el objetivo (${adhTxt}). El mantenimiento modelado se queda corto: se sube al menos 100 kcal (máx. ${CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA} kcal por ajuste, confianza ${conf.level}).`; }
+    else if(stagnant && needUp - T < CONFIG.DEADBAND_KCAL){ code='ESTANCADO_ADHERENCIA'; why=`Llevas 3 semanas sin avanzar (tendencia ${fmtSigned(state.stagnation.gain21)} kg en 21 días) y alcanzas el ${adhTxt}. El objetivo (${fmt(T)}) ya cubre lo necesario (~${fmt(needed)} kcal): no hay que subirlo, hay que cumplirlo. Te faltan ~${fmt(adh.meanGap)} kcal/día de media.`; }
     else if(needUp - T < CONFIG.DEADBAND_KCAL){ code='OBJETIVO_SUFICIENTE'; why=`Ganas por debajo del rango, pero tu objetivo actual (${fmt(T)}) ya cubre lo estimado como necesario (~${fmt(needed)} = mantenimiento ${M_txt} + superávit ${fmt(surplus)}). Nunca se baja estando por debajo del rango.`; }
     else { proposal = Math.min(needUp - T, CONFIG.STEP_MAX[conf.level] || CONFIG.STEP_MAX.MEDIA); code='SUBIR'; why=`Ganas por debajo del rango (${rateTxt} vs ${rangeTxt}) cumpliendo el objetivo (${adhTxt}). Necesario estimado ~${fmt(needed)} kcal (mantenimiento ${M_txt} + superávit ${fmt(surplus)}). Subida limitada a ${CONFIG.STEP_MAX[conf.level]} kcal por ajuste (confianza ${conf.level}).`; }
   } else if(st === 'POR_ENCIMA'){
@@ -1308,7 +1319,7 @@ function dataQuality(raw, days, points, trend, asOf){
     if(date > asOf) continue;
     const act = (entries||[]).filter(isActive);
     act.forEach((e, i) => {
-      const kcal = Number(e.kcal)||0, macroK = 4*(Number(e.p)||0)+4*(Number(e.c)||0)+9*(Number(e.f)||0);
+      const kcal = Number(e.kcal)||0, macroK = 4*(Number(e.p)||0)+4*(Number(e.c)||0)+9*(Number(e.f)||0)+7*(Number(e.al)||0);
       if(kcal >= 60 && Math.abs(macroK - kcal) > 0.25*kcal) suspects.push({ date, id:e.id, label:e.label, kcal, reason:`kcal (${fmt(kcal)}) no cuadra con macros (${fmt(macroK)})` });
       const g = /^\s*(\d+(?:[.,]\d+)?)\s*(?:g|gr|gramos)\b(?!.*\d+\s*(?:g|gr|gramos)\b)/i.exec(e.originalText||'');
       if(g){ const grams = parseFloat(g[1].replace(',','.')); if(grams>0 && kcal > grams*9.5) suspects.push({ date, id:e.id, label:e.label, kcal, reason:`${fmt(kcal)} kcal en ${fmt(grams)} g es imposible (máx. ~9 kcal/g)` }); }
@@ -1358,11 +1369,14 @@ function computeState(raw, profile, asOf, opts={}){
   const adh7 = adherence(days, addDays(asOf,-7), addDays(asOf,-1));
   const intake7 = intakeStats(days, addDays(asOf,-7), addDays(asOf,-1));
   const goalKg = Number(profile.goalWeightKg);
+  const lvlAt = k => { let v = null; for(const t of trend){ if(t.date > k) break; if(t.trend !== null) v = t.trend; } return v; };
+  const lvl21 = lvlAt(addDays(asOf, -21));
+  const stagnation = { gain21: lvl21 !== null && Number.isFinite(level) ? level - lvl21 : null, expected21: range.low * 3 };
   const pred = Number.isFinite(level) ? predictions(level, rate, range, conf, goalKg, asOf) : { current:null, objective:null, remaining:null };
   const state = { engineVersion: VERSION, asOf, config: CONFIG, days, personalMedian: built.personalMedian ?? null,
     weight: { points: trend, level, start: startTrend ? { date:startTrend.date, kg:startTrend.trend } : null, lastRaw: points.length ? points[points.length-1] : null },
     rate, range, intake, intake7, adherence: adh, adherence7: adh7, confidence: conf, maintenance, status, predictions: pred,
-    goalKg: Number.isFinite(goalKg) && goalKg>0 ? goalKg : null, activity: activityStats(raw.steps, asOf) };
+    goalKg: Number.isFinite(goalKg) && goalKg>0 ? goalKg : null, activity: activityStats(raw.steps, asOf), stagnation };
   state.dataQuality = dataQuality(raw, days, points, trend, asOf);
   if(opts.currentTarget !== undefined){
     state.currentTarget = opts.currentTarget;
@@ -2019,6 +2033,23 @@ function runEngineTests(E, log){
     const st2 = state(c, 3200, { lastChange:{ date: U.addDays(c.asOf,-10), delta:+100 } });
     check('Controlador · no invierte el sentido antes de 21 días', st2.decision.delta===0 && st2.decision.reasonCode==='NO_REVERSION', st2.decision.reasonCode);
     const st3 = state(s, 2500, { paused:true }); check('Controlador · pausado no toca nada', st3.decision.delta===0 && st3.decision.reasonCode==='PAUSADO'); }
+  // ---- Precisión del registro: estimado > kcal dichas > pesado; comer fuera no infla un dato dicho
+  { const e0 = E.entryErrorSd({ kcal: 800 }), eK = E.entryErrorSd({ kcal: 800, precision: 'kcal' }), eW = E.entryErrorSd({ kcal: 800, precision: 'weighed' });
+    check('Precisión · estimado > kcal dichas > pesado', e0 > eK && eK > eW, `${Math.round(e0)}/${Math.round(eK)}/${Math.round(eW)}`);
+    check('Precisión · compatibilidad: weighed:true antiguo = pesado', Math.abs(E.entryErrorSd({ kcal: 800, weighed: true }) - eW) < 1e-9);
+    check('Precisión · comer fuera no infla un dato dicho, sí un estimado', Math.abs(E.entryErrorSd({ kcal: 800, precision: 'kcal', eatenOut: true }) - eK) < 1e-9 && E.entryErrorSd({ kcal: 800, eatenOut: true }) > e0); }
+  // ---- Alcohol: 7 kcal/g cuadra con los macros
+  { const s = synth({ days: 20, seed: 41 }); const d = U.addDays('2026-01-01', 10);
+    s.raw.logs[d].push({ id: 'beerA', label: 'Cerveza', kcal: 149, p: 1, c: 12, f: 0, al: 11 }, { id: 'beerB', label: 'Cerveza', kcal: 149, p: 1, c: 12, f: 0 });
+    const ids = state(s).dataQuality.suspectEntries.map(x => x.id);
+    check('Alcohol · con gramos de alcohol cuadra; sin ellos es sospechoso', !ids.includes('beerA') && ids.includes('beerB'), ids.join()); }
+  // ---- Estancamiento (3 semanas sin avanzar)
+  { const a = state(synth({ days: 42, rate: 0, intake: 2480, target: 2500, intakeNoise: 60, noise: 0.1, seed: 31 }));
+    check('Estancado · 3 semanas planas cumpliendo ≥92 % → sube entre 100 y 150', a.decision.reasonCode === 'ESTANCADO' && a.decision.delta >= 100 && a.decision.delta <= 150, `${a.decision.reasonCode} ${a.decision.delta}`);
+    const b = state(synth({ days: 42, rate: 0, intake: 2200, target: 2450, intakeNoise: 60, noise: 0.1, seed: 32 }));
+    check('Estancado · 3 semanas planas con adherencia 85-92 % → no sube y avisa de cumplir', b.decision.reasonCode === 'ESTANCADO_ADHERENCIA' && b.decision.delta === 0, `${b.decision.reasonCode} ${b.decision.delta}`);
+    const c = state(synth({ days: 42, rate: 0.22, intake: 2700, target: 2700, noise: 0.1, seed: 33 }));
+    check('Estancado · si el peso sube dentro del rango no se activa', c.decision.reasonCode !== 'ESTANCADO' && c.decision.reasonCode !== 'ESTANCADO_ADHERENCIA', c.decision.reasonCode); }
   // ---- Sin fuga de datos
   { const s = synth({ days:40, rate:0.2, seed:19 }); const d = U.addDays('2026-01-01', 30);
     const a = E.computeState(E.filterRawBefore(s.raw, d), s.profile, d, { currentTarget:2500 });
@@ -2388,7 +2419,7 @@ function macroPerKg(p){
 function recomputeMacrosFromKcal(p, weightKg){
   const w = Number(weightKg) || Number(p.weight), k = macroPerKg(p);
   p.targetProtein = w * k.protein; // 2 g/kg (rango óptimo 1,6-2,2)
-  p.targetFat = w * k.fat;         // 1 g/kg mínimo salud hormonal
+  p.targetFat = Math.max(w * k.fat, 0.25 * (Number(p.targetKcal) || 0) / 9);         // 1 g/kg mínimo salud hormonal
   p.targetCarbs = Math.max(0, (p.targetKcal - (p.targetProtein*4) - (p.targetFat*9))/4);
   p.targetSugar = calcSugarTargetG(p.targetKcal);
   p.macroWeightKg = w;
@@ -3035,11 +3066,11 @@ async function recordAiCorrection(rec){
 }
 function normalizeAiEstimate(res, text){
   if(!res || typeof res !== 'object') return null;
-  let items = (Array.isArray(res.items) ? res.items : []).filter(i => i && i.food).map(i => ({ food: String(i.food), grams: numOr0(i.grams), kcal: numOr0(i.kcal), p: numOr0(i.p), c: numOr0(i.c), f: numOr0(i.f), s: numOr0(i.s), drink: i.drink === true }));
+  let items = (Array.isArray(res.items) ? res.items : []).filter(i => i && i.food).map(i => ({ food: String(i.food), grams: numOr0(i.grams), kcal: numOr0(i.kcal), p: numOr0(i.p), c: numOr0(i.c), f: numOr0(i.f), s: numOr0(i.s), al: numOr0(i.al), drink: i.drink === true }));
   let tot = sumEntries(items);
   const explicit = parseExplicitNutrition(text);
   if(explicit && explicit.kcal > 0){
-    if(tot.kcal > 0){ const k = explicit.kcal / tot.kcal; items = items.map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k, s: i.s*k })); }
+    if(tot.kcal > 0){ const k = explicit.kcal / tot.kcal; items = items.map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k, s: i.s*k, al: (Number(i.al)||0)*k })); }
     else items = [{ food: String(res.label || text).slice(0, 60), grams: 0, kcal: explicit.kcal, p: 0, c: 0, f: 0, s: 0 }];
     tot = sumEntries(items);
   }
@@ -3049,12 +3080,13 @@ function normalizeAiEstimate(res, text){
   if(explicit){ low = high = tot.kcal; }
   else { if(!(low > 0 && low <= tot.kcal)) low = tot.kcal * 0.8; if(!(high >= tot.kcal)) high = tot.kcal * 1.25; }
   const warnings = []; let fixKcal = null;
-  const macroK = 4*tot.p + 4*tot.c + 9*tot.f;
+  const alG = items.reduce((a, i) => a + (Number(i.al) || 0), 0);
+  const macroK = 4*tot.p + 4*tot.c + 9*tot.f + 7*alG;
   if(tot.kcal > 60 && Math.abs(macroK - tot.kcal) > 0.2 * tot.kcal) warnings.push(`Las kcal (${Math.round(tot.kcal)}) no cuadran con los macros (4·P+4·C+9·G = ${Math.round(macroK)}).`);
   const g = singleGramsOf(text);
   if(g && tot.kcal > g * 9.3){ warnings.push(`${Math.round(tot.kcal)} kcal en ${g} g es imposible (la grasa pura tiene ~9 kcal/g).`); if(tot.kcal/10 <= g*9.3) fixKcal = Math.round(tot.kcal/10); }
   const conf = explicit ? 'alta' : (['alta','media','baja'].includes(res.confidence) ? res.confidence : 'media');
-  return { label: String(res.label || text).slice(0, 80), liquidMl, kcal: r1(tot.kcal), p: r1(tot.p), c: r1(tot.c), f: r1(tot.f), s: r1(tot.s),
+  return { label: String(res.label || text).slice(0, 80), liquidMl, al: r1(alG), kcal: r1(tot.kcal), p: r1(tot.p), c: r1(tot.c), f: r1(tot.f), s: r1(tot.s),
     items: items.map(i => ({ ...i, kcal: r1(i.kcal), p: r1(i.p), c: r1(i.c), f: r1(i.f), s: r1(i.s) })),
     range: { low: Math.round(low), high: Math.round(high) }, confidence: conf,
     assumptions: (Array.isArray(res.assumptions) ? res.assumptions : []).map(String).slice(0, 6),
@@ -3063,7 +3095,15 @@ function normalizeAiEstimate(res, text){
 }
 
 async function estimateWithAIOnly(text, clarification = null){
-  const corr = (await getAiCorrections()).slice(-6).map(c => `- "${c.text}": estimaste ${Math.round(c.ai.kcal)} kcal → el usuario lo corrigió a ${Math.round(c.final.kcal)} kcal`).join('\n');
+  const allCorr = await getAiCorrections(); let corr = '';
+  if(allCorr.length >= 8){
+    const rel = allCorr.slice(-15).filter(c => c.ai && c.ai.kcal > 0 && Number.isFinite(c.deltaPct));
+    const avgPct = a => a.length >= 4 ? a.reduce((s, c) => s + c.deltaPct, 0) / a.length : null;
+    const outs = rel.filter(c => c.out), homes = rel.filter(c => !c.out), mo = avgPct(outs), mh = avgPct(homes), lines = [];
+    if(mo !== null) lines.push(`- Platos de fuera de casa (n=${outs.length}): el usuario los corrigió de media ${mo >= 0 ? '+' : ''}${mo.toFixed(0)} %. Aplica solo ${(mo * 0.3).toFixed(0)} % y únicamente a restaurante, fritos o con salsa.`);
+    if(mh !== null) lines.push(`- Comida casera (n=${homes.length}): corrección media ${mh >= 0 ? '+' : ''}${mh.toFixed(0)} %. Aplica solo ${(mh * 0.3).toFixed(0)} %.`);
+    corr = lines.join('\n');
+  }
   const prompt = `Eres un dietista-nutricionista español experto en estimar raciones de comida casera y productos de supermercado españoles a partir de descripciones rápidas (dictadas por voz o escritas deprisa).
 
 Texto del registro: "${text}"${clarification ? `\nAclaración del usuario: "${clarification}"` : ''}
@@ -3075,14 +3115,14 @@ Reglas:
 2. Si el texto da kcal totales, kcal por 100 g/ml o valores de una etiqueta, ÚSALOS LITERALMENTE.
 3. Grasas ocultas: en platos caseros fritos, salteados, a la plancha, guisos o con salsa, incluye el aceite como alimento propio (por defecto 10 g por ración; 15 g en fritos de sartén) salvo que el texto diga otra cosa, y decláralo en "assumptions". Incluye salsas, mahonesa, queso, pan y bebidas si se mencionan.
 4. Tablas de composición españolas (BEDCA). Bebidas: 1 ml ≈ 1 g.
-5. Coherencia por alimento: kcal ≈ 4·p + 4·c + 9·f. "s" = azúcares totales (0 si no lleva).
+5. Coherencia por alimento: kcal ≈ 4·p + 4·c + 9·f. "s" = azúcares totales (0 si no lleva). "al" = gramos de alcohol etílico puro (7 kcal/g; una cerveza de 330 ml ≈ 13 g, una copa de vino ≈ 12 g, un cubata ≈ 16 g; 0 si no hay alcohol), de modo que kcal ≈ 4·p + 4·c + 9·f + 7·al.
 6. Incertidumbre honesta: "kcal_low"/"kcal_high" = rango del ~90 % de lo descrito. Tus estimaciones suelen ser dispares, así que sé HONESTO y AMPLIO: nunca menos de ±15 % si hay que suponer ración, aceite o marca, y ±30 % o más si es un plato mixto, de restaurante o ambiguo. "confidence": "alta" si hay cantidades o etiqueta; "media" si hay que suponer la ración; "baja" si es muy ambiguo.
 7. "drink": true SOLO en bebidas SIN alcohol que se toman como líquido (agua, refrescos, zumos, leche, café, té, batidos líquidos); en ese caso "grams" = ml. false en comida sólida, fruta, verdura, sopas, cremas, yogures y en cualquier bebida con alcohol. No estimes el agua que contienen los alimentos.
 8. "question": SOLO si una única aclaración cambiaría el total más de un 25 % (p. ej. "¿Cuántos gramos eran aproximadamente?", "¿Frito o a la plancha?"). Si no, null.
-${corr ? `9. Correcciones previas de ESTE usuario a estimaciones tuyas (calibra raciones y productos parecidos):\n${corr}\n` : ''}Si el texto no describe comida, devuelve "items": [] y explica el motivo en "label".
+${corr ? `9. Calibración parcial según las correcciones previas de este usuario (aplica solo la fracción indicada; no extrapoles a productos con etiqueta ni a cantidades dadas):\n${corr}\n` : ''}Si el texto no describe comida, devuelve "items": [] y explica el motivo en "label".
 
 Devuelve SOLO JSON, sin texto fuera:
-{"label":"nombre corto","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"s":0,"drink":false}],"kcal_low":0,"kcal_high":0,"confidence":"media","assumptions":[""],"question":null}`;
+{"label":"nombre corto","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"s":0,"al":0,"drink":false}],"kcal_low":0,"kcal_high":0,"confidence":"media","assumptions":[""],"question":null}`;
   const res = await callGemini(prompt, true, GEMINI_MODEL_FOOD, 2, { temperature: 0 });
   const est = normalizeAiEstimate(res, text);
   if(est){ est.source = 'Estimación de IA'; est.fromAI = true; }
@@ -3116,6 +3156,14 @@ function reliabilityBadge(source){
   return `<div class="src-badge" style="color:${color};">${label}</div>`;
 }
 const escAttr = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+function foodPrecisionOf(e){
+  if(e && e.precision) return e.precision;
+  if(e && e.weighed) return 'weighed';
+  const b = (e && e.explicitBasis) || (e && e.ai && e.ai.explicitBasis) || '';
+  if(b) return /etiqueta/i.test(b) ? 'label' : 'kcal';
+  return 'est';
+}
+const PRECISION_OPTS = [['est', 'Estimado (error normal)'], ['kcal', 'Kcal dichas por mí (±8 %)'], ['label', 'Etiqueta / envase (±3 %)'], ['weighed', 'Ingrediente pesado (±3 %)']];
 function reviewInputsHTML(e){
   return `<div class="food-review-grid">
       <input id="review-label" value="${escAttr(e.label)}" aria-label="Nombre de la comida">
@@ -3125,10 +3173,10 @@ function reviewInputsHTML(e){
       <input id="review-f" type="number" min="0" step="0.1" value="${e.f}" aria-label="Grasas">
       <input id="review-sugar" type="number" min="0" step="0.1" value="${e.s || 0}" aria-label="Azúcar">
     </div>
-    <div class="scale-row"><span>Bebida</span><input id="review-liquid" type="number" min="0" max="3000" step="10" value="${Math.round(e.liquidMl || 0)}" aria-label="Mililitros de bebida" style="width:92px; margin:0; padding:7px 10px;"> ml <small>cuenta para el agua · solo bebidas sin alcohol</small></div>
+    <div class="scale-row"><span>Bebida</span><input id="review-liquid" type="number" min="0" max="3000" step="10" value="${Math.round(e.liquidMl || 0)}" aria-label="Mililitros de bebida" style="width:92px; margin:0; padding:7px 10px;"> ml <small>cuenta para el agua · solo bebidas sin alcohol</small> <span style="margin-left:10px;">Alcohol</span><input id="review-al" type="number" min="0" max="300" step="0.5" value="${e.al || 0}" aria-label="Gramos de alcohol" style="width:76px; margin:0; padding:7px 10px;"> g <small>7 kcal/g</small></div>
     <div class="scale-row"><span>Ajustar ración</span>${[0.5, 0.75, 1.25, 1.5, 2].map(k => `<button class="secondary" onclick="scaleReview(${k})">×${String(k).replace('.', ',')}</button>`).join('')}</div>
     <div class="scale-row err-flags"><span>Precisión</span>
-      <label class="chk"><input type="checkbox" id="review-weighed" ${e.weighed ? 'checked' : ''}> ⚖️ Pesado con báscula / etiqueta <small>(error ↓)</small></label>
+      <select id="review-prec" style="width:auto; margin:0; padding:7px 30px 7px 10px; font-size:.78rem;">${PRECISION_OPTS.map(o => `<option value="${o[0]}"${foodPrecisionOf(e) === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select>
       <label class="chk"><input type="checkbox" id="review-out" ${e.eatenOut ? 'checked' : ''}> 🍽️ Comida fuera de casa <small>(error ↑)</small></label>
     </div>`;
 }
@@ -3153,7 +3201,7 @@ function showFoodReview(entry, isEdit = false){
     <div style="display:flex;gap:8px;"><button class="primary" style="flex:1;padding:11px;" onclick="confirmFoodReview()">${isEdit ? 'Guardar cambios' : 'Confirmar y registrar'}</button><button class="secondary" onclick="cancelFoodReview()">${isEdit ? 'Cancelar' : 'Descartar'}</button></div>`;
 }
 window.scaleReview = (k) => {
-  ['kcal','p','c','f','sugar','liquid'].forEach(f => { const el = $('review-' + f); if(el) el.value = (f === 'kcal' || f === 'liquid') ? Math.round(Number(el.value) * k) : Math.round(Number(el.value) * k * 10) / 10; });
+  ['kcal','p','c','f','sugar','liquid','al'].forEach(f => { const el = $('review-' + f); if(el) el.value = (f === 'kcal' || f === 'liquid') ? Math.round(Number(el.value) * k) : Math.round(Number(el.value) * k * 10) / 10; });
 };
 window.applyReviewKcal = (kcal) => { const cur = Number($('review-kcal').value) || 0; if(cur > 0) scaleReview(kcal / cur); };
 window.answerFoodQuestion = async () => {
@@ -3212,7 +3260,7 @@ const differsFrom = (a, b) => Math.abs((a.kcal||0) - (b.kcal||0)) >= 1 || ['p','
 function sameDayFoodWarnings(entries, final, originalText){
   const warns = [];
   const kcal = Number(final.kcal) || 0;
-  const macroK = 4*(Number(final.p)||0) + 4*(Number(final.c)||0) + 9*(Number(final.f)||0);
+  const macroK = 4*(Number(final.p)||0) + 4*(Number(final.c)||0) + 9*(Number(final.f)||0) + 7*(Number(final.al)||0);
   if(kcal >= 60 && Math.abs(macroK - kcal) > 0.25*kcal) warns.push(`Las kcal (${Math.round(kcal)}) no cuadran con los macros (≈${Math.round(macroK)} kcal con esa P/C/G). Revisa los valores.`);
   if(/\d{1,2}:\d{2}\s*·\s*P:/.test(originalText || '')) warns.push('El texto escrito parece el resumen de otro registro ya guardado (contiene algo como "HH:MM · P:…"). ¿Pegaste por error el texto de otra comida?');
   const active = (entries || []).filter(e => e && !e.deletedAt);
@@ -3222,8 +3270,8 @@ function sameDayFoodWarnings(entries, final, originalText){
 }
 window.confirmFoodReview = async () => {
   if(!pendingFoodEntry) return;
-  const final = { label: $('review-label').value.trim(), kcal: Number($('review-kcal').value), p: Number($('review-p').value), c: Number($('review-c').value), f: Number($('review-f').value), s: Number($('review-sugar').value) || 0, liquidMl: Math.max(0, Math.min(3000, Math.round(Number($('review-liquid') && $('review-liquid').value) || 0))) };
-  const flagWeighed = !!($('review-weighed') && $('review-weighed').checked), flagOut = !!($('review-out') && $('review-out').checked);
+  const final = { label: $('review-label').value.trim(), kcal: Number($('review-kcal').value), p: Number($('review-p').value), c: Number($('review-c').value), f: Number($('review-f').value), s: Number($('review-sugar').value) || 0, al: Math.max(0, Number($('review-al') && $('review-al').value) || 0), liquidMl: Math.max(0, Math.min(3000, Math.round(Number($('review-liquid') && $('review-liquid').value) || 0))) };
+  const precSel = ($('review-prec') && $('review-prec').value) || 'est', flagWeighed = precSel === 'weighed', flagOut = !!($('review-out') && $('review-out').checked);
   if(!validateFoodEntry(final) || final.kcal <= 0){ showToast('Revisa los valores de la comida.', true); return; }
   const now = Date.now();
   const entries = await getLog(selectedLogDate);
@@ -3240,16 +3288,16 @@ window.confirmFoodReview = async () => {
     const freshAI = src !== before && src.fromAI;               // viene de "Re-estimar"
     const ai = freshAI ? aiSnapshot(src) : (before.ai || null);
     const corrected = ai ? differsFrom(ai, final) : !!before.corrected;
-    if(corrected && ai && differsFrom(before, final)) await recordAiCorrection({ date: selectedLogDate, entryId: before.id, text: before.originalText || before.label, label: final.label, ai: { kcal: ai.kcal, p: ai.p, c: ai.c, f: ai.f }, final: { kcal: final.kcal, p: final.p, c: final.c, f: final.f }, deltaKcal: Math.round(final.kcal - ai.kcal), deltaPct: ai.kcal ? +((final.kcal - ai.kcal) / ai.kcal * 100).toFixed(1) : null, model: ai.model, promptVersion: ai.promptVersion });
+    if(corrected && ai && differsFrom(before, final)) await recordAiCorrection({ date: selectedLogDate, entryId: before.id, text: before.originalText || before.label, label: final.label, ai: { kcal: ai.kcal, p: ai.p, c: ai.c, f: ai.f }, final: { kcal: final.kcal, p: final.p, c: final.c, f: final.f }, deltaKcal: Math.round(final.kcal - ai.kcal), deltaPct: ai.kcal ? +((final.kcal - ai.kcal) / ai.kcal * 100).toFixed(1) : null, model: ai.model, promptVersion: ai.promptVersion, out: flagOut });
     const edits = [...(before.edits || []), { at: now, from: { kcal: before.kcal, p: before.p, c: before.c, f: before.f }, to: { kcal: final.kcal, p: final.p, c: final.c, f: final.f } }].slice(-10);
-    saved = entries[idx] = { ...before, ...final, weighed: flagWeighed, eatenOut: flagOut, updatedAt: now, ai, corrected, edits, source: freshAI ? src.source : before.source };
+    saved = entries[idx] = { ...before, ...final, weighed: flagWeighed, precision: precSel, eatenOut: flagOut, updatedAt: now, ai, corrected, edits, source: freshAI ? src.source : before.source };
     await setLog(selectedLogDate, entries);
     showToast('Registro actualizado');
   } else {
     const ai = src.fromAI ? aiSnapshot(src) : null;
     const corrected = ai ? differsFrom(ai, final) : false;
-    saved = { id: now.toString(36), createdAt: now, updatedAt: now, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), ...final, originalText: src.originalText || '', source: src.source || 'Manual', ai, corrected, weighed: flagWeighed, eatenOut: flagOut };
-    if(corrected) await recordAiCorrection({ date: selectedLogDate, entryId: saved.id, text: saved.originalText, label: final.label, ai: { kcal: ai.kcal, p: ai.p, c: ai.c, f: ai.f }, final: { kcal: final.kcal, p: final.p, c: final.c, f: final.f }, deltaKcal: Math.round(final.kcal - ai.kcal), deltaPct: ai.kcal ? +((final.kcal - ai.kcal) / ai.kcal * 100).toFixed(1) : null, model: ai.model, promptVersion: ai.promptVersion });
+    saved = { id: now.toString(36), createdAt: now, updatedAt: now, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), ...final, originalText: src.originalText || '', source: src.source || 'Manual', ai, corrected, weighed: flagWeighed, precision: precSel, eatenOut: flagOut };
+    if(corrected) await recordAiCorrection({ date: selectedLogDate, entryId: saved.id, text: saved.originalText, label: final.label, ai: { kcal: ai.kcal, p: ai.p, c: ai.c, f: ai.f }, final: { kcal: final.kcal, p: final.p, c: final.c, f: final.f }, deltaKcal: Math.round(final.kcal - ai.kcal), deltaPct: ai.kcal ? +((final.kcal - ai.kcal) / ai.kcal * 100).toFixed(1) : null, model: ai.model, promptVersion: ai.promptVersion, out: flagOut });
     entries.push(saved);
     await setLog(selectedLogDate, entries);
     showToast(`+${Math.round(final.kcal)} kcal registradas (${formatDateLabel(selectedLogDate).toLowerCase()})`);
@@ -3261,7 +3309,7 @@ window.confirmFoodReview = async () => {
     const est = saved.ai;
     const k = est && est.kcal > 0 ? final.kcal / est.kcal : 1;
     await setFoodCache(key, { promptVersion: FOOD_PROMPT_VERSION, corrected: !!saved.corrected, updatedAt: now,
-      result: { label: final.label, liquidMl: final.liquidMl, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
+      result: { label: final.label, liquidMl: final.liquidMl, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, al: final.al || 0, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
   }
   cancelFoodReview();
   await updateDashboardUI(); await refreshInsights();
@@ -3340,6 +3388,7 @@ async function saveProfile(){
     bulkStartDate: $('prof-bulk-start').value || profile.bulkStartDate,
     preferences: $('prof-preferences').value.trim(),
     adjustmentPaused: $('prof-pause').checked,
+    weighInFasted: $('prof-fasted').checked,
     proteinPerKg: (v => v >= 1.2 && v <= 3 ? v : DEFAULT_PROTEIN_PER_KG)(Number(String($('prof-protein-kg').value).replace(',', '.'))),
     fatPerKg: (v => v >= 0.5 && v <= 1.5 ? v : DEFAULT_FAT_PER_KG)(Number(String($('prof-fat-kg').value).replace(',', '.'))),
     goalWeightKg: (v => Number.isFinite(v) && v > 0 ? v : null)(parseFloat(String($('prof-goal-weight').value).replace(',', '.')))
@@ -4002,11 +4051,11 @@ async function addWeight(){
   }
   const arr = await getWeightEntriesRaw(date);
   const now = Date.now();
-  arr.push({ id: 'w' + now.toString(36), kg: w, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), createdAt: now, updatedAt: now });
+  arr.push({ id: 'w' + now.toString(36), fasted: profile.weighInFasted !== false, kg: w, time: new Date().toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}), createdAt: now, updatedAt: now });
   await setWeightEntriesRaw(date, arr);
   $('input-weight').value = '';
   const hour = new Date().getHours();
-  showToast(`Peso registrado: ${w} kg (${formatDateLabel(date).toLowerCase()})${date === todayStr() && hour >= 11 ? ' · Consejo: pésate al levantarte, tras el baño y antes de comer' : ''}`);
+  showToast(`Peso registrado: ${w} kg (${formatDateLabel(date).toLowerCase()})${date === todayStr() && hour >= 11 && profile.weighInFasted === false ? ' · Consejo: pésate al levantarte, tras el baño y antes de comer' : ''}`);
   await afterWeightChange();
 }
 async function afterWeightChange(){
@@ -4180,7 +4229,16 @@ async function renderTrendCharts(){
   }
   const el = $('nutrition-stats'); if(!el) return;
   const A = st.adherence, I = st.intake;
-  el.innerHTML = kv('Media real', I.n ? `${fmtN(I.mean)} kcal` : '—') + kv('Adherencia', A.ratio !== null ? `${fmtN(A.ratio*100)} %` : '—');
+  const cd = st.days.filter(d => d.status === 'complete' && d.entries && d.date >= (I.from || '0') && d.date <= (I.to || '9'));
+  let macroKv = '';
+  if(cd.length){
+    const aP = cd.reduce((a, d) => a + d.p, 0) / cd.length, aC = cd.reduce((a, d) => a + d.c, 0) / cd.length, aF = cd.reduce((a, d) => a + d.f, 0) / cd.length, aK = 4 * aP + 4 * aC + 9 * aF;
+    if(aK > 0){
+      const pc = x => fmtN(x / aK * 100);
+      macroKv = kv('Reparto de macros', `P ${pc(4*aP)} · C ${pc(4*aC)} · G ${pc(9*aF)} %`, `Media ${fmtN(aP)} g de proteína (${fmtN(aP / st.weight.level, 1)} g/kg; objetivo ${fmtN(macroPerKg(profile).protein, 1)}) · ${fmtN(aC)} g de hidratos · ${fmtN(aF)} g de grasas. Referencia en volumen: grasa 25-30 %, el resto hidratos.`);
+    }
+  }
+  el.innerHTML = kv('Media real', I.n ? `${fmtN(I.mean)} kcal` : '—') + kv('Adherencia', A.ratio !== null ? `${fmtN(A.ratio*100)} %` : '—') + macroKv;
 }
 function renderDataQualityCard(){
   const el = $('dq-content'); if(!el) return;
@@ -4188,13 +4246,13 @@ function renderDataQualityCard(){
   const wt = q.weighInTime;
   const hh = h => `${String(Math.floor(h)).padStart(2,'0')}:${String(Math.round((h % 1) * 60)).padStart(2,'0')}`;
   let html = kv('Días analizados', q.daysElapsed, `${q.daysWithWeight} con peso · ${q.daysWithFood} con comida · ${q.complete} completos`)
-    + kv('Pesajes', `${st.weight.points.length}`, wt ? `entre ${hh(wt.earliest)} y ${hh(wt.latest)} · ${fmtN(wt.morningPct*100)} % antes de las 10:00` : '')
+    + kv('Pesajes', `${st.weight.points.length}`, wt ? (profile.weighInFasted !== false ? 'hora de registro (pesas en ayunas: no afecta)' : `entre ${hh(wt.earliest)} y ${hh(wt.latest)} · ${fmtN(wt.morningPct*100)} % antes de las 10:00`) : '')
     + kv('Días sin pesaje', q.daysWithoutWeight.length, q.longestWeightGapDays ? `hueco máximo ${q.longestWeightGapDays} días` : '')
     + kv('Pesajes atípicos', q.outliers.length, q.outliers.map(o => `${o.date} ${o.kg} kg`).join(' · '))
     + kv('Días dudosos', q.doubtful.length, q.doubtful.map(d => `${d.date} (${fmtN(d.intake)} kcal)`).join(' · '))
     + kv('Días marcados incompletos', q.incomplete.length, q.incomplete.join(' · '));
   const items = [];
-  if(wt && wt.spreadHours > 3) items.push(`Te pesas a horas muy distintas (${fmtN(wt.spreadHours,1)} h de diferencia). Pesarte siempre al levantarte reduce el ruido y acelera la confianza.`);
+  if(wt && wt.spreadHours > 3 && profile.weighInFasted === false) items.push(`Te pesas a horas muy distintas (${fmtN(wt.spreadHours,1)} h de diferencia). Pesarte siempre al levantarte reduce el ruido y acelera la confianza.`);
   q.suspectEntries.forEach(s => items.push(`<b>${s.date}</b> · ${escAttr(s.label)}: ${s.reason}. <button class="secondary mini" onclick="goToLogDate('${s.date}')">Revisar</button>`));
   q.possibleDuplicates.forEach(s => items.push(`<b>${s.date}</b> · ${escAttr(s.label)} (${fmtN(s.kcal)} kcal): ${s.reason}. <button class="secondary mini" onclick="goToLogDate('${s.date}')">Revisar</button>`));
   if(q.backfilledEntries.length) items.push(`${q.backfilledEntries.length} comida(s) registradas después del día al que pertenecen (normal si apuntas al día siguiente; revísalas si no).`);
@@ -5854,7 +5912,7 @@ async function buildDiagnosticReport(){
   const r2 = (x, k = 2) => x === null || x === undefined || !Number.isFinite(x) ? null : +x.toFixed(k);
   const weighIns = [], food = [];
   for(const [date, arr] of Object.entries(st.raw.weights).sort()) (arr || []).forEach(e => weighIns.push({ date, time: e.time || null, kg: e.kg, id: e.id || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, edits: e.edits || [] }));
-  for(const [date, arr] of Object.entries(st.raw.logs).sort()) (arr || []).forEach(e => food.push({ date, id: e.id, time: e.time || null, label: e.label, kcal: r2(e.kcal,1), p: r2(e.p,1), c: r2(e.c,1), f: r2(e.f,1), s: r2(e.s || 0,1), source: e.source || null, liquidMl: e.liquidMl || 0, weighed: !!e.weighed, eatenOut: !!e.eatenOut, originalText: e.originalText || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, corrected: !!e.corrected, aiEstimate: e.ai ? { kcal: e.ai.kcal, range: e.ai.range, confidence: e.ai.confidence, assumptions: e.ai.assumptions, model: e.ai.model, promptVersion: e.ai.promptVersion } : null }));
+  for(const [date, arr] of Object.entries(st.raw.logs).sort()) (arr || []).forEach(e => food.push({ date, id: e.id, time: e.time || null, label: e.label, kcal: r2(e.kcal,1), p: r2(e.p,1), c: r2(e.c,1), f: r2(e.f,1), s: r2(e.s || 0,1), source: e.source || null, liquidMl: e.liquidMl || 0, weighed: !!e.weighed, precision: e.precision || (e.weighed ? 'weighed' : null), eatenOut: !!e.eatenOut, originalText: e.originalText || null, createdAt: e.createdAt || null, updatedAt: e.updatedAt || null, deletedAt: e.deletedAt || null, corrected: !!e.corrected, aiEstimate: e.ai ? { kcal: e.ai.kcal, range: e.ai.range, confidence: e.ai.confidence, assumptions: e.ai.assumptions, model: e.ai.model, promptVersion: e.ai.promptVersion } : null }));
   const tl = st.raw.timeline;
   const hyd = {}; { const hb = await waterBase(); for(const d of st.days){ const h = await hydrationOn(d.date, hb); hyd[d.date] = { waterMl: h.plainMl, drinksMl: h.drinksMl, goalMl: h.goalMl, steps: await getSteps(d.date), train: h.ctx.train, heat: h.ctx.heat }; } }
   let replay = [];
@@ -5865,7 +5923,7 @@ async function buildDiagnosticReport(){
     meta: { app: 'Bulking OS', schemaVersion: 2, engineVersion: st.engineVersion, generatedAt: new Date().toISOString(), asOf: st.asOf, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       tags: { OBSERVED: 'registrado por el usuario', CALCULATED: 'derivado de forma determinista', ESTIMATED: 'modelo con incertidumbre', PREDICTED: 'proyección futura' },
       privacy: 'Sin API keys, sin syncUid y sin fotos.',
-      readmeParaIA: 'Export de Bulking OS (app de nutrición para ganancia muscular) para que una IA externa (p.ej. Claude) analice los datos del usuario y/o el código fuente (bulking_app.py, adjuntado aparte). foodEntries.weighed=true o con etiqueta nutricional (ai.explicitBasis) son prácticamente exactos (±3%, trátalos como ground truth). Los pesos corporales (weighIns) son en ayunas a primera hora SIEMPRE, independientemente de a qué hora del día se registraron en la app (weighTime es solo la hora de registro, no de pesaje real). decisionLog/targetTimeline con legacy:true o source que empieza por "legacy-" son historial reconstruido de la versión anterior del motor (antes de la migración), no decisiones del motor actual. replay reconstruye día a día qué habría decidido el motor ACTUAL con los datos disponibles hasta cada fecha, sin fuga de datos futuros. OBSERVED.gym = entrenos (sets con t: n normal, w calentamiento, f fallo, d drop; kg, reps, sec, km, m, rpe), rutinas, plan semanal y ejercicios propios; CALCULATED.gym = resumen, volumen/series semanales, series por músculo, récords y 1RM estimado (Epley + RIR).' },
+      readmeParaIA: 'Export de Bulking OS (app de nutrición para ganancia muscular) para que una IA externa (p.ej. Claude) analice los datos del usuario y/o el código fuente (bulking_app.py, adjuntado aparte). foodEntries.precision: "weighed" (ingrediente pesado) y "label" (etiqueta) ≈ ±3 % (ground truth); "kcal" = kcal dichas por el usuario (≈ ±8 %); "est" = estimación de la IA. Las entradas antiguas con weighed=true y sin precision usaban una casilla que el usuario marcaba también en platos con kcal dichas: trátalas como ±8 % salvo que sean un ingrediente suelto pesado. Los pesos corporales (weighIns) son en ayunas a primera hora SIEMPRE, independientemente de a qué hora del día se registraron en la app (weighTime es solo la hora de registro, no de pesaje real). decisionLog/targetTimeline con legacy:true o source que empieza por "legacy-" son historial reconstruido de la versión anterior del motor (antes de la migración), no decisiones del motor actual. replay reconstruye día a día qué habría decidido el motor ACTUAL con los datos disponibles hasta cada fecha, sin fuga de datos futuros. OBSERVED.gym = entrenos (sets con t: n normal, w calentamiento, f fallo, d drop; kg, reps, sec, km, m, rpe), rutinas, plan semanal y ejercicios propios; CALCULATED.gym = resumen, volumen/series semanales, series por músculo, récords y 1RM estimado (Epley + RIR).' },
     config: BulkEngine.CONFIG,
     OBSERVED: {
       profile: { age: profile.age, heightCm: profile.height, sex: profile.sex, trainingDaysPerWeek: profile.trainingDays, mealsPerDay: profile.mealsPerDay, ratePreset: profile.ratePreset, goalWeightKg: profile.goalWeightKg, bulkStartDate: profile.bulkStartDate, adjustmentPaused: !!profile.adjustmentPaused, currentTargetKcal: Math.round(profile.targetKcal || 0), preferences: profile.preferences || '' },
@@ -5923,7 +5981,7 @@ function diagnosticTables(rep){
     'resumen.csv': [summary, ['key','value']],
     'diario.csv': [C.daily, ['date','firstWeighInKg','weighTime','weighIns','trendKg','outlier','intakeKcal','p','c','f','entries','status','userFlag','targetKcal','waterMl','otherDrinksMl','waterGoalMl','steps','trainingMarked','heatMarked','diffKcal']],
     'pesajes.csv': [O.weighIns, ['date','time','kg','id','createdAt','updatedAt','deletedAt','edits']],
-    'comidas.csv': [O.foodEntries, ['date','time','label','kcal','p','c','f','s','liquidMl','weighed','eatenOut','source','corrected','originalText','id','createdAt','updatedAt','deletedAt','aiEstimate']],
+    'comidas.csv': [O.foodEntries, ['date','time','label','kcal','p','c','f','s','liquidMl','weighed','precision','eatenOut','source','corrected','originalText','id','createdAt','updatedAt','deletedAt','aiEstimate']],
     'objetivo_timeline.csv': [O.targetTimeline, ['date','kcal','prev','delta','source','approx','reason','decisionId','id']],
     'decisiones.csv': [dec, ['date','action','reasonCode','prevTarget','newTarget','delta','needed','migrated','rateKgWk','ciLow','ciHigh','maintenance','maintenanceSd','intakeMean','adherence','confidence','status','reason']],
     'correcciones_ia.csv': [O.aiCorrections.map(c => ({ ...c, aiKcal: c.ai?.kcal, finalKcal: c.final?.kcal })), ['date','text','label','aiKcal','finalKcal','deltaKcal','deltaPct','model','promptVersion','entryId']],
@@ -6229,6 +6287,7 @@ window.onload = async () => {
   $('prof-weight').value = profile.weight; $('prof-sex').value = profile.sex;
   $('prof-rate').value = profile.ratePreset; $('prof-bulk-start').value = profile.bulkStartDate || '';
   $('prof-pause').checked = !!profile.adjustmentPaused;
+  $('prof-fasted').checked = profile.weighInFasted !== false;
   $('prof-meals').value = profile.mealsPerDay || 5; $('prof-training-days').value = profile.trainingDays;
   $('prof-preferences').value = profile.preferences || '';
   { const k = macroPerKg(profile); $('prof-protein-kg').value = k.protein; $('prof-fat-kg').value = k.fat; }
@@ -6243,7 +6302,7 @@ window.onload = async () => {
   await pruneOldCaches();
 
   await runDailyEvaluation();
-  try { await syncDynamicMacros(); } catch(e){ console.error('Macros dinámicos', e); }
+  try { const needMacroMigr = profile.macroSchema !== 2; await syncDynamicMacros(needMacroMigr); if(needMacroMigr) await updateProfile({ macroSchema: 2 }); } catch(e){ console.error('Macros dinámicos', e); }
   if(migration){
     const parts = [];
     if(migration.correction) parts.push(`se ha deshecho el ajuste del ${migration.correction.date} (${migration.correction.from} → ${migration.correction.to} kcal) causado por un fallo del algoritmo anterior`);
