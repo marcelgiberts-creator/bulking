@@ -2,7 +2,48 @@
 bulking_app.py
 ================
 App de Nutrición y Gestión de Volumen (Bulking) con IA.
-Genera un archivo index.html autogestionado y lo sube a Git.
+Genera un archivo index.html autogestionado (más la PWA: manifest, service
+worker e iconos) y lo sube a Git.
+
+ÍNDICE — busca (Ctrl+F) el texto entre comillas para saltar a cada sección
+---------------------------------------------------------------------------
+PYTHON
+  "⚙️ CONFIGURACIÓN GENERAL"            claves de Gemini y Firebase (lo único que se edita a mano)
+  "🖥️ CÓDIGO FRONTEND"                  inicio de la plantilla HTML (APP_HTML_TEMPLATE)
+  "🔬 CIENCIA — CONTENIDO DE LA PESTAÑA" fuentes, fichas, comparador y glosario (datos)
+  "📲 PWA — app instalable"             manifiesto, service worker e iconos generados
+  "def write_index"                     exportación de index.html + archivos de la PWA
+  "⚙️ SERVIDOR Y AUTOMATIZACIÓN DE GIT"  watcher, servidor local y git push automático
+
+CSS (dentro de la plantilla)
+  "🎨 SISTEMA DE DISEÑO"                tokens: colores, tipografía, espaciado, movimiento
+  "✦ REFINAMIENTO"                      Gym, Ciencia, hojas y modales
+  "✦ FUNCIONES NUEVAS"                  sueño, escáner, mini-cut, dieta, mapa corporal…
+  "☀️ TEMA CLARO"                        paleta clara (mismos tokens)
+  "RESPONSIVE" / "ACCESIBILIDAD"        breakpoints y movimiento reducido
+
+HTML
+  "<!-- 📊 HOY"  "<!-- 📈 PROGRESO"  "<!-- 🏋️ GYM"  "<!-- 🔬 CIENCIA"  "<!-- ⚙️ AJUSTES"  "BOTTOM NAVIGATION"
+
+JAVASCRIPT
+  "🧠 BulkEngine"                       motor de cálculo puro (peso, ritmo, mantenimiento, objetivo)
+  "🏋️ GYM — banco de ejercicios"        cálculos de entrenamiento (puros)
+  "🧪 Tests del motor"                  batería de tests (navegador y `--test`)
+  "🔗 SINCRONIZACIÓN EN LA NUBE"        Firebase: fusión por marcas de tiempo
+  "📊 DASHBOARD UI RENDER"              pestaña Hoy
+  "🍽️ ESTIMACIÓN DE COMIDAS v2"         IA de comidas, revisión y guardado
+  "💧 AGUA" / "👟 PASOS"                 hidratación y actividad
+  "📊 PANELES DE PROGRESO"              pestaña Progreso
+  "🏋️ GYM — estilo Hevy"                entreno en curso, rutinas, historial, estadísticas
+  "🔬 CIENCIA — fichas basadas"         render de Ciencia, figuras SVG y pregunta a la IA
+  "✦ UX GLOBAL"                         háptica, toasts, «atrás», gestos, explicaciones, glosario, tema, PWA
+  "😴 SUEÑO" "📷 ESCÁNER" "✂️ MINI-CUT" "🩹 LESIONES" "🥗 CALIDAD DE LA DIETA" "🧍 MAPA CORPORAL" "📄 INFORME MENSUAL"
+  "🩺 EXPORTACIÓN DE DIAGNÓSTICO"        PDF/JSON/CSV para IA
+  "// NAVEGACIÓN" / "// INIT"           cambio de pestaña y arranque (window.onload)
+
+Datos en localStorage (todo se sincroniza salvo NON_SYNC_KEYS): profile, log:<fecha>,
+weight:<fecha>, water:<fecha>, steps:<fecha>, sleep:<fecha>, bodymeasure:<fecha>,
+gym:session:<fecha>, gym:routines, gym:settings, gym:injuries, barcode:<EAN>, ui:prefs (solo dispositivo).
 """
 
 import os
@@ -72,10 +113,27 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#090a0c">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bulking">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<script>
+  /* Tema antes del primer pintado (sin destello). Preferencia por dispositivo: ui:prefs */
+  (function(){ try { var p = JSON.parse(localStorage.getItem('ui:prefs') || '{}').theme || 'auto';
+    var dark = p === 'dark' || (p === 'auto' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches));
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light'; } catch(e){ document.documentElement.dataset.theme = 'dark'; } })();
+</script>
 <title>Bulking OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   /* =========================================================================
      🎨 SISTEMA DE DISEÑO — Bulking OS
@@ -87,6 +145,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
      ========================================================================= */
   :root {
     color-scheme: dark;
+    --ink-rgb: 255, 255, 255;      /* «tinta» de transparencias: blanca en oscuro, grafito en claro */
 
     /* Superficies (de más profunda a más elevada) */
     --bg-color: #090a0c;
@@ -97,9 +156,9 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     --overlay: rgba(4, 5, 7, .72);
 
     /* Líneas */
-    --line: rgba(255, 255, 255, .07);
-    --line-2: rgba(255, 255, 255, .12);
-    --line-3: rgba(255, 255, 255, .2);
+    --line: rgba(var(--ink-rgb), .07);
+    --line-2: rgba(var(--ink-rgb), .12);
+    --line-3: rgba(var(--ink-rgb), .2);
 
     /* Texto (nunca blanco puro) */
     --text: #eceef2;
@@ -134,7 +193,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     --glass-border-strong: var(--line-2);
 
     /* Elevación: casi plana; la profundidad la da la luz superior */
-    --shadow-1: inset 0 1px 0 rgba(255, 255, 255, .035), 0 1px 2px rgba(0, 0, 0, .35);
+    --shadow-1: inset 0 1px 0 rgba(var(--ink-rgb), .035), 0 1px 2px rgba(0, 0, 0, .35);
     --shadow-2: 0 24px 60px -16px rgba(0, 0, 0, .75), 0 0 0 1px var(--line-2);
     --glass-shadow: var(--shadow-1);
     --glass-shadow-hover: var(--shadow-1);
@@ -225,7 +284,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
      ========================================================================= */
   .glass-card {
     position: relative;
-    background: linear-gradient(180deg, rgba(255,255,255,.016), rgba(255,255,255,0) 42%), var(--surface);
+    background: linear-gradient(180deg, rgba(var(--ink-rgb), .016), rgba(var(--ink-rgb), 0) 42%), var(--surface);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
     padding: var(--s-5) var(--s-5);
@@ -344,7 +403,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     background: linear-gradient(180deg, var(--accent-hi), var(--accent));
     color: var(--accent-ink); font-weight: 750; font-size: var(--fs-md); letter-spacing: -0.01em;
     border: none; border-radius: var(--radius-md); padding: 12px 16px;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(var(--accent-rgb), .55);
+    box-shadow: inset 0 1px 0 rgba(var(--ink-rgb), .28), 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(var(--accent-rgb), .55);
   }
   button.primary:disabled { filter: saturate(.4); }
   button.secondary, .file-btn {
@@ -375,7 +434,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     text-align: center; padding: var(--s-7) var(--s-5) var(--s-5);
     background:
       radial-gradient(90% 70% at 50% -12%, rgba(var(--accent-rgb), .13), transparent 62%),
-      linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0) 40%), var(--surface);
+      linear-gradient(180deg, rgba(var(--ink-rgb), .02), rgba(var(--ink-rgb), 0) 40%), var(--surface);
     border-color: rgba(var(--accent-rgb), .2);
   }
   .kcal-number {
@@ -526,7 +585,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .muted-line { font-size: var(--fs-xs); color: var(--text-dim); line-height: 1.55; margin-top: var(--s-2); }
   .sub-title { font-size: var(--fs-2xs); font-weight: 750; text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim); margin-bottom: var(--s-3); }
   .mini-tag { display: inline-block; font-size: .62rem; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; padding: 2px 7px; border-radius: 5px; background: var(--surface-3); color: var(--text-mid); vertical-align: middle; }
-  .mini-tag.dim { background: rgba(255,255,255,.04); color: var(--text-dim); }
+  .mini-tag.dim { background: rgba(var(--ink-rgb), .04); color: var(--text-dim); }
 
   /* =========================================================================
      ESTADO DEL BULK, MOTOR, DIAGNÓSTICO, AUDITORÍA
@@ -609,7 +668,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     display: flex; justify-content: space-between; gap: 2px; padding: 6px;
     background: rgba(14, 16, 19, .86); -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
     border: 1px solid var(--line-2); border-radius: 20px;
-    box-shadow: 0 18px 40px -12px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.04);
+    box-shadow: 0 18px 40px -12px rgba(0,0,0,.7), inset 0 1px 0 rgba(var(--ink-rgb), .04);
   }
   .nav-item {
     position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
@@ -619,7 +678,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   .nav-icon { display: block; width: 22px; height: 22px; transition: transform var(--dur-2) var(--ease-out), color var(--dur) var(--ease); }
   .nav-icon svg { display: block; width: 100%; height: 100%; }
-  .nav-item.active { color: var(--text); background: rgba(255,255,255,.055); }
+  .nav-item.active { color: var(--text); background: rgba(var(--ink-rgb), .055); }
   .nav-item.active .nav-icon { color: var(--tone, var(--accent)); transform: translateY(-1px); }
   .nav-item::after { content: ''; position: absolute; bottom: 3px; left: 50%; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--tone, var(--accent)); opacity: 0; transform: scale(0); transition: opacity var(--dur) var(--ease), transform var(--dur-2) var(--ease-out); }
   .nav-item.active::after { opacity: 1; transform: scale(1); }
@@ -642,10 +701,10 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   @media (hover: hover) and (pointer: fine) {
     .glass-card:hover { border-color: var(--line-2); }
     .glass-card.card-hero:hover { border-color: rgba(var(--accent-rgb), .3); }
-    details.fold > summary:hover { background: rgba(255,255,255,.02); }
+    details.fold > summary:hover { background: rgba(var(--ink-rgb), .02); }
     details.sub > summary:hover { color: var(--text); }
     details.sub > summary:hover::after, details.fold > summary:hover::after { border-color: var(--text-mid); }
-    button.primary:hover:not(:disabled) { filter: brightness(1.06); box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -10px rgba(var(--accent-rgb), .7); }
+    button.primary:hover:not(:disabled) { filter: brightness(1.06); box-shadow: inset 0 1px 0 rgba(var(--ink-rgb), .3), 0 1px 2px rgba(0,0,0,.4), 0 12px 28px -10px rgba(var(--accent-rgb), .7); }
     button.secondary:hover:not(:disabled), .file-btn:hover { background: var(--surface-3); border-color: var(--line-3); }
     button.ghost:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
     .date-row button.ghost:hover:not(:disabled) { border-color: var(--line-2); }
@@ -653,13 +712,13 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     .edit-btn:hover { color: var(--text); background: var(--surface-3); }
     .favorite-chip:hover { border-color: var(--accent-line); background: var(--surface-3); }
     .chip-toggle:hover:not(.on) { color: var(--text); border-color: var(--line-3); }
-    .nav-item:hover:not(.active) { color: var(--text-mid); background: rgba(255,255,255,.03); }
+    .nav-item:hover:not(.active) { color: var(--text-mid); background: rgba(var(--ink-rgb), .03); }
     .nav-item:hover .nav-icon { transform: translateY(-1px); }
     .mic-btn:hover:not(.listening) { background: rgba(var(--accent-rgb), .2); }
     .photo-thumb img:hover { border-color: var(--accent-line); transform: translateY(-2px); }
     .insight-card:hover { border-color: var(--line-2); }
     .log-item:hover .log-title { color: #fff; }
-    .data-table:not(.audit) tbody tr:hover td { background: rgba(255,255,255,.015); }
+    .data-table:not(.audit) tbody tr:hover td { background: rgba(var(--ink-rgb), .015); }
   }
 
   /* =========================================
@@ -670,7 +729,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .seg button.on { color: var(--tone, var(--accent)); background: rgba(var(--tone-rgb, 217,171,106), .14); }
 
   /* 🔬 CIENCIA — estética editorial/científica: cifras grandes, filetes finos, figuras con datos */
-  .sx { --sx-acc: 178,145,171; --sx-line: rgba(255,255,255,.08); padding-top: 4px; }
+  .sx { --sx-acc: 178,145,171; --sx-line: rgba(var(--ink-rgb), .08); padding-top: 4px; }
   .sx-eyebrow { font-size: .64rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--text-dim); }
   .sx .sx-title, .sx .sx-art-t { display: block; border: none; padding: 0; text-transform: none; }
   .sx-title { font-family: 'Space Grotesk', sans-serif; font-size: 2.1rem; font-weight: 600; letter-spacing: -.03em; line-height: 1.1; margin: 6px 0 8px; }
@@ -719,7 +778,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .sx-stat b { font-family: 'Space Grotesk', sans-serif; font-size: 2.4rem; font-weight: 600; letter-spacing: -.03em; line-height: 1; color: rgb(var(--sx-acc)); white-space: nowrap; }
   .sx-stat span { font-size: .8rem; line-height: 1.45; color: var(--text-mid); }
   .sx-p { font-size: .92rem; line-height: 1.7; color: var(--text); }
-  .sx-fig { margin: 18px 0; padding: 14px 12px 12px; border: 1px solid var(--sx-line); border-radius: var(--radius-md); background: rgba(255,255,255,.015); }
+  .sx-fig { margin: 18px 0; padding: 14px 12px 12px; border: 1px solid var(--sx-line); border-radius: var(--radius-md); background: rgba(var(--ink-rgb), .015); }
   .sx-fig-t { font-size: .8rem; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
   .sx-fig-t span { font-family: 'Space Grotesk', sans-serif; color: rgb(var(--sx-acc)); margin-right: 6px; }
   .sx-fig svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -727,16 +786,16 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .sx-fig-n i { color: var(--text-mid); font-style: normal; }
   .sx-svg-lbl { fill: var(--text-mid); font-size: 10.5px; font-weight: 600; font-family: 'Manrope', sans-serif; }
   .sx-svg-val { fill: var(--text-dim); font-size: 10px; font-family: 'Space Grotesk', sans-serif; }
-  .sx-svg-ax { stroke: rgba(255,255,255,.18); stroke-width: 1; }
-  .sx-svg-grid { stroke: rgba(255,255,255,.06); stroke-width: 1; }
-  .sx-svg-null { stroke: rgba(255,255,255,.4); stroke-width: 1; stroke-dasharray: 3 3; }
+  .sx-svg-ax { stroke: rgba(var(--ink-rgb), .18); stroke-width: 1; }
+  .sx-svg-grid { stroke: rgba(var(--ink-rgb), .06); stroke-width: 1; }
+  .sx-svg-null { stroke: rgba(var(--ink-rgb), .4); stroke-width: 1; stroke-dasharray: 3 3; }
   .sx-svg-tick { fill: var(--text-dim); font-size: 9.5px; font-family: 'Space Grotesk', sans-serif; }
   .sx-svg-fav { fill: var(--text-dim); font-size: 9.5px; font-family: 'Manrope', sans-serif; }
-  .sx-svg-ci { stroke: rgba(255,255,255,.55); stroke-width: 1.6; }
+  .sx-svg-ci { stroke: rgba(var(--ink-rgb), .55); stroke-width: 1.6; }
   .sx-svg-ci.sig { stroke: rgb(var(--sx-acc)); }
-  .sx-svg-pt { fill: var(--bg-color); stroke: rgba(255,255,255,.7); stroke-width: 1.6; }
+  .sx-svg-pt { fill: var(--bg-color); stroke: rgba(var(--ink-rgb), .7); stroke-width: 1.6; }
   .sx-svg-pt.sig { fill: rgb(var(--sx-acc)); stroke: rgb(var(--sx-acc)); }
-  .sx-svg-bar { fill: rgba(255,255,255,.16); }
+  .sx-svg-bar { fill: rgba(var(--ink-rgb), .16); }
   .sx-svg-bar.hl { fill: rgb(var(--sx-acc)); }
   .sx-you { margin: 16px 0; padding: 12px 14px; border-left: 3px solid rgb(var(--sx-acc)); background: rgba(var(--sx-acc), .07); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: .84rem; line-height: 1.6; color: var(--text-mid); }
   .sx-you-t { display: block; font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--sx-acc)); margin-bottom: 4px; }
@@ -784,13 +843,13 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .plan-row select { padding: 8px 10px; font-size: .82rem; }
   .ex-row { display: flex; gap: 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--glass-border); cursor: pointer; border-radius: 10px; }
   .ex-row.sel { background: rgba(138,162,200,.12); }
-  .ex-thumb { width: 46px; height: 46px; border-radius: 10px; background: rgba(255,255,255,.07); flex: none; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text-dim); }
+  .ex-thumb { width: 46px; height: 46px; border-radius: 10px; background: rgba(var(--ink-rgb), .07); flex: none; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text-dim); }
   .ex-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; }
   .ex-name { font-weight: 600; font-size: .88rem; line-height: 1.3; } .ex-meta { font-size: .7rem; color: var(--text-dim); line-height: 1.45; }
   .sel-dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--glass-border-strong); display: flex; align-items: center; justify-content: center; font-size: .75rem; color: #0c1410; flex: none; }
   .ex-row.sel .sel-dot { background: rgb(138,162,200); border-color: transparent; }
   .sticky-cta { position: sticky; bottom: 0; padding: 12px 0 18px; background: linear-gradient(transparent, var(--bg-color) 35%); }
-  .mini-tag.dim { background: rgba(255,255,255,.04); color: var(--text-dim); }
+  .mini-tag.dim { background: rgba(var(--ink-rgb), .04); color: var(--text-dim); }
   .chip-line { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
   .chip-grid { display: flex; gap: 6px; flex-wrap: wrap; }
   .chip-check { display: inline-flex; align-items: center; gap: 5px; font-size: .74rem; color: var(--text-mid); padding: 5px 9px; border: 1px solid var(--glass-border); border-radius: 99px; text-transform: none; letter-spacing: 0; font-weight: 600; margin: 0; }
@@ -809,7 +868,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .cal-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; } .cal-nav b { font-family: 'Space Grotesk', sans-serif; text-transform: capitalize; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
   .cal-h { text-align: center; font-size: .62rem; color: var(--text-dim); font-weight: 700; padding-bottom: 2px; }
-  .cal-day { aspect-ratio: 1; border-radius: 9px; border: none; background: rgba(255,255,255,.025); color: var(--text-mid); font-size: .76rem; cursor: pointer; position: relative; padding: 0; }
+  .cal-day { aspect-ratio: 1; border-radius: 9px; border: none; background: rgba(var(--ink-rgb), .025); color: var(--text-mid); font-size: .76rem; cursor: pointer; position: relative; padding: 0; }
   .cal-day.out { background: none; cursor: default; }
   .cal-day.has { background: rgba(138,162,200,.3); color: var(--text); font-weight: 700; }
   .cal-day.today { box-shadow: inset 0 0 0 1px var(--accent-line); } .cal-day.sel { box-shadow: inset 0 0 0 2px rgb(138,162,200); }
@@ -817,7 +876,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .mini-select { width: auto; padding: 6px 30px 6px 10px; font-size: .74rem; background-position: calc(100% - 14px) center, calc(100% - 9px) center; }
   .musc-row { display: grid; grid-template-columns: 92px 1fr 34px; gap: 8px; align-items: center; font-size: .74rem; color: var(--text-mid); padding: 4px 0; }
   .musc-row b { text-align: right; font-variant-numeric: tabular-nums; color: var(--text); }
-  .musc-bar { position: relative; height: 8px; background: rgba(255,255,255,.06); border-radius: 99px; overflow: hidden; }
+  .musc-bar { position: relative; height: 8px; background: rgba(var(--ink-rgb), .06); border-radius: 99px; overflow: hidden; }
   .musc-bar i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 99px; }
   .musc-zone { background: rgba(127,174,148,.2); border-radius: 0 !important; }
   .musc-fill.ok { background: var(--green); } .musc-fill.lo { background: rgba(138,162,200,.75); } .musc-fill.hi { background: var(--accent); }
@@ -852,7 +911,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .set-grid input { padding: 8px 4px; text-align: center; font-size: .9rem; font-variant-numeric: tabular-nums; min-width: 0; }
   .set-grid input.sugg::placeholder { color: rgb(138,162,200); }
   .set-row.done input { background: rgba(127,174,148,.13); border-color: rgba(127,174,148,.35); }
-  .st-badge { width: 32px; height: 30px; border-radius: 8px; border: none; background: rgba(255,255,255,.06); color: var(--text); font-weight: 700; cursor: pointer; font-size: .78rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .st-badge { width: 32px; height: 30px; border-radius: 8px; border: none; background: rgba(var(--ink-rgb), .06); color: var(--text); font-weight: 700; cursor: pointer; font-size: .78rem; padding: 0; display: inline-flex; align-items: center; justify-content: center; flex: none; }
   .st-badge.mini { width: 24px; height: 22px; font-size: .68rem; cursor: default; }
   .st-badge.w { color: #e3b55f; } .st-badge.f { color: var(--red); } .st-badge.d { color: rgb(138,162,200); }
   .prev { font-size: .72rem; color: var(--text-dim); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -861,7 +920,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .chk.on { background: var(--green); color: #0c1410; border-color: transparent; }
   .x-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 1rem; padding: 0; }
   .pr-line { grid-column: 1 / -1; font-size: .7rem; color: var(--accent); font-weight: 700; padding-left: 40px; }
-  .add-set { width: 100%; margin-top: 6px; background: rgba(255,255,255,.04); border: none; color: var(--text-mid); border-radius: 8px; padding: 9px; font-weight: 700; font-size: .78rem; cursor: pointer; }
+  .add-set { width: 100%; margin-top: 6px; background: rgba(var(--ink-rgb), .04); border: none; color: var(--text-mid); border-radius: 8px; padding: 9px; font-weight: 700; font-size: .78rem; cursor: pointer; }
   .rest-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; width: calc(100% - 28px); max-width: 520px; z-index: 350; background: rgba(16,18,21,.96); border: 1px solid var(--accent-line); border-radius: 16px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
   .rest-bar b { font-family: 'Space Grotesk', sans-serif; font-size: 1.25rem; flex: 1; font-variant-numeric: tabular-nums; }
   .rest-lbl { font-size: .66rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-dim); font-weight: 700; }
@@ -890,7 +949,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     border: 1px solid var(--line); border-radius: 14px;
   }
   .seg button { flex: 1; min-height: 36px; padding: 8px 4px; border: none; border-radius: 10px; background: none; color: var(--text-dim); font-weight: 700; font-size: var(--fs-xs); letter-spacing: 0; }
-  .seg button.on { color: var(--text); background: var(--surface-3); box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 1px 3px rgba(0,0,0,.45); }
+  .seg button.on { color: var(--text); background: var(--surface-3); box-shadow: inset 0 1px 0 rgba(var(--ink-rgb), .05), 0 1px 3px rgba(0,0,0,.45); }
   .seg.small { position: static; margin: 4px 0 var(--s-3); background: var(--surface-2); -webkit-backdrop-filter: none; backdrop-filter: none; }
   .seg.small button.on { color: var(--info); background: rgba(var(--info-rgb), .14); box-shadow: none; }
   .gym-view.on { animation: rise var(--dur-2) var(--ease-out); }
@@ -970,14 +1029,181 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .sx-fig { background: var(--surface); border-color: var(--line); }
 
   @media (hover: hover) and (pointer: fine) {
-    .seg button:hover:not(.on) { color: var(--text-mid); background: rgba(255,255,255,.03); }
-    .routine-card:hover, .hist-item:hover { background: rgba(255,255,255,.015); }
-    .ex-row:hover:not(.sel) { background: rgba(255,255,255,.025); }
+    .seg button:hover:not(.on) { color: var(--text-mid); background: rgba(var(--ink-rgb), .03); }
+    .routine-card:hover, .hist-item:hover { background: rgba(var(--ink-rgb), .015); }
+    .ex-row:hover:not(.sel) { background: rgba(var(--ink-rgb), .025); }
     .cal-day:not(.out):hover { transform: scale(1.06); }
-    .menu-list button:hover { background: rgba(255,255,255,.03); color: #fff; }
+    .menu-list button:hover { background: rgba(var(--ink-rgb), .03); color: #fff; }
     .add-set:hover { color: var(--text); border-color: var(--line-3); }
     .sx-row:hover .sx-name { color: #fff; }
     .sx-row:hover .sx-idx { color: rgb(var(--sx-acc)); }
+  }
+
+
+  /* =========================================================================
+     ✦ FUNCIONES NUEVAS — sueño, escáner, mini-cut, dieta, mapa corporal,
+       Ciencia (comparador y glosario), feedback y movimiento
+     ========================================================================= */
+  /* Cifras explicables: la afordancia es sutil (cursor y subrayado punteado al pasar) */
+  [data-explain] { cursor: help; -webkit-tap-highlight-color: transparent; }
+  @media (hover: hover) and (pointer: fine) { b[data-explain]:hover, span[data-explain]:hover, .card-meta[data-explain]:hover { text-decoration: underline dotted rgba(var(--ink-rgb), .35); text-underline-offset: 4px; } }
+  .xp p { font-size: var(--fs-md); line-height: 1.65; color: var(--text-mid); margin-bottom: 10px; }
+  .xp b { color: var(--text); }
+
+  /* Glosario: términos enlazados dentro de los textos */
+  button.gl { display: inline; padding: 0; margin: 0; border: none; background: none; font: inherit; color: inherit; letter-spacing: inherit; line-height: inherit; cursor: help; text-decoration: underline dotted rgba(var(--accent-rgb), .7); text-underline-offset: 3px; text-decoration-thickness: 1.5px; transform: none !important; }
+  button.gl:hover { color: var(--text); }
+  .glos { display: grid; gap: 2px; }
+  .glos-i { padding: 12px 0; border-top: 1px solid var(--line); }
+  .glos-i dt { font-weight: 750; font-size: var(--fs-md); }
+  .glos-i dt small { font-weight: 600; color: var(--text-dim); font-size: var(--fs-xs); margin-left: 6px; }
+  .glos-i dd { margin-top: 4px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-mid); }
+
+  /* Comparador de suplementos */
+  .cmp-list { display: grid; gap: var(--s-2); }
+  .cmp-item { display: grid; gap: 6px; width: 100%; text-align: left; padding: 14px 16px; border-radius: var(--radius-md); background: var(--surface); border: 1px solid var(--line); font: inherit; color: var(--text); cursor: pointer; }
+  .cmp-h { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-3); }
+  .cmp-h b { font-size: var(--fs-md); }
+  .cmp-kv { display: grid; grid-template-columns: 74px 1fr; gap: 8px; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-mid); }
+  .cmp-kv i { font-style: normal; font-size: var(--fs-2xs); font-weight: 750; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); padding-top: 2px; }
+  @media (min-width: 700px) { .cmp-list { grid-template-columns: 1fr 1fr; } }
+
+  /* Toasts: acción (deshacer) y variantes */
+  .toast { pointer-events: auto; }
+  .toast-msg { flex: 1; min-width: 0; }
+  .toast-act { flex: none; margin-left: 6px; padding: 6px 10px; min-height: 30px; border-radius: var(--radius-xs); border: none; background: rgba(var(--accent-rgb), .16); color: var(--accent-hi); font-weight: 750; font-size: var(--fs-xs); }
+  .toast.celebrate { border-color: rgba(var(--accent-rgb), .5); background: linear-gradient(180deg, rgba(var(--accent-rgb), .14), rgba(var(--accent-rgb), .05)), rgba(24, 27, 32, .97); }
+  .toast.celebrate::before { background: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .25); }
+  .toast.info::before { background: var(--info); box-shadow: 0 0 0 3px rgba(var(--info-rgb), .2); }
+
+  /* Celebración sutil: un anillo de luz que recorre el borde, una vez */
+  .celebrating { animation: celebrate 1.5s var(--ease-out); }
+  @keyframes celebrate {
+    0% { box-shadow: var(--shadow-1), 0 0 0 0 rgba(var(--accent-rgb), .0); }
+    25% { box-shadow: var(--shadow-1), 0 0 0 3px rgba(var(--accent-rgb), .55), 0 0 40px 0 rgba(var(--accent-rgb), .25); }
+    100% { box-shadow: var(--shadow-1), 0 0 0 14px rgba(var(--accent-rgb), 0), 0 0 0 0 rgba(var(--accent-rgb), 0); }
+  }
+  .bump { animation: bump .36s var(--ease-out); }
+  @keyframes bump { 0%, 100% { transform: none; } 40% { transform: translateX(-10px); } 70% { transform: translateX(4px); } }
+  .kcal-number.is-over { background-image: linear-gradient(180deg, #b9f0cf 10%, var(--green)); }
+
+  /* Skeleton de carga */
+  .skel { display: grid; gap: 10px; padding: 14px 0 4px; }
+  .skel-lbl { font-size: var(--fs-xs); font-weight: 650; color: var(--text-mid); display: flex; align-items: center; gap: 8px; }
+  .skel-lbl::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: blink 1.2s var(--ease) infinite; }
+  .skel i { display: block; height: 11px; border-radius: 6px; background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 40%, var(--surface-2) 80%); background-size: 240% 100%; animation: shimmer 1.4s linear infinite; }
+  @keyframes shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  .food-review .skel { padding: 4px 0; }
+
+  /* Transiciones direccionales entre pestañas y entre días */
+  .section.active.nav-fwd > * { animation-name: slideFwd; }
+  .section.active.nav-back > * { animation-name: slideBack; }
+  @keyframes slideFwd { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+  @keyframes slideBack { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+  #tab-dash.day-l > .card-hero, #tab-dash.day-l > #log-list { animation: slideFwd var(--dur-2) var(--ease-out); }
+  #tab-dash.day-r > .card-hero, #tab-dash.day-r > #log-list { animation: slideBack var(--dur-2) var(--ease-out); }
+
+  /* Lista del día: deslizar para borrar, mantener para editar */
+  #log-list { overflow: hidden; }
+  .log-item { position: relative; transition: transform var(--dur) var(--ease-out), background-color var(--dur) var(--ease); touch-action: pan-y; }
+  .log-item.swipe-del { background: linear-gradient(90deg, transparent, rgba(var(--red-rgb), .18)); }
+  .log-item.swipe-del::after { content: 'Borrar'; position: absolute; right: -76px; top: 50%; transform: translateY(-50%); font-size: var(--fs-xs); font-weight: 750; color: var(--red); }
+  .log-item.pressed { background: rgba(var(--ink-rgb), .04); }
+  .sheet, .modal { transition: transform var(--dur) var(--ease-out); }
+
+  /* Escáner */
+  .scan-btn { border-color: var(--line-2); background: var(--surface-2); color: var(--text-mid); }
+  .bc-wrap { position: relative; aspect-ratio: 4 / 3; border-radius: var(--radius-lg); overflow: hidden; background: #000; margin: 4px 0 10px; }
+  .bc-wrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .bc-wrap.done video { opacity: .25; filter: grayscale(1); }
+  .bc-frame { position: absolute; inset: 22% 10%; border: 2px solid rgba(255,255,255,.85); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); }
+  .bc-frame i { position: absolute; left: 6%; right: 6%; top: 50%; height: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); animation: scanline 1.8s var(--ease) infinite alternate; }
+  @keyframes scanline { from { transform: translateY(-34px); } to { transform: translateY(34px); } }
+  .bc-card { padding: var(--s-4); border-radius: var(--radius-lg); border: 1px solid var(--line); background: var(--surface); animation: rise var(--dur-2) var(--ease-out); }
+  .bc-name { font-family: var(--font-num); font-size: var(--fs-lg); font-weight: 600; letter-spacing: -0.02em; }
+  .bc-macros { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-2); margin-top: var(--s-3); }
+  .bc-macros div { padding: 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--line); }
+  .bc-macros b { display: block; font-family: var(--font-num); font-size: var(--fs-lg); }
+  .bc-macros span { font-size: var(--fs-2xs); color: var(--text-dim); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+
+  /* Sueño */
+  .sleep-big { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: var(--s-3); }
+  .sleep-big b { font-family: var(--font-num); font-size: 2.2rem; font-weight: 600; letter-spacing: -0.045em; line-height: 1; }
+  .sleep-big span { font-size: var(--fs-sm); color: var(--text-mid); }
+  .sleep-big span.ok { color: var(--green); font-weight: 650; }
+  .sleep-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-2); margin-bottom: var(--s-4); }
+  .sleep-stats div { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--line); }
+  .sleep-stats b { display: block; font-family: var(--font-num); font-size: var(--fs-md); font-weight: 600; }
+  .sleep-stats span { display: block; font-size: .6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sleep-form { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+  .sleep-form input[type="time"] { font-family: var(--font-num); font-size: 1.05rem; font-weight: 600; }
+  .sleep-q-row { display: flex; align-items: center; gap: var(--s-3); margin-top: var(--s-3); }
+  .sleep-q { display: flex; gap: 6px; }
+  .sleep-q button { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface-2); padding: 0; position: relative; }
+  .sleep-q button::after { content: ''; position: absolute; inset: 10px; border-radius: 50%; background: var(--line-2); transition: background-color var(--dur-1) var(--ease), transform var(--dur) var(--ease-out); }
+  .sleep-q button.on { border-color: rgba(var(--tone-rgb), .55); background: rgba(var(--tone-rgb), .14); }
+  .sleep-q button.on::after { background: var(--tone); transform: scale(1.15); }
+  .sleep-q-lbl { font-size: var(--fs-xs); color: var(--text-mid); font-weight: 650; }
+  .sl-chart { width: 100%; height: auto; display: block; }
+  .sl-ok { fill: var(--tone, var(--green)); } .sl-lo { fill: rgba(var(--tone-rgb, var(--info-rgb)), .4); } .sl-none { fill: var(--line-2); }
+  .sl-goal { stroke: var(--text-dim); stroke-dasharray: 3 3; } .sl-tx { fill: var(--text-dim); font-size: 9.5px; font-family: var(--font-num); }
+
+  /* Mini-cut */
+  .phase { margin-top: var(--s-4); padding: 14px; border-radius: var(--radius-md); border: 1px solid rgba(var(--warn-rgb), .35); background: rgba(var(--warn-rgb), .06); animation: foldIn var(--dur-2) var(--ease-out); }
+  .phase-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .phase-top b { font-family: var(--font-num); font-size: var(--fs-sm); }
+  .phase-bar { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 10px; }
+  .phase-bar i { display: block; height: 100%; border-radius: 99px; background: var(--warn); transition: width .8s var(--ease-out); }
+  .phase-link { display: block; margin-top: var(--s-4); }
+  .phase-banner::before { background: var(--warn); }
+
+  /* Calidad de la dieta */
+  .dq-top { display: flex; align-items: center; gap: var(--s-4); margin-bottom: var(--s-3); }
+  .dq-ring { --p: 0; flex: none; width: 74px; height: 74px; border-radius: 50%; display: grid; place-items: center;
+    background: conic-gradient(var(--green) calc(var(--p) * 1%), var(--surface-3) 0); position: relative; }
+  .dq-ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: var(--surface); }
+  .dq-ring b { position: relative; font-family: var(--font-num); font-size: 1.45rem; font-weight: 600; letter-spacing: -0.03em; }
+  .dq-row { display: grid; grid-template-columns: 1fr 90px 30px; gap: 10px; align-items: center; width: 100%; padding: 10px 0; border: none; border-top: 1px solid var(--line); background: none; color: var(--text-mid); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; border-radius: 0; }
+  .dq-row:disabled { cursor: default; opacity: 1; }
+  .dq-row small { display: block; font-size: var(--fs-2xs); color: var(--text-dim); margin-top: 1px; }
+  .dq-row b { font-family: var(--font-num); text-align: right; color: var(--text); font-weight: 600; }
+  .dq-bar { height: 6px; border-radius: 99px; background: var(--surface-3); overflow: hidden; display: block; }
+  .dq-bar i { display: block; height: 100%; border-radius: 99px; transition: width .8s var(--ease-out); }
+  .dq-bar i.ok { background: var(--green); } .dq-bar i.mid { background: var(--warn); } .dq-bar i.lo { background: var(--red); }
+
+  /* Mapa corporal */
+  .bm-wrap { margin: 4px 0 var(--s-4); }
+  .bm { width: 100%; max-width: 420px; height: auto; display: block; margin: 0 auto; }
+  .bm-body { fill: var(--surface-2); stroke: var(--line-2); stroke-width: 1; }
+  .bm-m { cursor: pointer; transition: opacity var(--dur) var(--ease); }
+  .bm-m > *:not(title) { transition: fill var(--dur) var(--ease), stroke var(--dur) var(--ease); stroke: var(--bg-color); stroke-width: .8; }
+  .bm-m.m0 > *:not(title), .bm-m.m0 path, .bm-m.m0 ellipse, .bm-m.m0 rect { fill: var(--surface-3); }
+  .bm-m.mlo * { fill: rgba(var(--info-rgb), var(--o)); }
+  .bm-m.mok * { fill: rgba(var(--green-rgb), var(--o)); }
+  .bm-m.mhi * { fill: rgba(var(--accent-rgb), var(--o)); }
+  .bm-m.m0 * { fill: var(--surface-3); }
+  .bm-m.sel * { stroke: var(--text); stroke-width: 1.4; }
+  .bm-tx { fill: var(--text-dim); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-family: var(--font-ui); }
+  .bm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; align-items: center; margin-top: 8px; font-size: var(--fs-xs); color: var(--text-dim); }
+  .bm-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .bm-legend span::before { content: ''; width: 9px; height: 9px; border-radius: 3px; }
+  .bm-legend .mlo::before { background: rgba(var(--info-rgb), .8); } .bm-legend .mok::before { background: var(--green); } .bm-legend .mhi::before { background: var(--accent); } .bm-legend .m0::before { background: var(--surface-3); }
+  .bm-info { text-align: center; font-size: var(--fs-sm); color: var(--text-mid); margin-top: 8px; min-height: 1.4em; }
+  .bm-info b { color: var(--text); }
+
+  /* Lesiones */
+  .inj-tag { background: rgba(var(--warn-rgb), .16); color: var(--warn); }
+  .pill.warn { background: rgba(var(--warn-rgb), .14); border-color: rgba(var(--warn-rgb), .45); color: var(--warn); }
+
+  /* Sin conexión: un punto discreto en la navegación */
+  body.is-offline .bottom-nav::before { content: 'Sin conexión'; position: absolute; top: -22px; left: 50%; transform: translateX(-50%); font-size: .62rem; font-weight: 750; letter-spacing: .06em; color: var(--warn); background: var(--surface); border: 1px solid rgba(var(--warn-rgb), .4); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+
+  @media (hover: hover) and (pointer: fine) {
+    .cmp-item:hover { border-color: var(--line-2); background: var(--surface-2); }
+    .dq-row:not(:disabled):hover span { color: var(--text); }
+    .bm-m:hover * { stroke: var(--text-mid); }
+    .toast-act:hover { background: rgba(var(--accent-rgb), .26); }
+    .sleep-q button:hover:not(.on) { border-color: var(--line-3); }
   }
 
   /* =========================================================================
@@ -1033,6 +1259,70 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   @media (min-width: 1400px) { :root { --content-w: 700px; } }
 
+
+  /* =========================================================================
+     ☀️ TEMA CLARO — mismos tokens, otra luz. Papel cálido, tinta grafito y
+     acentos más profundos para mantener el contraste sobre blanco.
+     ========================================================================= */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ink-rgb: 20, 22, 26;
+    --bg-color: #f3f2ee;
+    --bg-elev: #ebe9e3;
+    --surface: #ffffff;
+    --surface-2: #f6f5f1;
+    --surface-3: #ebe9e4;
+    --overlay: rgba(28, 26, 22, .38);
+    --line: rgba(20, 22, 26, .09);
+    --line-2: rgba(20, 22, 26, .14);
+    --line-3: rgba(20, 22, 26, .24);
+    --text: #15171b;
+    --text-mid: #4b515b;
+    --text-dim: #6d737d;
+    --accent: #b8701f; --accent-rgb: 184, 112, 31; --accent-hi: #d08a3a; --accent-ink: #ffffff;
+    --accent-soft: rgba(184, 112, 31, .1); --accent-line: rgba(184, 112, 31, .34); --accent-glow: rgba(184, 112, 31, .2);
+    --green: #2f8a5b; --green-rgb: 47, 138, 91;
+    --red: #c4473a; --red-rgb: 196, 71, 58;
+    --warn: #a8740f; --warn-rgb: 168, 116, 15;
+    --info: #3a6db5; --info-rgb: 58, 109, 181;
+    --pro-color: #3a6db5; --car-color: #a87a1c; --fat-color: #b9574a; --sugar-color: #8a5aad;
+    --shadow-1: 0 1px 2px rgba(20, 22, 26, .06), 0 1px 0 rgba(255, 255, 255, .6) inset;
+    --shadow-2: 0 24px 60px -18px rgba(20, 22, 26, .3), 0 0 0 1px var(--line-2);
+    --focus-ring: 0 0 0 2px var(--bg-color), 0 0 0 4px rgba(184, 112, 31, .6);
+  }
+  :root[data-theme="light"] [data-tone="amber"]  { --tone: rgb(184,112,31); --tone-rgb: 184,112,31; }
+  :root[data-theme="light"] [data-tone="green"]  { --tone: rgb(47,138,91); --tone-rgb: 47,138,91; }
+  :root[data-theme="light"] [data-tone="blue"]   { --tone: rgb(58,109,181); --tone-rgb: 58,109,181; }
+  :root[data-theme="light"] [data-tone="rose"]   { --tone: rgb(185,87,74); --tone-rgb: 185,87,74; }
+  :root[data-theme="light"] [data-tone="violet"] { --tone: rgb(138,90,173); --tone-rgb: 138,90,173; }
+  :root[data-theme="light"] [data-tone="slate"]  { --tone: rgb(95,102,112); --tone-rgb: 95,102,112; }
+  :root[data-theme="light"] body { background-image: radial-gradient(120% 60% at 50% -18%, rgba(227, 167, 102, .18), transparent 62%); }
+  :root[data-theme="light"] .glass-card { background: var(--surface); }
+  :root[data-theme="light"] .glass-card.card-hero { background: radial-gradient(90% 70% at 50% -12%, rgba(227, 167, 102, .22), transparent 62%), var(--surface); border-color: rgba(184, 112, 31, .22); }
+  :root[data-theme="light"] .kcal-number { background-image: linear-gradient(180deg, #15171b 20%, #3a3e46); }
+  :root[data-theme="light"] .kcal-number.is-over { background-image: linear-gradient(180deg, #1f6b44 10%, var(--green)); }
+  :root[data-theme="light"] button.primary { background: linear-gradient(180deg, #edb77a, #e2a362); color: #1b1209; box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 1px 2px rgba(20,22,26,.15), 0 8px 22px -10px rgba(184, 112, 31, .55); }
+  :root[data-theme="light"] .bottom-nav { background: rgba(255, 255, 255, .86); box-shadow: 0 18px 40px -14px rgba(20, 22, 26, .25), inset 0 1px 0 rgba(255,255,255,.8); }
+  :root[data-theme="light"] .nav-item.active { background: rgba(20, 22, 26, .06); }
+  :root[data-theme="light"] .seg { background: rgba(255, 255, 255, .88); }
+  :root[data-theme="light"] .seg button.on { background: var(--surface); box-shadow: 0 1px 3px rgba(20, 22, 26, .14), 0 0 0 1px var(--line); }
+  :root[data-theme="light"] .sheet-head { background: rgba(243, 242, 238, .88); }
+  :root[data-theme="light"] .toast { background: rgba(255, 255, 255, .97); }
+  :root[data-theme="light"] .toast.celebrate { background: linear-gradient(180deg, rgba(227, 167, 102, .2), rgba(227, 167, 102, .06)), #fff; }
+  :root[data-theme="light"] .live-bar, :root[data-theme="light"] .rest-bar { background: rgba(255, 255, 255, .96); }
+  :root[data-theme="light"] .modal { background: var(--surface); }
+  :root[data-theme="light"] .sheet { background-color: var(--bg-color); }
+  :root[data-theme="light"] .bottle path[fill="none"] { stroke: rgba(20, 22, 26, .35); }
+  :root[data-theme="light"] .bottle rect[width="18"], :root[data-theme="light"] .bottle g[stroke] { stroke: rgba(20, 22, 26, .3); fill: rgba(20, 22, 26, .15); }
+  :root[data-theme="light"] .bottle rect[width="80"] { fill: rgba(20, 22, 26, .03); }
+  :root[data-theme="light"] .ex-thumb img, :root[data-theme="light"] .anim-img { background: #fff; }
+  :root[data-theme="light"] .cal-day.has { color: var(--text); }
+  :root[data-theme="light"] .plate.p5 { box-shadow: inset 0 0 0 1px rgba(20,22,26,.2); }
+  :root[data-theme="light"] select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236d737d' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+  :root[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator, :root[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator { filter: none; }
+  :root[data-theme="light"] .bc-wrap { background: #111; }
+  :root[data-theme="light"] .sx-svg-pt { fill: var(--surface); }
+
   /* =========================================================================
      ACCESIBILIDAD: movimiento reducido
      ========================================================================= */
@@ -1057,6 +1347,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div id="day-flag-banner" class="alert warn" style="display:none;"></div>
     <div id="favorite-suggestion" class="alert" style="display:none;"></div>
     <div id="backup-reminder" class="alert" style="display:none;"></div>
+    <div id="phase-banner" class="alert phase-banner" hidden></div>
     <div id="measure-reminder" class="alert" style="display:none;"></div>
 
     <div class="date-row">
@@ -1070,24 +1361,25 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div id="day-status-row" class="day-status-row"></div>
 
     <div class="glass-card card-hero" data-tone="amber">
-      <div class="kcal-number" id="ui-kcal-remaining">0</div>
+      <div class="kcal-number" id="ui-kcal-remaining" data-explain="kcalRem">0</div>
       <div class="hero-sub" id="ui-kcal-status">restantes</div>
       <div class="main-progress"><div class="main-progress-fill" id="ui-progress"></div></div>
       <div class="hero-line">
-        <span><b id="ui-kcal-consumed">0</b> / <b id="ui-kcal-target">--</b> kcal<span id="ui-kcal-err" title="Error estimado del registro"></span></span>
-        <span class="streak-badge" id="streak-badge" style="display:none;"></span>
+        <span><b id="ui-kcal-consumed" data-explain="kcalRem">0</b> / <b id="ui-kcal-target" data-explain="kcalTarget">--</b> kcal<span id="ui-kcal-err" title="Error estimado del registro" data-explain="kcalErr"></span></span>
+        <span class="streak-badge" id="streak-badge" style="display:none;" data-explain="streak"></span>
       </div>
       <div class="macro-grid">
-        <div class="macro" title="Proteína"><div class="macro-top"><span style="color:var(--pro-color)">Prot</span><b id="txt-pro">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill pro-fill" id="bar-pro"></div></div></div>
-        <div class="macro" title="Carbohidratos"><div class="macro-top"><span style="color:var(--car-color)">Carb</span><b id="txt-car">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill car-fill" id="bar-car"></div></div></div>
-        <div class="macro" title="Grasas"><div class="macro-top"><span style="color:var(--fat-color)">Grasa</span><b id="txt-fat">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill fat-fill" id="bar-fat"></div></div></div>
-        <div class="macro" title="Azúcar"><div class="macro-top"><span style="color:var(--sugar-color)">Azúc</span><b id="txt-sugar">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill sugar-fill" id="bar-sugar"></div></div></div>
+        <div class="macro" title="Proteína"><div class="macro-top"><span style="color:var(--pro-color)">Prot</span><b id="txt-pro" data-explain="macroP">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill pro-fill" id="bar-pro"></div></div></div>
+        <div class="macro" title="Carbohidratos"><div class="macro-top"><span style="color:var(--car-color)">Carb</span><b id="txt-car" data-explain="macroC">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill car-fill" id="bar-car"></div></div></div>
+        <div class="macro" title="Grasas"><div class="macro-top"><span style="color:var(--fat-color)">Grasa</span><b id="txt-fat" data-explain="macroF">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill fat-fill" id="bar-fat"></div></div></div>
+        <div class="macro" title="Azúcar"><div class="macro-top"><span style="color:var(--sugar-color)">Azúc</span><b id="txt-sugar" data-explain="macroS">0</b></div><div class="macro-bar-bg"><div class="macro-bar-fill sugar-fill" id="bar-sugar"></div></div></div>
       </div>
     </div>
 
     <div class="glass-card compose" data-tone="rose">
       <div class="compose-row">
         <button class="mic-btn" id="btn-mic" aria-label="Dictar comida"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button class="mic-btn scan-btn" id="btn-scan" onclick="openScanner()" aria-label="Escanear código de barras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><path d="M8 8v8M11 8v8M14 8v8M17 8v8"/></svg></button>
         <input type="text" id="manual-text" placeholder="¿Qué has comido?">
         <button class="secondary" id="btn-send-text" onclick="processText()">Añadir</button>
       </div>
@@ -1119,7 +1411,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
           <rect x="31" y="4" width="18" height="10" rx="3" fill="rgba(255,255,255,0.18)"/>
         </svg>
         <div class="water-side">
-          <div class="water-num"><b id="water-now">0</b><span> / <span id="water-goal">--</span> L</span></div>
+          <div class="water-num" data-explain="water"><b id="water-now">0</b><span> / <span id="water-goal">--</span> L</span></div>
           <div class="water-sub" id="water-sub"></div>
           <div class="water-sub" id="water-drinks"></div>
           <div class="water-btns">
@@ -1137,6 +1429,18 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       <details class="sub"><summary>Cómo se calcula</summary><div id="water-detail"></div></details>
     </div>
 
+    <div class="glass-card" id="sleep-card" data-tone="violet">
+      <div class="card-head"><h3>Sueño</h3><b class="card-meta" id="meta-sleep"></b></div>
+      <div id="sleep-summary"></div>
+      <div class="sleep-form">
+        <div class="form-group"><label for="sleep-bed">Me acosté</label><input type="time" id="sleep-bed"></div>
+        <div class="form-group"><label for="sleep-wake">Me levanté</label><input type="time" id="sleep-wake"></div>
+      </div>
+      <div class="sleep-q-row"><div class="sleep-q" id="sleep-q" role="radiogroup" aria-label="Calidad del sueño"><button type="button" role="radio" aria-checked="false" aria-label="Calidad 1 de 5" data-q="1" onclick="setSleepQ(1)"></button><button type="button" role="radio" aria-checked="false" aria-label="Calidad 2 de 5" data-q="2" onclick="setSleepQ(2)"></button><button type="button" role="radio" aria-checked="false" aria-label="Calidad 3 de 5" data-q="3" onclick="setSleepQ(3)"></button><button type="button" role="radio" aria-checked="false" aria-label="Calidad 4 de 5" data-q="4" onclick="setSleepQ(4)"></button><button type="button" role="radio" aria-checked="false" aria-label="Calidad 5 de 5" data-q="5" onclick="setSleepQ(5)"></button></div><span id="sleep-q-lbl" class="sleep-q-lbl">Sin valorar</span></div>
+      <button class="secondary" id="sleep-save" onclick="saveSleep()" style="width:100%;margin-top:12px;">Guardar sueño</button>
+      <details class="sub"><summary>Últimos 14 días</summary><div id="sleep-detail"></div></details>
+    </div>
+
     <div class="glass-card list-card" id="log-list"></div>
   </div>
 
@@ -1146,13 +1450,14 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div id="tab-body" class="section">
     <header class="page-head"><div><h1 class="page-title">Progreso</h1><p class="page-sub">Tendencia de peso, ingesta y composición corporal.</p></div></header>
     <div class="glass-card" data-tone="green">
-      <div class="card-head"><h3>Bulk</h3><b class="card-meta" id="meta-bulk"></b></div>
+      <div class="card-head"><h3>Bulk</h3><b class="card-meta" id="meta-bulk" data-explain="bulkRate"></b></div>
       <div id="bulk-status-body"></div>
       <div id="goal-projection-content"></div>
+      <div id="phase-box"></div>
     </div>
 
     <div class="glass-card" data-tone="blue">
-      <div class="card-head"><h3>Peso</h3><b class="card-meta" id="meta-weight"></b></div>
+      <div class="card-head"><h3>Peso</h3><b class="card-meta" id="meta-weight" data-explain="weight"></b></div>
       <div class="chart-container"><canvas id="weightChart"></canvas></div>
       <div class="inline-form">
         <input type="date" id="input-weight-date">
@@ -1163,13 +1468,18 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
     </div>
 
     <div class="glass-card" data-tone="rose">
-      <div class="card-head"><h3>Ingesta</h3><b class="card-meta" id="meta-intake"></b></div>
+      <div class="card-head"><h3>Ingesta</h3><b class="card-meta" id="meta-intake" data-explain="intake"></b></div>
       <div class="chart-container"><canvas id="kcalTrendChart"></canvas></div>
       <div id="nutrition-stats"></div>
     </div>
 
+    <div class="glass-card" data-tone="green" id="diet-card">
+      <div class="card-head"><h3>Calidad de la dieta</h3><b class="card-meta" id="meta-diet" data-explain="diet"></b></div>
+      <div id="diet-quality-body"></div>
+    </div>
+
     <div class="glass-card" data-tone="amber">
-      <div class="card-head"><h3>Objetivo</h3><b class="card-meta" id="meta-target"></b></div>
+      <div class="card-head"><h3>Objetivo</h3><b class="card-meta" id="meta-target" data-explain="kcalTarget"></b></div>
       <div id="why-target-body"></div>
       <details class="sub">
         <summary>Detalle</summary>
@@ -1227,6 +1537,14 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
           </div>
           <div id="photo-compare-view" class="photo-compare-view" style="margin-top:12px;"></div>
         </div>
+      </div>
+    </details>
+
+    <details class="glass-card fold" data-tone="amber" id="report-fold">
+      <summary><span>Informe mensual (PDF)</span></summary>
+      <div class="fold-body">
+        <div class="inline-form" style="margin-top:0;"><select id="report-month" aria-label="Mes del informe"></select><button class="primary" id="report-go" style="width:auto;margin:0;padding:10px 18px;" onclick="printMonthlyReport()">Generar PDF</button></div>
+        <div class="muted-line">Se abre el diálogo de impresión: elige «Guardar como PDF». Incluye peso, calorías, calidad de la dieta, entrenos, récords, pasos, agua y sueño del mes.</div>
       </div>
     </details>
 
@@ -1320,6 +1638,15 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
       </div>
     </div>
 
+    <div class="glass-card" data-tone="violet">
+      <div class="card-head"><h3>Apariencia y app</h3></div>
+      <div class="field-grid">
+        <div class="form-group span2"><label for="ui-theme">Tema</label><select id="ui-theme" onchange="setTheme(this.value)"><option value="auto">Automático (según el sistema)</option><option value="dark">Oscuro</option><option value="light">Claro</option></select></div>
+      </div>
+      <div class="toggle-row"><div>Vibración al tocar y confirmar<div class="muted-line" style="margin:2px 0 0;">Solo en móviles que lo permiten (Android).</div></div><label class="switch"><input type="checkbox" id="ui-haptics" onchange="setHaptics(this.checked)"><span class="slider"></span></label></div>
+      <div class="toggle-row"><div>App instalable<div class="muted-line" id="pwa-status" style="margin:2px 0 0;"></div></div><button class="secondary mini" id="pwa-install" onclick="installApp()" hidden>Instalar</button></div>
+    </div>
+
     <div class="glass-card" data-tone="green">
       <div class="card-head"><h3>Datos</h3></div>
       <div id="sync-status-content"></div>
@@ -1361,6 +1688,8 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <!-- ========================================================================= -->
 <!-- ⚙️ CÓDIGO JAVASCRIPT (LÓGICA PRINCIPAL)                                     -->
 <!-- ========================================================================= -->
+<!-- Datos de Ciencia: JSON inerte; solo se parsea al abrir la pestaña o al preguntar a la IA -->
+<script type="application/json" id="ciencia-data">__CIENCIA_JSON__</script>
 <script>
 /*__ENGINE_START__*/
 // =============================================================================
@@ -2555,24 +2884,31 @@ let editingLogId = null;
 let selectedLogDate = todayStr();
 
 // SISTEMA DE NOTIFICACIONES (TOAST)
-function showToast(msg, isError=false){
+// opts: { action: { label, fn }, kind: 'celebrate' | 'info', duration }
+function showToast(msg, isError=false, opts={}){
   const container = $('toast-container');
   const toast = document.createElement('div');
-  toast.className = `toast ${isError?'error':''}`;
-  toast.innerText = msg;
+  toast.className = `toast${isError ? ' error' : ''}${opts.kind ? ' ' + opts.kind : ''}`;
+  toast.setAttribute('role', isError ? 'alert' : 'status');
+  const txt = document.createElement('span'); txt.className = 'toast-msg'; txt.innerText = msg; toast.appendChild(txt);
+  let timer;
+  const close = () => { clearTimeout(timer); toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); };
+  if(opts.action){
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = opts.action.label;
+    b.onclick = () => { close(); try { opts.action.fn(); } catch(e){ console.error(e); } };
+    toast.appendChild(b);
+  }
   container.appendChild(toast);
+  if(isError && typeof haptic === 'function') haptic('error');
   setTimeout(()=>toast.classList.add('show'), 10);
-  setTimeout(()=>{
-    toast.classList.remove('show');
-    setTimeout(()=>toast.remove(), 300);
-  }, 3000);
+  timer = setTimeout(close, opts.duration || (opts.action ? 5200 : 3000));
 }
 
 // STORAGE
 // STORAGE — cada escritura deja una marca de tiempo por clave (__syncMeta) para
 // que la sincronización fusione en vez de sobrescribir (ver mergeStores).
 const SYNC_META_KEY = '__syncMeta';
-const NON_SYNC_KEYS = new Set([SYNC_META_KEY, 'syncUid', 'gym:active']); // gym:active = entreno en curso (solo este dispositivo)
+const NON_SYNC_KEYS = new Set([SYNC_META_KEY, 'syncUid', 'gym:active', 'ui:prefs', 'ui:celebrated']); // gym:active = entreno en curso (solo este dispositivo)
 let __dataVersion = 0; // invalida la caché del motor cuando cambia cualquier dato
 function readSyncMeta(){ try { return JSON.parse(localStorage.getItem(SYNC_META_KEY) || '{}') || {}; } catch(e){ return {}; } }
 function touchSyncMeta(key, deleted = false){
@@ -3156,6 +3492,7 @@ async function buildAIContext({ days = 14, entriesDays = 3, asOf = todayStr() } 
     const bfPct = bf.recommended ?? cunBaeBodyFat(bmiOf(st.weight.level, profile.height), profile.age, profile.sex);
     L.push(`CUERPO: ${parts.length ? 'medidas ' + parts.join(' · ') : 'sin medidas registradas'}. % grasa estimado ${bfPct.toFixed(1)} % (${bf.hasMeasurements ? 'con cinta métrica' : 'CUN-BAE, sin medidas'}); IMC ${bmiOf(st.weight.level, profile.height).toFixed(1)}.`);
   } catch(e){ /* sin datos corporales */ }
+  L.push(await sleepContextLine(asOf));
   L.push(`ACTIVIDAD: ${st.activity && st.activity.avg7 ? `pasos medios ${fmtN(st.activity.avg7)}/día en 7 días${st.activity.changePct !== null ? ` (${fmtS(st.activity.changePct * 100, 0)} % vs. las 3 semanas previas)` : ''}` : 'sin pasos registrados'}. Días con entreno (registrado en Gym o marcado en Agua): ${trainDays.length ? trainDays.join(', ') : 'ninguno'}.`);
   try { L.push(...gymContextLines()); } catch(e){ console.error('Contexto gym', e); }
   const hist = await buildRecentHistorySummary(14); if(hist) L.push('HISTORIAL: ' + hist);
@@ -3219,6 +3556,7 @@ async function renderWater(date){
   $('water-bottle').classList.toggle('full', h.pct >= 1);
   $('water-now').textContent = fmtL(h.totalMl); $('water-goal').textContent = fmtL(h.goalMl);
   const sub = $('water-sub'); sub.classList.toggle('done', left <= 0);
+  if(date === todayStr()){ const was = window.__waterPrev; if(was && was.date === date && was.left > 0 && left <= 0) celebrateOnce('water', 'Objetivo de agua cumplido', card); window.__waterPrev = { date, left }; }
   sub.textContent = left > 0 ? `quedan ${fmtL(left)} L` : left === 0 ? 'objetivo cumplido' : `objetivo cumplido · +${fmtL(-left)} L`;
   $('water-drinks').textContent = h.drinksMl > 0 ? `incluye ${fmtL(h.drinksMl)} L de otras bebidas de tus comidas` : '';
   setMeta('meta-water', h.totalMl > 0 ? `${Math.round(h.pct * 100)} %` : '');
@@ -3278,7 +3616,7 @@ async function updateDashboardUI(){
   $('log-date-jump').style.display = (t === todayStr()) ? 'none' : 'block';
   $('btn-next-day').disabled = (t === todayStr());
 
-  $('ui-kcal-consumed').innerText = Math.round(sums.kcal);
+  animateNum($('ui-kcal-consumed'), sums.kcal);
   { const el = $('ui-kcal-err');
     if(el){
       if(sums.kcal > 0){
@@ -3294,13 +3632,16 @@ async function updateDashboardUI(){
 
   const kcalDiff = tgt.kcal - sums.kcal;
   const remEl = $('ui-kcal-remaining');
-  if(kcalDiff >= 0){
-    remEl.innerText = Math.round(kcalDiff);
-    remEl.style.color = 'var(--accent)';
-  } else {
-    remEl.innerText = '+' + Math.round(Math.abs(kcalDiff));
-    remEl.style.color = 'var(--green)';
-  }
+  animateNum(remEl, kcalDiff, v => v >= 0 ? String(Math.round(v)) : '+' + Math.round(Math.abs(v)));
+  remEl.classList.toggle('is-over', kcalDiff < 0);
+  // Celebraciones: solo al CRUZAR el umbral durante esta sesión (no al abrir la app)
+  { const hero = document.querySelector('#tab-dash .card-hero'), key = t, now = { kcal: kcalPct >= 100, prot: tgt.p > 0 && sums.p >= tgt.p };
+    const prev = window.__dashPrev && window.__dashPrev.key === key ? window.__dashPrev : null;
+    if(prev && t === todayStr()){
+      if(now.kcal && !prev.kcal) celebrateOnce('kcal', 'Objetivo de calorías cumplido', hero);
+      else if(now.prot && !prev.prot) celebrateOnce('prot', 'Objetivo de proteína cumplido', hero);
+    }
+    window.__dashPrev = { key, ...now }; }
 
   if(kcalPct>=100){ progFill.classList.add('surplus'); $('ui-kcal-status').innerText="objetivo cumplido"; $('ui-kcal-status').style.color="var(--green)"; }
   else { progFill.classList.remove('surplus'); $('ui-kcal-status').innerText="restantes"; $('ui-kcal-status').style.color="var(--text-dim)"; }
@@ -3319,9 +3660,9 @@ async function updateDashboardUI(){
   if(!logs.length) list.innerHTML = '<div class="empty-state">Sin registros este día.</div>';
   else {
     list.innerHTML = logs.slice().reverse().map(log=>`
-      <div class="log-item">
+      <div class="log-item" data-id="${log.id}">
         <div>
-          <div class="log-title">${log.label}</div>
+          <div class="log-title">${escAttr(log.label)}</div>
           <div class="log-macros">${log.time||''} · P${Math.round(log.p)} C${Math.round(log.c)} G${Math.round(log.f)}</div>
         </div>
         <div class="log-item-actions">
@@ -3338,13 +3679,23 @@ async function updateDashboardUI(){
   await renderFavoritesQuickAdd();
   await renderStreakBadge();
   renderDayStatusRow(t);
+  renderPhaseBanner();
+  await renderSleep(t);
 }
 window.delLog = async (id) => {
-  // Borrado lógico: la entrada queda como "borrada" (auditable) y deja de contar.
-  await softDeleteLogEntry(selectedLogDate, id);
-  showToast('Registro eliminado');
+  // Borrado lógico: la entrada queda como "borrada" (auditable) y deja de contar. Se puede deshacer.
+  const date = selectedLogDate;
+  await softDeleteLogEntry(date, id);
+  showToast('Registro eliminado', false, { action: { label: 'Deshacer', fn: () => restoreLogEntry(date, id) } });
   await updateDashboardUI(); await refreshInsights();
 };
+async function restoreLogEntry(date, id){
+  const raw = await getLogRaw(date); const e = raw.find(x => x.id === id); if(!e) return;
+  delete e.deletedAt; e.updatedAt = Date.now();
+  await safeSet('log:' + date, raw); haptic('ok');
+  showToast('Registro recuperado');
+  await updateDashboardUI(); await refreshInsights();
+}
 window.editLog = async (id) => {
   const entries = await getLog(selectedLogDate);
   const entry = entries.find(e=>e.id===id);
@@ -3477,11 +3828,11 @@ async function recordAiCorrection(rec){
 }
 function normalizeAiEstimate(res, text){
   if(!res || typeof res !== 'object') return null;
-  let items = (Array.isArray(res.items) ? res.items : []).filter(i => i && i.food).map(i => ({ food: String(i.food), grams: numOr0(i.grams), kcal: numOr0(i.kcal), p: numOr0(i.p), c: numOr0(i.c), f: numOr0(i.f), s: numOr0(i.s), al: numOr0(i.al), drink: i.drink === true }));
+  let items = (Array.isArray(res.items) ? res.items : []).filter(i => i && i.food).map(i => ({ food: String(i.food), grams: numOr0(i.grams), kcal: numOr0(i.kcal), p: numOr0(i.p), c: numOr0(i.c), f: numOr0(i.f), s: numOr0(i.s), fib: numOr0(i.fib), al: numOr0(i.al), drink: i.drink === true }));
   let tot = sumEntries(items);
   const explicit = parseExplicitNutrition(text);
   if(explicit && explicit.kcal > 0){
-    if(tot.kcal > 0){ const k = explicit.kcal / tot.kcal; items = items.map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k, s: i.s*k, al: (Number(i.al)||0)*k })); }
+    if(tot.kcal > 0){ const k = explicit.kcal / tot.kcal; items = items.map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k, s: i.s*k, fib: (Number(i.fib)||0)*k, al: (Number(i.al)||0)*k })); }
     else items = [{ food: String(res.label || text).slice(0, 60), grams: 0, kcal: explicit.kcal, p: 0, c: 0, f: 0, s: 0 }];
     tot = sumEntries(items);
   }
@@ -3497,7 +3848,8 @@ function normalizeAiEstimate(res, text){
   const g = singleGramsOf(text);
   if(g && tot.kcal > g * 9.3){ warnings.push(`${Math.round(tot.kcal)} kcal en ${g} g es imposible (la grasa pura tiene ~9 kcal/g).`); if(tot.kcal/10 <= g*9.3) fixKcal = Math.round(tot.kcal/10); }
   const conf = explicit ? 'alta' : (['alta','media','baja'].includes(res.confidence) ? res.confidence : 'media');
-  return { label: String(res.label || text).slice(0, 80), liquidMl, al: r1(alG), kcal: r1(tot.kcal), p: r1(tot.p), c: r1(tot.c), f: r1(tot.f), s: r1(tot.s),
+  const fibG = items.reduce((a, i) => a + (Number(i.fib) || 0), 0);
+  return { label: String(res.label || text).slice(0, 80), liquidMl, al: r1(alG), fib: items.some(i => i.fib > 0) ? r1(fibG) : undefined, kcal: r1(tot.kcal), p: r1(tot.p), c: r1(tot.c), f: r1(tot.f), s: r1(tot.s),
     items: items.map(i => ({ ...i, kcal: r1(i.kcal), p: r1(i.p), c: r1(i.c), f: r1(i.f), s: r1(i.s) })),
     range: { low: Math.round(low), high: Math.round(high) }, confidence: conf,
     assumptions: (Array.isArray(res.assumptions) ? res.assumptions : []).map(String).slice(0, 6),
@@ -3526,14 +3878,14 @@ Reglas:
 2. Si el texto da kcal totales, kcal por 100 g/ml o valores de una etiqueta, ÚSALOS LITERALMENTE.
 3. Grasas ocultas: en platos caseros fritos, salteados, a la plancha, guisos o con salsa, incluye el aceite como alimento propio (por defecto 10 g por ración; 15 g en fritos de sartén) salvo que el texto diga otra cosa, y decláralo en "assumptions". Incluye salsas, mahonesa, queso, pan y bebidas si se mencionan.
 4. Tablas de composición españolas (BEDCA). Bebidas: 1 ml ≈ 1 g.
-5. Coherencia por alimento: kcal ≈ 4·p + 4·c + 9·f. "s" = azúcares totales (0 si no lleva). "al" = gramos de alcohol etílico puro (7 kcal/g; una cerveza de 330 ml ≈ 13 g, una copa de vino ≈ 12 g, un cubata ≈ 16 g; 0 si no hay alcohol), de modo que kcal ≈ 4·p + 4·c + 9·f + 7·al.
+5. Coherencia por alimento: kcal ≈ 4·p + 4·c + 9·f. "s" = azúcares totales (0 si no lleva). "fib" = gramos de fibra alimentaria (0 si no lleva). "al" = gramos de alcohol etílico puro (7 kcal/g; una cerveza de 330 ml ≈ 13 g, una copa de vino ≈ 12 g, un cubata ≈ 16 g; 0 si no hay alcohol), de modo que kcal ≈ 4·p + 4·c + 9·f + 7·al.
 6. Incertidumbre honesta: "kcal_low"/"kcal_high" = rango del ~90 % de lo descrito. Tus estimaciones suelen ser dispares, así que sé HONESTO y AMPLIO: nunca menos de ±15 % si hay que suponer ración, aceite o marca, y ±30 % o más si es un plato mixto, de restaurante o ambiguo. "confidence": "alta" si hay cantidades o etiqueta; "media" si hay que suponer la ración; "baja" si es muy ambiguo.
 7. "drink": true SOLO en bebidas SIN alcohol que se toman como líquido (agua, refrescos, zumos, leche, café, té, batidos líquidos); en ese caso "grams" = ml. false en comida sólida, fruta, verdura, sopas, cremas, yogures y en cualquier bebida con alcohol. No estimes el agua que contienen los alimentos.
 8. "question": SOLO si una única aclaración cambiaría el total más de un 25 % (p. ej. "¿Cuántos gramos eran aproximadamente?", "¿Frito o a la plancha?"). Si no, null.
 ${corr ? `9. Calibración parcial según las correcciones previas de este usuario (aplica solo la fracción indicada; no extrapoles a productos con etiqueta ni a cantidades dadas):\n${corr}\n` : ''}Si el texto no describe comida, devuelve "items": [] y explica el motivo en "label".
 
 Devuelve SOLO JSON, sin texto fuera:
-{"label":"nombre corto","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"s":0,"al":0,"drink":false}],"kcal_low":0,"kcal_high":0,"confidence":"media","assumptions":[""],"question":null}`;
+{"label":"nombre corto","items":[{"food":"","grams":0,"kcal":0,"p":0,"c":0,"f":0,"s":0,"fib":0,"al":0,"drink":false}],"kcal_low":0,"kcal_high":0,"confidence":"media","assumptions":[""],"question":null}`;
   const res = await callGemini(prompt, true, GEMINI_MODEL_FOOD, 2, { temperature: 0 });
   const est = normalizeAiEstimate(res, text);
   if(est){ est.source = 'Estimación de IA'; est.fromAI = true; }
@@ -3561,9 +3913,9 @@ function validateFoodEntry(entry){
 }
 function reliabilityBadge(source){
   if(!source) return '';
-  const cached = /caché/i.test(source), fav = /favorita/i.test(source);
-  const color = cached || fav ? '#8aa2c8' : 'var(--accent)';
-  const label = fav ? '⭐ Favorita' : cached ? `✔ ${source}` : '🤖 Estimación de IA';
+  const cached = /caché/i.test(source), fav = /favorita/i.test(source), label0 = /etiqueta|código/i.test(source);
+  const color = label0 ? 'var(--green)' : cached || fav ? '#8aa2c8' : 'var(--accent)';
+  const label = label0 ? '▦ Etiqueta (código de barras)' : fav ? '⭐ Favorita' : cached ? `✔ ${source}` : '🤖 Estimación de IA';
   return `<div class="src-badge" style="color:${color};">${label}</div>`;
 }
 const escAttr = s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -3593,7 +3945,7 @@ function reviewInputsHTML(e){
 }
 function estimateDetailsHTML(est){
   if(!est || !est.range) return '';
-  let h = `<div class="est-meta">Rango probable <b>${est.range.low === est.range.high ? est.range.low : `${est.range.low}–${est.range.high}`} kcal</b> · confianza <b>${est.confidence}</b>${est.explicitBasis ? ` · <span style="color:var(--green)">${escAttr(est.explicitBasis)}</span>` : ''}</div>`;
+  let h = `<div class="est-meta">Rango probable <b>${est.range.low === est.range.high ? est.range.low : `${est.range.low}–${est.range.high}`} kcal</b> · confianza <b>${est.confidence}</b>${est.fib > 0 ? ` · fibra ≈ <b>${fmtN(est.fib, 1)} g</b>` : ''}${est.explicitBasis ? ` · <span style="color:var(--green)">${escAttr(est.explicitBasis)}</span>` : ''}</div>`;
   if(est.items && est.items.length) h += `<table class="est-items"><tbody>${est.items.map(i => `<tr><td>${escAttr(i.food)}</td><td>${i.grams ? Math.round(i.grams) + ' g' : ''}</td><td>${Math.round(i.kcal)} kcal</td></tr>`).join('')}</tbody></table>`;
   if(est.assumptions && est.assumptions.length) h += `<div class="est-assump">Supuestos: ${est.assumptions.map(escAttr).join(' · ')}</div>`;
   (est.warnings || []).forEach(w => { h += `<div class="alert warn" style="margin:10px 0 0;">⚠️ ${escAttr(w)}${est.fixKcal ? ` <button class="secondary mini" onclick="applyReviewKcal(${est.fixKcal})">Usar ${est.fixKcal} kcal</button>` : ''}</div>`; });
@@ -3684,6 +4036,9 @@ window.confirmFoodReview = async () => {
   const final = { label: $('review-label').value.trim(), kcal: Number($('review-kcal').value), p: Number($('review-p').value), c: Number($('review-c').value), f: Number($('review-f').value), s: Number($('review-sugar').value) || 0, al: Math.max(0, Number($('review-al') && $('review-al').value) || 0), liquidMl: Math.max(0, Math.min(3000, Math.round(Number($('review-liquid') && $('review-liquid').value) || 0))) };
   const precSel = ($('review-prec') && $('review-prec').value) || 'est', flagWeighed = precSel === 'weighed', flagOut = !!($('review-out') && $('review-out').checked);
   if(!validateFoodEntry(final) || final.kcal <= 0){ showToast('Revisa los valores de la comida.', true); return; }
+  // Fibra: viene de la estimación (IA o etiqueta) y se escala si cambias las kcal.
+  { const f0 = Number(pendingFoodEntry && pendingFoodEntry.fib), k0 = Number(pendingFoodEntry && pendingFoodEntry.kcal) || 0;
+    if(Number.isFinite(f0) && f0 >= 0 && pendingFoodEntry.fib !== undefined && pendingFoodEntry.fib !== null) final.fib = Math.round(f0 * (k0 > 0 ? final.kcal / k0 : 1) * 10) / 10; }
   const now = Date.now();
   const entries = await getLog(selectedLogDate);
   const src = pendingFoodEntry;
@@ -3720,7 +4075,7 @@ window.confirmFoodReview = async () => {
     const est = saved.ai;
     const k = est && est.kcal > 0 ? final.kcal / est.kcal : 1;
     await setFoodCache(key, { promptVersion: FOOD_PROMPT_VERSION, corrected: !!saved.corrected, updatedAt: now,
-      result: { label: final.label, liquidMl: final.liquidMl, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, al: final.al || 0, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
+      result: { label: final.label, liquidMl: final.liquidMl, kcal: final.kcal, p: final.p, c: final.c, f: final.f, s: final.s, fib: final.fib, al: final.al || 0, items: (est?.items || []).map(i => ({ ...i, kcal: i.kcal*k, p: i.p*k, c: i.c*k, f: i.f*k })), range: { low: Math.round(final.kcal), high: Math.round(final.kcal) }, confidence: 'alta', assumptions: [saved.corrected ? 'Valor corregido por ti' : 'Valor confirmado por ti'], question: null, warnings: [] } });
   }
   cancelFoodReview();
   await updateDashboardUI(); await refreshInsights();
@@ -3734,7 +4089,9 @@ async function processText(voiceText){
   if(!input.trim()) return;
   inputEl.value=''; btnEl.disabled=true; $('btn-mic').disabled=true;
   $('ai-status').innerText = 'Estimando kcal y macros...';
+  { const rv = $('food-review'); if(!pendingFoodEntry){ rv.style.display = 'block'; rv.innerHTML = skelHTML(5, 'Estimando kcal y macros…'); } }
   const res = await estimateFoodEntry(input);
+  if(!pendingFoodEntry){ const rv = $('food-review'); rv.style.display = 'none'; rv.innerHTML = ''; }
   if(validateFoodEntry(res) && res.kcal > 0){
     res.originalText = input;
     showFoodReview(res, false);
@@ -4144,6 +4501,7 @@ async function generateFullAIReport(){
   const btn = $('btn-ai-summary');
   const out = $('ai-body-summary-output');
   btn.disabled = true; btn.innerText = 'Analizando todos tus datos...';
+  out.style.display = 'block'; out.innerHTML = skelHTML(7, 'Analizando todos tus datos…');
   try {
     const streak = await computeStreak();
     const context = await buildAIContext({ days: 28, entriesDays: 7 });
@@ -4375,8 +4733,8 @@ async function renderBodyCompositionChart(){
 // Estilo compartido de gráficos: sin ruido visual. Sin leyendas (la métrica
 // ya está en el título de la tarjeta o en el selector), sin rejilla vertical,
 // rejilla horizontal apenas visible, pocas etiquetas de eje y tooltip limpio.
-const CHART_TEXT = '#6f757f';
-const CHART_GRID = 'rgba(255,255,255,0.045)';
+let CHART_TEXT = '#747b87';
+let CHART_GRID = 'rgba(255,255,255,0.05)';
 function cleanChartOptions(extra = {}){
   return {
     responsive: true, maintainAspectRatio: false,
@@ -4487,7 +4845,7 @@ const STATUS_UI = {
   SIN_DATOS: { label: 'Datos insuficientes', tone: 'neutral' }, POR_DEBAJO: { label: 'Por debajo del rango', tone: 'bad' },
   DENTRO: { label: 'Dentro del rango', tone: 'ok' }, POR_ENCIMA: { label: 'Por encima del rango', tone: 'bad' }, INCIERTO: { label: 'Incierto (esperando datos)', tone: 'warn' }
 };
-const SOURCE_UI = { auto: 'Automático', manual: 'Manual', correction: 'Corrección', 'legacy-formula': 'Fórmula (v1)', 'legacy-initial': 'Inicial (v1)', 'legacy-auto': 'Automático (v1)', 'legacy-untracked-reset': 'Reinicio no registrado (v1)', 'legacy-observed': 'Observado en dashboard (v1)' };
+const SOURCE_UI = { auto: 'Automático', manual: 'Manual', correction: 'Corrección', minicut: 'Mini-cut', 'minicut-fin': 'Fin de mini-cut', formula: 'Fórmula', 'legacy-formula': 'Fórmula (v1)', 'legacy-initial': 'Inicial (v1)', 'legacy-auto': 'Automático (v1)', 'legacy-untracked-reset': 'Reinicio no registrado (v1)', 'legacy-observed': 'Observado en dashboard (v1)' };
 const confBadge = c => `<span class="conf-badge conf-${c.level.toLowerCase()}" title="Puntuación ${fmtN(c.score*100)} %">Confianza ${c.level}</span>`;
 const kv = (k, v, sub = '') => `<div class="kv-row"><span>${k}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
 
@@ -4723,6 +5081,9 @@ async function renderBodyTab(){
   await renderTrendCharts();
   renderWhyTarget('why-target-body', 'why-target-detail'); await renderModelChart();
   await renderMeasureTrends();
+  await renderDietQuality(); await renderPhaseBox(); renderReportControls();
+  { const rows = document.querySelectorAll('#why-target-body .kv-row b'); if(rows[0]) rows[0].dataset.explain = 'maint'; }
+  document.querySelectorAll('#bulk-status-body .sn-val').forEach(e => e.dataset.explain = 'bulkRate');
 }
 // Progreso · cuerpo (composición, medidas y fotos: al abrir la pestaña o al guardar medidas)
 async function renderBodyCompositionBlock(){
@@ -5071,14 +5432,14 @@ function gBodyKg(){ try { const l = getEngineState().weight.level; if(l > 0) ret
 // ---------- hojas (pantallas completas) y modales
 function gOpenSheet(id, html){
   let el = $(id);
-  if(!el){ el = document.createElement('div'); el.id = id; el.className = 'sheet'; document.body.appendChild(el); }
+  if(!el){ el = document.createElement('div'); el.id = id; el.className = 'sheet'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); document.body.appendChild(el); overlayPush(id); }
   const top = el.scrollTop; el.innerHTML = `<div class="sheet-inner">${html}</div>`; el.scrollTop = top;
   document.body.classList.add('sheet-open');
   return el;
 }
-function gCloseSheet(id){ const el = $(id); if(el) el.remove(); if(!document.querySelector('.sheet')) document.body.classList.remove('sheet-open'); }
+function gCloseSheet(id){ const el = $(id); if(el) el.remove(); if(!document.querySelector('.sheet')) document.body.classList.remove('sheet-open'); if(el) overlayPopIfTop(id); }
 G.close = id => gCloseSheet(id);
-function gModal(html){ gCloseModal(); const b = document.createElement('div'); b.className = 'modal-back'; b.id = 'g-modal'; b.innerHTML = `<div class="modal">${html}</div>`; b.addEventListener('click', e => { if(e.target === b) gCloseModal(); }); document.body.appendChild(b); return b; }
+function gModal(html){ gCloseModal(); const b = document.createElement('div'); b.className = 'modal-back'; b.id = 'g-modal'; b.innerHTML = `<div class="modal" role="dialog" aria-modal="true">${html}</div>`; b.addEventListener('click', e => { if(e.target === b) gCloseModal(); }); document.body.appendChild(b); return b; }
 function gCloseModal(){ const m = $('g-modal'); if(m) m.remove(); }
 G.closeModal = gCloseModal;
 
@@ -5221,7 +5582,7 @@ function gRenderLgEx(e, ei, ctx, prs, S, groups){
       <button class="secondary mini" onclick="G.exMenu(${ei})" aria-label="Opciones">⋯</button>
     </div>
     <input class="lg-ex-notes" value="${escAttr(e.notes || '')}" placeholder="Notas del ejercicio" oninput="G.exNotes(${ei},this.value)">
-    <div class="pill-row"><button class="pill" onclick="G.editRest(${ei})">⏱ ${e.rest ? gFmtClock(e.rest) : 'Sin descanso'}</button>${type === 'wr' || type === 'bwp' || type === 'bwa' ? rangeTag : ''}${type === 'wr' && (ex.equip === 'barra' || ex.equip === 'smith' || ex.equip === 'ez') ? `<button class="pill" onclick="G.openPlates(${ei})">Discos</button>` : ''}</div>
+    <div class="pill-row">${(() => { const h = gInjuryHits(ex); return h.length ? `<button class="pill warn" onclick="G.openPicker('replace',${ei})">⚠ ${gInjuryNames(h)} · Sustituir</button>` : ''; })()}<button class="pill" onclick="G.editRest(${ei})">⏱ ${e.rest ? gFmtClock(e.rest) : 'Sin descanso'}</button>${type === 'wr' || type === 'bwp' || type === 'bwa' ? rangeTag : ''}${type === 'wr' && (ex.equip === 'barra' || ex.equip === 'smith' || ex.equip === 'ez') ? `<button class="pill" onclick="G.openPlates(${ei})">Discos</button>` : ''}</div>
     ${head}${rows}
     <button class="add-set" onclick="G.addSet(${ei})">+ Añadir serie</button>
   </div>`;
@@ -5261,7 +5622,7 @@ G.check = (ei, si) => {
   // ¿récord?
   const before = GY.workoutPRs(w, ctx.rec); s.done = true; s.at = Date.now();
   const after = GY.workoutPRs(w, ctx.rec), pr = after[ei + ':' + si];
-  if(pr && !before[ei + ':' + si]){ showToast('🏆 Récord personal: ' + pr.join(' · ')); if(S.vibrate && navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 120]); }
+  if(pr && !before[ei + ':' + si]){ showToast('🏆 Récord personal: ' + pr.join(' · '), false, { kind: 'celebrate' }); if(S.vibrate && navigator.vibrate) navigator.vibrate([40, 60, 40, 60, 120]); }
   else if(S.vibrate && navigator.vibrate) navigator.vibrate(15);
   if(gL.mode === 'live' && S.autoRest && e.rest > 0){
     const next = w.exercises[ei + 1];
@@ -5475,7 +5836,7 @@ function gExListHTML(prefix, selectable){
   const list = gFilterExercises(gPick.q, gPick.mus, gPick.eq), shown = list.slice(0, 160), rec = new Set(gRecentIds());
   const items = shown.map(ex => {
     const sel = selectable && gPick.sel.includes(ex.id);
-    return `<div class="ex-row${sel ? ' sel' : ''}" onclick="${selectable ? `G.pickToggle('${ex.id}')` : `G.openEx('${ex.id}')`}">${gThumb(ex)}<div style="flex:1;min-width:0;"><div class="ex-name">${escAttr(ex.name)}${ex.id.startsWith('c:') ? ' <span class="mini-tag">Propio</span>' : ''}${ex.en ? ' <span class="mini-tag">EN</span>' : ''}</div><div class="ex-meta">${gMusLabel(ex.primary)} · ${GY.EQUIP[ex.equip] || ''}${rec.has(ex.id) && !gPick.q ? ' · reciente' : ''}</div></div>${selectable ? `<span class="sel-dot">${sel ? '✓' : ''}</span>` : '<span class="ex-meta">›</span>'}</div>`;
+    return `<div class="ex-row${sel ? ' sel' : ''}" onclick="${selectable ? `G.pickToggle('${ex.id}')` : `G.openEx('${ex.id}')`}">${gThumb(ex)}<div style="flex:1;min-width:0;"><div class="ex-name">${escAttr(ex.name)}${ex.id.startsWith('c:') ? ' <span class="mini-tag">Propio</span>' : ''}${ex.en ? ' <span class="mini-tag">EN</span>' : ''}</div><div class="ex-meta">${gMusLabel(ex.primary)} · ${GY.EQUIP[ex.equip] || ''}${rec.has(ex.id) && !gPick.q ? ' · reciente' : ''}${gInjuryTag(ex)}</div></div>${selectable ? `<span class="sel-dot">${sel ? '✓' : ''}</span>` : '<span class="ex-meta">›</span>'}</div>`;
   }).join('');
   const more = list.length > shown.length ? `<div class="muted-line">Mostrando ${shown.length} de ${list.length}. Afina la búsqueda.</div>` : '';
   const dbNote = gymDbList.length ? `<div class="muted-line">${GY.LIB.length} ejercicios en español + ${gymDbList.length} del banco ampliado (en inglés, con fotos e instrucciones) + ${gymData().custom.length} propios.</div>`
@@ -5485,6 +5846,8 @@ function gExListHTML(prefix, selectable){
 G.pickFilter = (prefix, k, v) => { gPick[k] = v; const el = $(prefix + '-list'); if(el) el.innerHTML = gExListHTML(prefix, prefix === 'gp'); };
 G.openPicker = (mode, target) => {
   gPick = { q: '', mus: '', eq: '', sel: [], mode: mode || 'add', target: target ?? null };
+  // Sustituir un ejercicio que carga una zona con molestias: abre filtrado por el mismo músculo
+  if(mode === 'replace' && gW() && target != null && gW().exercises[target]){ const cur = gymExInfo(gW().exercises[target]); if(gInjuryHits(cur).length) gPick.mus = cur.primary || ''; }
   gRenderPicker();
   gymLoadDb().then(() => { const el = $('gp-list'); if(el) el.innerHTML = gExListHTML('gp', true); });
 };
@@ -5899,7 +6262,7 @@ function gRenderTrain(){
   const planHTML = [1, 2, 3, 4, 5, 6, 7].map(n => `<div class="plan-row${n === dow ? ' today' : ''}"><span>${G_DOW[n]}</span><select onchange="G.setPlanDay(${n}, this.value)"><option value="">Descanso</option>${d.routines.map(r => `<option value="${r.id}"${(d.plan.days || {})[n] === r.id ? ' selected' : ''}>${escAttr(r.name)}</option>`).join('')}</select></div>`).join('');
   const S = d.settings, restOpts = sel => G_REST_OPTS.filter(x => x).map(s => `<option value="${s}"${s === sel ? ' selected' : ''}>${gFmtClock(s)}</option>`).join('');
   const tog = (k, label) => `<div class="toggle-row"><div>${label}</div><label class="switch"><input type="checkbox" ${S[k] ? 'checked' : ''} onchange="G.setSetting('${k}', this.checked)"><span class="slider"></span></label></div>`;
-  el.innerHTML = `${hero}
+  el.innerHTML = `${gInjuryAlert()}${hero}
     <div class="btn-row quick-row"><button class="secondary" onclick="G.startEmpty()">▶ Entreno vacío</button><button class="secondary" onclick="G.newRoutine()">+ Rutina</button><button class="secondary" onclick="G.templates()">Plantillas</button><button class="secondary" onclick="G.aiRoutine()">✨ IA</button></div>
     <div class="glass-card" data-tone="blue"><div class="card-head"><h3>Mis rutinas</h3><b class="card-meta">${d.routines.length || ''}</b></div>${routinesHTML}</div>
     <details class="glass-card fold" data-tone="blue"><summary><span>Plan semanal</span>${pa.planned ? `<b class="card-meta">${pa.done}/${pa.planned}</b>` : ''}</summary><div class="fold-body">${d.routines.length ? planHTML : '<div class="muted-line" style="margin:0;">Crea rutinas para planificar la semana.</div>'}
@@ -5915,7 +6278,8 @@ function gRenderTrain(){
         <div class="form-group span2"><label>Discos disponibles (kg, por unidad)</label><input type="text" value="${S.plates.map(p => String(p).replace('.', ',')).join('; ')}" onchange="G.setPlates(this.value)"></div>
       </div>
       ${tog('autoRest', 'Descanso automático al completar serie')}${tog('rpe', 'Columna RPE (esfuerzo 1-10)')}${tog('sound', 'Sonido al acabar el descanso')}${tog('vibrate', 'Vibración')}${tog('wakeLock', 'Mantener la pantalla encendida entrenando')}
-      <div class="sub-title" style="margin-top:12px;">Datos</div>
+      ${gInjuryControls()}
+      <div class="sub-title" style="margin-top:16px;">Datos</div>
       <div class="btn-row"><label class="secondary file-btn">Importar CSV (Hevy / Strong)<input type="file" accept=".csv,text/csv" style="display:none;" onchange="G.importCSV(this)"></label><button class="secondary" onclick="G.exportCSV()">Exportar CSV</button></div>
       <div class="muted-line">El RPE afina el 1RM estimado (reps + reps en reserva). Imágenes del banco: free-exercise-db (dominio público).</div>
     </div></details>`;
@@ -6074,9 +6438,10 @@ async function gRenderStats(){
       <div class="chart-container"><canvas id="g-weekly"></canvas></div></div>
     <div class="glass-card" data-tone="blue"><div class="card-head"><h3>Distribución muscular</h3>
       <select class="mini-select" onchange="gMusPeriod=Number(this.value);gRenderStats()">${[[7, '7 días'], [28, '4 semanas'], [84, '12 semanas']].map(p => `<option value="${p[0]}"${gMusPeriod === p[0] ? ' selected' : ''}>${p[1]}</option>`).join('')}</select></div>
+      ${gBodyMapHTML(ms, weeksF)}
       <div class="chart-container" style="height:230px;"><canvas id="g-radar"></canvas></div>
       <div class="sub-title" style="margin-top:12px;">Series efectivas por semana</div>${musHTML}
-      <div class="muted-line">Zona verde = 10-20 series/semana, rango asociado a la mayor hipertrofia (Schoenfeld 2017; Pelland 2024). Principal cuenta 1 serie, secundario 0,5. Sin calentamiento.</div></div>
+      <div class="muted-line">Zona verde = 10-20 series/semana, rango asociado a la mayor hipertrofia (Schoenfeld 2017; Pelland 2026). Principal cuenta 1 serie, secundario 0,5. Sin calentamiento.</div></div>
     <div class="glass-card" data-tone="green"><div class="card-head"><h3>Fuerza, peso y nutrición</h3></div>
       ${X.verdict ? `<div class="decision-box tone-${X.verdict.tone}">${X.verdict.txt}</div>` : '<div class="muted-line" style="margin:0;">Necesito ~4 semanas de entrenos y pesajes para cruzar fuerza y peso.</div>'}
       ${liftsHTML ? `<div style="margin-top:10px;">${liftsHTML}</div>` : ''}
@@ -6141,6 +6506,7 @@ function aiReportHTML(res){
 G.aiGym = async () => {
   const btn = $('btn-gym-ai'), out = $('gym-ai-out'); if(!btn) return;
   btn.disabled = true; btn.textContent = 'Analizando entrenos, peso y nutrición…';
+  out.style.display = 'block'; out.innerHTML = skelHTML(6, 'Analizando entrenos, peso y nutrición…');
   try {
     const gym = gymContextLines({ detail: 10 }).join('\n');
     const ctx = await buildAIContext({ days: 28, entriesDays: 0 });
@@ -6160,7 +6526,7 @@ Devuelve SOLO este JSON, sin texto fuera:
 {"veredicto":"2-3 frases con los números clave","secciones":[{"titulo":"Volumen y frecuencia","texto":"3-6 frases"},{"titulo":"Progresión y fuerza","texto":"3-6 frases con ejercicios concretos"},{"titulo":"Equilibrio muscular","texto":"2-5 frases"},{"titulo":"Recuperación, nutrición y peso","texto":"3-6 frases cruzando kcal, proteína, peso tendencia y rendimiento"},{"titulo":"Riesgos y puntos de atención","texto":"2-4 frases o decir que no hay"}],"metricas":[{"valor":"dato con número, máx 6 palabras","etiqueta":"1-2 palabras"}],"acciones":["acción concreta (incluye pesos/reps/series objetivo para la próxima sesión cuando aplique), máx 20 palabras"]}
 4-6 métricas y 4-6 acciones priorizadas.`;
     const res = await callGemini(prompt, true, GEMINI_MODEL_SUMMARY, 2, { timeoutMs: 60000 });
-    if(!res || !res.veredicto){ showToast('No se pudo generar el análisis ahora mismo.', true); return; }
+    if(!res || !res.veredicto){ out.style.display = 'none'; out.innerHTML = ''; showToast('No se pudo generar el análisis ahora mismo.', true); return; }
     out.style.display = 'block'; out.innerHTML = aiReportHTML(res);
   } finally { btn.disabled = false; btn.textContent = 'Analizar entrenamiento + nutrición'; }
 };
@@ -6287,12 +6653,19 @@ function gymReportCalculated(){
 // CIENCIA_REFS del .py y se inyecta aquí como JSON. Esta parte pinta el índice,
 // el detalle con figuras SVG propias, personaliza con los datos del usuario y
 // alimenta a la IA.
-const CIENCIA = __CIENCIA_JSON__;
+let __cienciaCache = null;
+function sciDB(){
+  if(!__cienciaCache){
+    try { __cienciaCache = JSON.parse($('ciencia-data').textContent); }
+    catch(e){ console.error('Ciencia', e); __cienciaCache = { revisado: todayStr(), pilares: [], fichas: [], refs: {}, proximamente: [], cmp: {}, glosario: [] }; }
+  }
+  return __cienciaCache;
+}
 const SCI_VERDICT = { si: 'Recomendado', no: 'No recomendado', riesgo: 'Evitar', medico: 'Solo con receta', info: 'Fundamento', mito: 'Mito' };
 const SCI_TIPO = { meta: 'meta-análisis', guia: 'guía o consenso', oficial: 'organismo oficial', ensayo: 'ensayo / estudio grande', cohorte: 'cohorte', revision: 'revisión', caso: 'casos clínicos' };
 const SCI_TIPO_ORDEN = ['meta', 'guia', 'oficial', 'ensayo', 'cohorte', 'revision', 'caso'];
 const sciState = { q: '', pilar: 'all' };
-const sciFicha = id => CIENCIA.fichas.find(f => f.id === id);
+const sciFicha = id => sciDB().fichas.find(f => f.id === id);
 const sciNorm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const sciDate = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS_SHORT[m - 1]} ${y}`; };
 // Número en formato español: coma decimal, punto de miles, signo menos tipográfico.
@@ -6382,7 +6755,7 @@ function sciRangeSVG(g){
 function sciFigHTML(g, i){
   const svg = g.type === 'forest' ? sciForestSVG(g) : g.type === 'bars' ? sciBarsSVG(g) : sciRangeSVG(g);
   return `<figure class="sx-fig"><div class="sx-fig-t"><span>Fig. ${i + 1}</span>${escAttr(g.title)}</div>${svg}
-    <div class="sx-fig-n">${g.note ? escAttr(g.note) + ' ' : ''}<i>Fuente: ${escAttr(sciCite(CIENCIA.refs[g.src]))}.</i></div></figure>`;
+    <div class="sx-fig-n">${g.note ? glossify(escAttr(g.note)) + ' ' : ''}<i>Fuente: ${escAttr(sciCite(sciDB().refs[g.src]))}.</i></div></figure>`;
 }
 
 // ---------- Personalización: una función por ficha (puede ser async); '' si faltan datos.
@@ -6398,6 +6771,8 @@ function sciCtx(){
   return c;
 }
 const SCI_PERSONAL = {
+  sueno: async () => { const st = await sleepStats(todayStr(), 7); return st ? `Tus últimos 7 días (${st.n} noches): media <b>${fmtHM(Math.round(st.avg))}</b>, deuda frente a 7 h <b>${st.debt ? fmtHM(Math.round(st.debt)) : '0 h'}</b>${st.reg !== null ? `, variación del horario <b>±${Math.round(st.reg)} min</b>` : ''}.` : 'Registra tu sueño en Hoy → Sueño para ver aquí tus datos.'; },
+  fibra: async () => { const q = await dietQuality(); const c = q && q.comps.find(x => x.k === 'fib'); return c && c.v !== null ? `En tus últimos ${q.days} días completos cubres de media el <b>${Math.round(c.v * 100)} %</b> de los 25 g.` : 'Las comidas que registres a partir de ahora incluyen una estimación de fibra; en unos días verás aquí tu media.'; },
   proteina: c => {
     if(!c.w) return '';
     const lo = c.w * 1.6, hi = c.w * 2.2;
@@ -6456,16 +6831,32 @@ function sciSoonHTML(x){
   return `<div class="sx-soon"><span class="sx-soon-tag">Próximamente</span><h4>${escAttr(x.title)}</h4><p>${escAttr(x.texto)}</p>
     <ul>${x.items.map(t => `<li>${escAttr(t)}</li>`).join('')}</ul></div>`;
 }
+function sciCmpHTML(words){
+  const C = sciDB().cmp || {}, order = { si: 0, info: 1, no: 2, medico: 3, riesgo: 4 };
+  const rows = Object.keys(C).map(id => ({ f: sciFicha(id), c: C[id] })).filter(r => r.f && words.every(w => sciNorm(r.f.title + ' ' + r.f.tags + ' ' + r.c.efecto).includes(w))).sort((a, b) => order[a.f.verdict] - order[b.f.verdict]);
+  return `<section class="sx-sec"><div class="sx-sec-h"><h3>Comparador de suplementos</h3><span>${rows.length}</span></div>
+    <p class="sx-sec-d">Resumen de las fichas, de lo que funciona a lo que conviene evitar. Toca uno para ver la evidencia. No se muestran precios: no hay una fuente verificable.</p>
+    <div class="cmp-list">${rows.map(({ f, c }) => `<button class="cmp-item" onclick="sciOpen('${f.id}')"><span class="cmp-h"><b>${escAttr(f.title)}</b><span class="sx-v sx-v-${f.verdict}">${SCI_VERDICT[f.verdict]}</span></span>
+      <span class="cmp-kv"><i>Efecto</i>${escAttr(c.efecto)}</span><span class="cmp-kv"><i>Dosis</i>${escAttr(c.dosis)}</span><span class="cmp-kv"><i>Seguridad</i>${escAttr(c.seguridad)}</span></button>`).join('') || '<div class="sx-empty">Nada con esa búsqueda.</div>'}</div></section>`;
+}
+function sciGlosHTML(words){
+  const G = (sciDB().glosario || []).filter(g => words.every(w => sciNorm(g.t + ' ' + (g.alt || []).join(' ') + ' ' + g.d).includes(w))).sort((a, b) => a.t.localeCompare(b.t, 'es'));
+  return `<section class="sx-sec"><div class="sx-sec-h"><h3>Glosario</h3><span>${G.length} términos</span></div>
+    <p class="sx-sec-d">Estos términos aparecen subrayados en los textos de la app: tócalos para ver su definición.</p>
+    <dl class="glos">${G.map(g => `<div class="glos-i"><dt>${escAttr(g.t)}${g.alt && g.alt.length ? ` <small>${g.alt.map(escAttr).join(' · ')}</small>` : ''}</dt><dd>${escAttr(g.d)}</dd></div>`).join('') || '<div class="sx-empty">Nada con esa búsqueda.</div>'}</dl></section>`;
+}
 function sciRenderList(){
   const box = $('sci-list'); if(!box) return;
   const words = sciNorm(sciState.q).split(/\s+/).filter(Boolean);
+  if(sciState.pilar === 'cmp'){ box.innerHTML = sciCmpHTML(words); return; }
+  if(sciState.pilar === 'glos'){ box.innerHTML = sciGlosHTML(words); return; }
   const ok = f => (sciState.pilar === 'all' || f.pilar === sciState.pilar) && words.every(w => sciHay(f).includes(w));
-  const html = CIENCIA.pilares.filter(p => sciState.pilar === 'all' || p.id === sciState.pilar).map(p => {
-    const fs = CIENCIA.fichas.filter(f => f.pilar === p.id && ok(f));
-    const soon = words.length ? [] : (CIENCIA.proximamente || []).filter(x => x.pilar === p.id);
+  const html = sciDB().pilares.filter(p => sciState.pilar === 'all' || p.id === sciState.pilar).map(p => {
+    const fs = sciDB().fichas.filter(f => f.pilar === p.id && ok(f));
+    const soon = words.length ? [] : (sciDB().proximamente || []).filter(x => x.pilar === p.id);
     if(!fs.length && !soon.length) return '';
     return `<section class="sx-sec"><div class="sx-sec-h"><h3>${p.label}</h3><span>${fs.length} ${fs.length === 1 ? 'tema' : 'temas'}</span></div>
-      <p class="sx-sec-d">${escAttr(p.desc)}</p>${fs.map(sciRowHTML).join('')}${soon.map(sciSoonHTML).join('')}</section>`;
+      <p class="sx-sec-d">${escAttr(p.desc)}${p.id === 'suplementos' ? ` <button class="link" onclick="sciSetPilar('cmp')">Ver el comparador →</button>` : ''}</p>${fs.map(sciRowHTML).join('')}${soon.map(sciSoonHTML).join('')}</section>`;
   }).join('');
   box.innerHTML = html || '<div class="sx-empty">Nada en la base verificada con esa búsqueda.</div>';
 }
@@ -6475,22 +6866,24 @@ function sciSetPilar(p){
   sciRenderList();
 }
 function renderCienciaTab(){
-  const root = $('ciencia-root'); if(!root || !CIENCIA) return;
+  const root = $('ciencia-root'); if(!root || !sciDB()) return;
   if(!root.dataset.built){
-    const R = Object.values(CIENCIA.refs), nMeta = R.filter(r => r.tipo === 'meta').length, nGuia = R.filter(r => r.tipo === 'guia' || r.tipo === 'oficial').length;
+    const R = Object.values(sciDB().refs), nMeta = R.filter(r => r.tipo === 'meta').length, nGuia = R.filter(r => r.tipo === 'guia' || r.tipo === 'oficial').length;
     root.innerHTML = `<div class="sx">
-      <div class="sx-eyebrow">Base de evidencia · revisada ${sciDate(CIENCIA.revisado)}</div>
+      <div class="sx-eyebrow">Base de evidencia · revisada ${sciDate(sciDB().revisado)}</div>
       <h2 class="sx-title">Ciencia</h2>
       <p class="sx-lede">Solo meta-análisis, ensayos grandes y guías oficiales. Cada fuente se ha verificado una a una en PubMed o en el organismo que la publica.</p>
       <div class="sx-kpis">
-        <div><b>${CIENCIA.fichas.length}</b><span>temas</span></div>
+        <div><b>${sciDB().fichas.length}</b><span>temas</span></div>
         <div><b>${R.length}</b><span>fuentes</span></div>
         <div><b>${nMeta}</b><span>meta-análisis</span></div>
         <div><b>${nGuia}</b><span>guías oficiales</span></div>
       </div>
       <nav class="sx-tabs" id="sx-tabs">
         <button class="on" data-p="all" onclick="sciSetPilar('all')">Todo</button>
-        ${CIENCIA.pilares.map(p => `<button data-p="${p.id}" onclick="sciSetPilar('${p.id}')">${p.label}</button>`).join('')}
+        ${sciDB().pilares.map(p => `<button data-p="${p.id}" onclick="sciSetPilar('${p.id}')">${p.label}</button>`).join('')}
+        <button data-p="cmp" onclick="sciSetPilar('cmp')">Comparador</button>
+        <button data-p="glos" onclick="sciSetPilar('glos')">Glosario</button>
       </nav>
       <div class="sx-tools">
         <input type="search" id="sci-search" placeholder="Buscar: creatina, sueño, series…">
@@ -6515,12 +6908,12 @@ function renderCienciaTab(){
 
 // ---------- Detalle
 function sciRefHTML(key){
-  const r = CIENCIA.refs[key];
+  const r = sciDB().refs[key];
   const href = r.pmid ? `https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/` : (r.url || `https://doi.org/${r.doi}`);
   return `<li><a href="${escAttr(href)}" target="_blank" rel="noopener">${escAttr(r.t)}</a><span>${escAttr(r.es)}</span></li>`;
 }
 function sciEvidenceHTML(f){
-  const rs = f.refs.map(k => CIENCIA.refs[k]).sort((a, b) => SCI_TIPO_ORDEN.indexOf(a.tipo) - SCI_TIPO_ORDEN.indexOf(b.tipo));
+  const rs = f.refs.map(k => sciDB().refs[k]).sort((a, b) => SCI_TIPO_ORDEN.indexOf(a.tipo) - SCI_TIPO_ORDEN.indexOf(b.tipo));
   const k = rs.reduce((a, r) => a + (r.k || 0), 0), N = Math.max(0, ...rs.map(r => r.N || 0));
   const counts = SCI_TIPO_ORDEN.map(t => [t, rs.filter(r => r.tipo === t).length]).filter(x => x[1]);
   return `<div class="sx-ev"><div><b>${rs.length}</b><span>fuentes</span></div><div><b>${k ? sciFmt(k) : '—'}</b><span>estudios dentro de ellas</span></div><div><b>${N ? sciBig(N) : '—'}</b><span>personas (mayor fuente)</span></div></div>
@@ -6529,21 +6922,21 @@ function sciEvidenceHTML(f){
 }
 async function sciOpen(id){
   const f = sciFicha(id); if(!f) return;
-  const p = CIENCIA.pilares.find(x => x.id === f.pilar);
-  const li = arr => arr.map(x => `<li>${escAttr(x)}</li>`).join('');
+  const p = sciDB().pilares.find(x => x.id === f.pilar);
+  const li = arr => arr.map(x => `<li>${glossify(escAttr(x))}</li>`).join('');
   const el = gOpenSheet('sx-sheet', `<div class="sheet-head"><button class="secondary mini" onclick="G.close('sx-sheet')">✕</button><h4>${escAttr(p.label)}</h4></div>
     <article class="sx sx-art">
       <span class="sx-v sx-v-${f.verdict}">${SCI_VERDICT[f.verdict]}</span>
       <h2 class="sx-art-t">${escAttr(f.title)}</h2>
       ${f.dato ? `<div class="sx-stat"><b>${escAttr(f.dato.v)}</b><span>${escAttr(f.dato.l)}</span></div>` : ''}
-      <p class="sx-p">${escAttr(f.resumen)}</p>
+      <p class="sx-p">${glossify(escAttr(f.resumen))}</p>
       ${f.figs.map(sciFigHTML).join('')}
       <div id="sx-you" hidden></div>
       ${f.hacer.length ? `<div class="sx-h">Qué hacer</div><ol class="sx-ol">${li(f.hacer)}</ol>` : ''}
       ${f.cuidado.length ? `<div class="sx-h">Precauciones</div><ul class="sx-warn">${li(f.cuidado)}</ul>` : ''}
       <div class="sx-h">Solidez de la evidencia</div>${sciEvidenceHTML(f)}
       <div class="sx-h">Fuentes</div><ol class="sx-refs">${f.refs.map(sciRefHTML).join('')}</ol>
-      <div class="sx-rev">Revisado: ${sciDate(CIENCIA.revisado)} · Información educativa, no sustituye a un profesional sanitario.</div>
+      <div class="sx-rev">Revisado: ${sciDate(sciDB().revisado)} · Información educativa, no sustituye a un profesional sanitario.</div>
     </article>`);
   el.scrollTop = 0;
   const fn = SCI_PERSONAL[f.id]; if(!fn) return;
@@ -6556,13 +6949,13 @@ async function sciOpen(id){
 // ---------- IA
 // Texto de la base para la IA. full=true incluye cifras de las figuras y fuentes.
 function sciKnowledgeText(full = false){
-  return CIENCIA.fichas.map(f => {
+  return sciDB().fichas.map(f => {
     let s = `[${f.id}] ${f.title} — ${SCI_VERDICT[f.verdict].toUpperCase()}: ${f.resumen}`;
     if(f.dato) s += ` | Cifra clave: ${f.dato.v} ${f.dato.l}`;
     if(f.hacer.length) s += ` | Qué hacer: ${f.hacer.join(' ')}`;
     if(f.cuidado.length) s += ` | Precauciones: ${f.cuidado.join(' ')}`;
     if(full && f.figs.length) s += ` | Datos: ${f.figs.map(g => `${g.title}: ${g.rows.map(r => `${r[0]} ${r.slice(1).filter(x => typeof x === 'number').join('/')}`).join('; ')}${g.note ? '. ' + g.note : ''}`).join(' · ')}`;
-    if(full) s += ` | Fuentes: ${f.refs.map(k => sciCite(CIENCIA.refs[k])).join('; ')}`;
+    if(full) s += ` | Fuentes: ${f.refs.map(k => sciCite(sciDB().refs[k])).join('; ')}`;
     return s;
   }).join('\n');
 }
@@ -6576,6 +6969,7 @@ async function sciAsk(){
   if(!q) return;
   const btn = $('sci-ask-btn'), out = $('sci-ask-out');
   btn.disabled = true; btn.textContent = 'Consultando…';
+  out.hidden = false; out.innerHTML = skelHTML(4, 'Consultando la base de evidencia…');
   try {
     const c = sciCtx();
     const prompt = `Eres un asistente de divulgación científica sobre entrenamiento, nutrición y salud. Responde a la pregunta del usuario usando EXCLUSIVAMENTE la base de fichas verificadas de abajo. Es información educativa.
@@ -6592,7 +6986,7 @@ PREGUNTA: ${q}
 
 Devuelve SOLO este JSON: {"respuesta":"texto","fichas":["ids de las fichas usadas, máx 4"],"cubierto":true}`;
     const res = await callGemini(prompt, true, GEMINI_MODEL_SUMMARY, 2, { timeoutMs: 60000 });
-    if(!res || !res.respuesta){ showToast('No se pudo responder ahora mismo. Prueba otra vez.', true); return; }
+    if(!res || !res.respuesta){ out.hidden = true; out.innerHTML = ''; showToast('No se pudo responder ahora mismo. Prueba otra vez.', true); return; }
     const ids = (Array.isArray(res.fichas) ? res.fichas : []).filter(sciFicha).slice(0, 4);
     out.hidden = false;
     out.innerHTML = `<div class="sx-ans">${escAttr(res.respuesta)}</div>
@@ -6601,18 +6995,687 @@ Devuelve SOLO este JSON: {"respuesta":"texto","fichas":["ids de las fichas usada
   } finally { btn.disabled = false; btn.textContent = 'Enviar'; }
 }
 
+// =========================================================================
+// ✦ UX GLOBAL — preferencias, háptica, toasts con acción, celebraciones,
+//   contadores animados, skeletons, «atrás» y gestos, explicaciones de cifras,
+//   glosario enlazado y tema claro/oscuro
+// =========================================================================
+const UI_PREFS_KEY = 'ui:prefs';              // por dispositivo: no se sincroniza
+function uiPrefs(){
+  try { return { theme: 'auto', haptics: true, ...(JSON.parse(localStorage.getItem(UI_PREFS_KEY) || '{}') || {}) }; }
+  catch(e){ return { theme: 'auto', haptics: true }; }
+}
+function setUiPref(k, v){ const p = uiPrefs(); p[k] = v; try { localStorage.setItem(UI_PREFS_KEY, JSON.stringify(p)); } catch(e){} }
+const reduceMotion = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+// ---- Háptica (Android/Chrome; en iOS el navegador no la permite y no hace nada)
+const HAPTIC = { tap: 8, ok: [12, 40, 18], warn: [30, 50, 30], error: [60, 40, 60], record: [40, 60, 40, 60, 120] };
+function haptic(kind = 'tap'){ try { if(uiPrefs().haptics && navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(HAPTIC[kind] || 8); } catch(e){} }
+
+// ---- Celebraciones sutiles: solo al cruzar un umbral en esta sesión, una vez al día
+function celebrate(msg, el){
+  haptic('record');
+  if(msg) showToast(msg, false, { kind: 'celebrate' });
+  if(el && !reduceMotion()){ el.classList.remove('celebrating'); void el.offsetWidth; el.classList.add('celebrating'); setTimeout(() => el.classList.remove('celebrating'), 1600); }
+}
+function celebrateOnce(key, msg, el){
+  let m = {}; try { m = JSON.parse(localStorage.getItem('ui:celebrated') || '{}') || {}; } catch(e){}
+  const id = todayStr() + ':' + key; if(m[id]) return;
+  m[id] = 1; const ks = Object.keys(m); if(ks.length > 60) ks.slice(0, ks.length - 60).forEach(k => delete m[k]);
+  try { localStorage.setItem('ui:celebrated', JSON.stringify(m)); } catch(e){}
+  celebrate(msg, el);
+}
+
+// ---- Contador animado (el número «corre» hasta su nuevo valor)
+function animateNum(el, value, fmt = v => String(Math.round(v)), dur = 700){
+  if(!el) return;
+  const to = Number(value), had = el.dataset.num !== undefined, from = had ? Number(el.dataset.num) : 0;
+  el.dataset.num = to;
+  if(reduceMotion() || !Number.isFinite(from) || Math.round(from) === Math.round(to)){ el.textContent = fmt(to); return; }
+  cancelAnimationFrame(el.__raf); const t0 = performance.now();
+  const step = now => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(from + (to - from) * e); if(k < 1) el.__raf = requestAnimationFrame(step); };
+  el.__raf = requestAnimationFrame(step);
+}
+
+// ---- Skeleton mientras la IA trabaja
+const skelHTML = (lines = 4, label = 'Analizando…') => `<div class="skel" role="status" aria-live="polite"><span class="skel-lbl">${label}</span>${Array.from({ length: lines }, (_, i) => `<i style="width:${[94, 78, 88, 62, 71][i % 5]}%"></i>`).join('')}</div>`;
+
+// ---- «Atrás» cierra la ventana abierta (hojas): botón atrás de Android/navegador,
+//      gesto desde el borde izquierdo y tecla Escape. Los modales se cierran primero.
+let __ovSkipPop = 0;
+function overlayPush(id){ try { history.pushState({ ...(history.state || {}), ov: id }, ''); } catch(e){} }
+function overlayPopIfTop(id){ try { if(history.state && history.state.ov === id){ __ovSkipPop++; history.back(); } } catch(e){} }
+function topSheet(){ const s = document.querySelectorAll('.sheet'); return s.length ? s[s.length - 1] : null; }
+function closeSheetLikeUser(sh){
+  // Usa el botón de cerrar de la propia hoja: respeta su lógica (minimizar entreno, avisar de cambios…)
+  const btn = sh.querySelector('.sheet-head button');
+  if(btn) btn.click(); else gCloseSheet(sh.id);
+  setTimeout(() => { if(document.body.contains(sh)){ sh.style.transform = ''; overlayPush(sh.id); } }, 80);
+}
+function closeTopOverlay(){
+  if($('g-modal')){ gCloseModal(); return true; }
+  const sh = topSheet(); if(sh){ closeSheetLikeUser(sh); return true; }
+  return false;
+}
+window.addEventListener('popstate', () => {
+  if(__ovSkipPop > 0){ __ovSkipPop--; return; }
+  if($('g-modal')){ gCloseModal(); const sh = topSheet(); if(sh) overlayPush(sh.id); return; }
+  const sh = topSheet(); if(sh) closeSheetLikeUser(sh);
+});
+document.addEventListener('keydown', e => {
+  if(e.key !== 'Escape') return;
+  if(closeTopOverlay()) e.preventDefault();
+});
+
+// ---- Gestos táctiles
+function initGestures(){
+  const T = { x: 0, y: 0, t: 0, mode: null, el: null, timer: null, moved: false };
+  const ignore = el => el.closest('input, textarea, select, .food-review, .water-btns, .water-chips, .favorites-row, .sleep-q, canvas, .seg, .sx-tabs, .modal');
+  document.addEventListener('touchstart', e => {
+    if(e.touches.length !== 1) return;
+    const t = e.touches[0], tg = e.target; Object.assign(T, { x: t.clientX, y: t.clientY, t: Date.now(), mode: null, el: null, moved: false });
+    clearTimeout(T.timer);
+    const sh = topSheet(), modal = tg.closest('.modal');
+    if(modal && modal.scrollTop <= 0){ T.mode = 'modal'; T.el = modal; return; }
+    if(sh && t.clientX < 28 && !$('g-modal')){ T.mode = 'edge'; T.el = sh; return; }
+    if(sh || $('g-modal')) return;
+    const item = tg.closest('#log-list .log-item');
+    if(item && !tg.closest('button')){
+      T.mode = 'item'; T.el = item;
+      T.timer = setTimeout(() => { if(!T.moved && T.mode === 'item'){ T.mode = null; haptic('ok'); item.classList.add('pressed'); setTimeout(() => item.classList.remove('pressed'), 250); editLog(item.dataset.id); } }, 520);
+      return;
+    }
+    if(tg.closest('#tab-dash') && !ignore(tg)) T.mode = 'day';
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if(!T.mode) return;
+    const t = e.touches[0], dx = t.clientX - T.x, dy = t.clientY - T.y;
+    if(Math.abs(dx) > 8 || Math.abs(dy) > 8) T.moved = true;
+    if(T.moved) clearTimeout(T.timer);
+    if(T.mode === 'edge'){ if(Math.abs(dy) > 70 && Math.abs(dy) > dx){ T.el.style.transform = ''; T.mode = null; return; } if(dx > 0){ T.el.style.transition = 'none'; T.el.style.transform = `translateX(${dx}px)`; } }
+    else if(T.mode === 'modal'){ if(dy > 0){ T.el.style.transition = 'none'; T.el.style.transform = `translateY(${dy}px)`; } }
+    else if(T.mode === 'item'){ if(Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 12){ T.el.style.transform = ''; T.mode = null; return; } if(dx < 0){ T.el.style.transition = 'none'; T.el.style.transform = `translateX(${Math.max(dx, -160)}px)`; T.el.classList.toggle('swipe-del', dx < -90); } }
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    clearTimeout(T.timer);
+    if(!T.mode) return;
+    const t = e.changedTouches[0], dx = t.clientX - T.x, dy = t.clientY - T.y, mode = T.mode, el = T.el; T.mode = null;
+    if(el){ el.style.transition = ''; }
+    if(mode === 'edge'){ if(dx > 90){ el.style.transform = 'translateX(100%)'; haptic('tap'); setTimeout(() => closeSheetLikeUser(el), 140); } else el.style.transform = ''; }
+    else if(mode === 'modal'){ if(dy > 90){ el.style.transform = 'translateY(110%)'; setTimeout(gCloseModal, 140); } else el.style.transform = ''; }
+    else if(mode === 'item'){ if(dx < -90){ el.style.transform = 'translateX(-110%)'; haptic('warn'); setTimeout(() => delLog(el.dataset.id), 160); } else { el.style.transform = ''; el.classList.remove('swipe-del'); } }
+    else if(mode === 'day' && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.6 && Date.now() - T.t < 700){
+      if(dx < 0 && selectedLogDate === todayStr()){ const h = document.querySelector('#tab-dash .card-hero'); if(h){ h.classList.remove('bump'); void h.offsetWidth; h.classList.add('bump'); } return; }
+      haptic('tap'); dayTransition(dx < 0 ? 1 : -1);
+    }
+  }, { passive: true });
+}
+function dayTransition(dir){
+  const sec = $('tab-dash'); if(sec && !reduceMotion()){ sec.classList.remove('day-l', 'day-r'); void sec.offsetWidth; sec.classList.add(dir > 0 ? 'day-l' : 'day-r'); }
+  navDay(dir);
+}
+
+// ---- Explicación de cada número (toca una cifra)
+const EXPLAIN = {
+  kcalRem: { t: 'Kcal restantes', ficha: 'superavit', d: () => { const tg = getTargets(), c = Number($('ui-kcal-consumed').dataset.num || $('ui-kcal-consumed').textContent) || 0; return [`Objetivo de hoy menos lo que has registrado: <b>${fmtN(tg.kcal)} − ${fmtN(c)} = ${fmtN(tg.kcal - c)} kcal</b>.`, 'Si pasa a verde con «+», ya has superado el objetivo del día.']; } },
+  kcalTarget: { t: 'Objetivo de calorías', ficha: 'superavit', d: () => { const st = getEngineState(), M = st.maintenance, dd = st.decision; return [`Mantenimiento estimado <b>${fmtN(M.posterior)} ±${fmtN(M.posteriorSd)} kcal</b> + superávit <b>${fmtN(dd.surplus)} kcal</b> para el ritmo que elegiste.`, 'El mantenimiento parte de una fórmula (Mifflin-St Jeor × actividad) y se corrige con tu tendencia de peso y lo que comes de verdad. El motor revisa el objetivo una vez al día.', phaseOf() ? '<b>Mini-cut activo:</b> el objetivo está fijado por debajo del mantenimiento y el ajuste automático está en pausa.' : '']; } },
+  kcalErr: { t: 'Margen de error del registro', d: () => ['Cada comida estimada tiene un error (mayor si la estima la IA sin pesar, menor si viene de una etiqueta o la pesas). La app los combina y añade un error sistemático para darte el rango probable del total del día.', 'Pesar o escanear los alimentos reduce este margen.'] },
+  macroP: { t: 'Proteína', ficha: 'proteina', d: () => { const k = macroPerKg(profile); return [`Objetivo = <b>${String(k.protein).replace('.', ',')} g/kg</b> × tu peso tendencia = <b>${fmtN(getTargets().p)} g</b>.`, 'La evidencia sitúa el punto en que la ganancia se estanca en ~1,6 g/kg/día; hasta 2,2 g/kg cubre a quienes necesitan más.']; } },
+  macroC: { t: 'Carbohidratos', ficha: 'carbos_grasas', d: () => ['Son las calorías que quedan tras la proteína y la grasa: (kcal − 4·proteína − 9·grasa) ÷ 4.'] },
+  macroF: { t: 'Grasas', ficha: 'carbos_grasas', d: () => { const k = macroPerKg(profile); return [`Objetivo = <b>${String(k.fat).replace('.', ',')} g/kg</b> × peso tendencia, con un mínimo del 25 % de las kcal.`, 'Las guías recomiendan entre el 20 y el 35 % de las calorías en grasa.']; } },
+  macroS: { t: 'Azúcares', d: () => ['Límite orientativo de la app para azúcares totales según tus calorías. Incluye los azúcares de la fruta y los lácteos.'] },
+  water: { t: 'Agua', ficha: 'hidratacion', d: () => ['Tu objetivo es la mayor de tres referencias: el mínimo de la EFSA, mL por kg de peso o 1 mL por kcal, menos el agua que ya trae la comida. El entreno y el calor suman +0,5 L.', 'Cuentan el agua que registras y las bebidas sin alcohol de tus comidas.'] },
+  streak: { t: 'Racha', d: () => ['Días seguidos con comidas registradas. Registrar con constancia es lo que permite que el motor ajuste bien tu objetivo.'] },
+  bulkRate: { t: 'Ritmo de ganancia', ficha: 'superavit', d: () => { const st = getEngineState(), r = st.rate, R = st.range; return r ? [`Pendiente de tu peso tendencia: <b>${fmtS(r.perWeek, 2)} kg/semana</b> (intervalo de confianza del 80 %: ${fmtS(r.ciLow, 2)} a ${fmtS(r.ciHigh, 2)}).`, `Tu rango objetivo es ${fmtN(R.low, 2)}–${fmtN(R.high, 2)} kg/semana según el ritmo elegido en Ajustes.`] : ['Hacen falta al menos 4 pesajes en una semana para calcularlo.']; } },
+  weight: { t: 'Peso tendencia', d: () => ['Media exponencial de tus pesajes: suaviza el agua, la sal y la comida del día para mostrar el cambio real. Los pesajes atípicos se detectan y pesan menos.'] },
+  intake: { t: 'Ingesta media', d: () => ['Media de kcal de los días completos de la ventana de análisis del motor. Los días marcados como incompletos no cuentan.'] },
+  maint: { t: 'Mantenimiento', d: () => { const M = getEngineState().maintenance; return [`Fórmula: <b>${fmtN(M.prior)} kcal</b>. Observado con tus datos: <b>${M.obs ? fmtN(M.obs) + ' kcal' : 'aún sin datos suficientes'}</b>. Estimación combinada: <b>${fmtN(M.posterior)} ±${fmtN(M.posteriorSd)}</b>.`, 'Cuantos más días completos y pesajes registres, más pesa lo observado frente a la fórmula.']; } },
+  diet: { t: 'Calidad de la dieta', ficha: 'proteina', d: () => ['Puntuación de 0 a 100 de los últimos 7 días con registro: proteína suficiente, repartida en al menos 3 tomas, grasa entre el 20 y el 35 %, fibra (si hay datos), azúcares y alcohol. Cada componente enlaza con su evidencia.'] },
+  sleep: { t: 'Sueño', ficha: 'sueno', d: () => ['Duración = de la hora de acostarte a la de levantarte. Objetivo: 7 h o más (consenso AASM/SRS).', 'Deuda = horas por debajo de 7 h acumuladas en 7 días. Regularidad = cuánto varía tu horario de un día a otro: un horario constante se asocia a menor mortalidad.'] },
+  bodymap: { t: 'Mapa corporal', ficha: 'volumen', d: () => ['Series efectivas por semana de cada músculo (principal = 1 serie, secundario = 0,5). Verde: 10–20 series/semana; azul: menos; ámbar: más de 20.'] },
+};
+function openExplain(key){
+  const x = EXPLAIN[key]; if(!x) return;
+  let lines = []; try { lines = (x.d() || []).filter(Boolean); } catch(e){ lines = ['Aún no hay datos suficientes para explicar esta cifra.']; }
+  haptic('tap');
+  gModal(`<h4 class="modal-title">${x.t}</h4><div class="xp">${lines.map(l => `<p>${glossify(l, true)}</p>`).join('')}</div>
+    ${x.ficha ? `<button class="secondary" style="width:100%;margin-top:14px;" onclick="G.closeModal();nav('ciencia');sciOpen('${x.ficha}')">Ver la evidencia en Ciencia</button>` : ''}`);
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-explain]'); if(!el || el.closest('summary')) return;
+  e.preventDefault(); e.stopPropagation(); openExplain(el.dataset.explain);
+}, true);
+
+// ---- Glosario: términos enlazados en los textos; tocar uno abre su definición
+let __glossRe = null;
+const reEscape = w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function glossTerms(){ return (sciDB().glosario || []); }
+function glossify(html, isHtml = false){
+  const G = glossTerms(); if(!G.length) return html;
+  if(!__glossRe){
+    const entries = G.flatMap(g => [g.t, ...(g.alt || [])].map(w => [w, g.id])).sort((a, b) => b[0].length - a[0].length);
+    const alt = entries.map(([w]) => reEscape(w)).join('|');
+    __glossRe = { map: new Map(entries.map(([w, id]) => [w.toLowerCase(), id])), re: new RegExp('(?<![\\p{L}\\d])(' + alt + ')(?![\\p{L}\\d])', 'giu') };
+  }
+  const seen = new Set();
+  const swap = txt => txt.replace(__glossRe.re, m => { const id = __glossRe.map.get(m.toLowerCase()); if(!id || seen.has(id)) return m; seen.add(id); return `<button type="button" class="gl" data-gl="${id}">${m}</button>`; });
+  if(!isHtml) return swap(html);
+  return html.split(/(<[^>]+>)/).map(part => part.startsWith('<') ? part : swap(part)).join('');
+}
+function openGlossary(id){
+  const g = glossTerms().find(x => x.id === id); if(!g) return;
+  gModal(`<h4 class="modal-title">${escAttr(g.t.charAt(0).toUpperCase() + g.t.slice(1))}</h4><div class="xp"><p>${escAttr(g.d)}</p></div><button class="secondary" style="width:100%;margin-top:14px;" onclick="G.closeModal()">Entendido</button>`);
+}
+document.addEventListener('click', e => { const b = e.target.closest('.gl'); if(!b) return; e.preventDefault(); e.stopPropagation(); openGlossary(b.dataset.gl); }, true);
+
+// ---- Tema claro / oscuro / automático
+function themeIsDark(){ const p = uiPrefs().theme; return p === 'dark' || (p === 'auto' && !(window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches)); }
+function applyTheme(rerender = false){
+  const dark = themeIsDark();
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const m = document.querySelector('meta[name="theme-color"]'); if(m) m.content = dark ? '#090a0c' : '#f3f2ee';
+  CHART_TEXT = dark ? '#747b87' : '#6b7079';
+  CHART_GRID = dark ? 'rgba(255,255,255,0.05)' : 'rgba(20,22,26,0.07)';
+  if(window.Chart){ Chart.defaults.color = CHART_TEXT; Chart.defaults.font.family = "'Manrope', sans-serif"; }
+  if(rerender){
+    const t = (document.querySelector('.section.active') || {}).id;
+    if(t === 'tab-body'){ renderBodyTab(); } else if(t === 'tab-gym'){ renderGymTab(); }
+  }
+}
+if(window.matchMedia) matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { if(uiPrefs().theme === 'auto') applyTheme(true); });
+window.setTheme = v => { setUiPref('theme', v); applyTheme(true); renderAppearance(); };
+window.setHaptics = on => { setUiPref('haptics', !!on); if(on) haptic('ok'); };
+function renderAppearance(){
+  const P = uiPrefs(), sel = $('ui-theme'); if(sel) sel.value = P.theme;
+  const h = $('ui-haptics'); if(h) h.checked = !!P.haptics;
+  const ib = $('pwa-install'); if(ib) ib.hidden = !__installEvt;
+  const st = $('pwa-status'); if(st) st.textContent = matchMedia('(display-mode: standalone)').matches ? 'App instalada · funciona sin conexión' : ('serviceWorker' in navigator && location.protocol.startsWith('http') ? 'Puedes instalarla desde el menú del navegador («Añadir a pantalla de inicio»).' : 'La instalación solo está disponible en la web publicada.');
+}
+
+// ---- PWA: service worker, instalación y sincronización al recuperar conexión
+let __installEvt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); __installEvt = e; renderAppearance(); });
+window.installApp = async () => { if(!__installEvt) return; __installEvt.prompt(); try { await __installEvt.userChoice; } catch(e){} __installEvt = null; renderAppearance(); };
+function initPWA(){
+  if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW', e));
+  window.addEventListener('offline', () => { document.body.classList.add('is-offline'); showToast('Sin conexión: puedes seguir registrando, se sincronizará al volver.', false, { kind: 'info' }); });
+  window.addEventListener('online', async () => {
+    document.body.classList.remove('is-offline');
+    if(!cloudSyncEnabled) return;
+    if(!cloudSynced){ await pullFromCloud(); if(cloudSynced) await onExternalDataChange(); }
+    else await pushToCloudNow();
+    showToast('Conexión recuperada · datos sincronizados');
+  });
+  if(!navigator.onLine) document.body.classList.add('is-offline');
+}
+
+// ---- Transición direccional entre pestañas
+const TAB_ORDER = ['dash', 'body', 'gym', 'ciencia', 'settings'];
+
+// =========================================================================
+// 😴 SUEÑO (A1) — 'sleep:<fecha de despertar>' = { bed: 'HH:MM', wake: 'HH:MM', q: 1-5, updatedAt }
+// =========================================================================
+const SLEEP_GOAL_MIN = 420; // ≥7 h por noche (consenso AASM/SRS, ficha «Sueño»)
+const hm = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(s || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+function sleepMinutes(s){
+  if(!s) return null; const b = hm(s.bed), w = hm(s.wake); if(b === null || w === null) return null;
+  let d = w - b; if(d <= 0) d += 1440; return d >= 60 && d <= 960 ? d : null;
+}
+const fmtHM = m => (m === null || !Number.isFinite(m)) ? '—' : `${Math.floor(m / 60)} h${Math.round(m % 60) ? ' ' + String(Math.round(m % 60)).padStart(2, '0') : ''}`;
+async function getSleep(date){ const v = await safeGet('sleep:' + date); return v && v.bed && v.wake ? v : null; }
+async function sleepStats(asOf = todayStr(), n = 7){
+  const U = BulkEngine.util, rows = [];
+  for(let i = 0; i < n; i++){
+    const d = U.addDays(asOf, -i), s = await getSleep(d), min = sleepMinutes(s);
+    if(min !== null) rows.push({ d, min, bed: (hm(s.bed) + 720) % 1440, wake: hm(s.wake), q: Number(s.q) || null });
+  }
+  if(!rows.length) return null;
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length, mad = a => { const m = mean(a); return mean(a.map(x => Math.abs(x - m))); };
+  const qs = rows.map(r => r.q).filter(Boolean);
+  return { n: rows.length, avg: mean(rows.map(r => r.min)), debt: rows.reduce((a, r) => a + Math.max(0, SLEEP_GOAL_MIN - r.min), 0),
+    reg: rows.length >= 3 ? (mad(rows.map(r => r.bed)) + mad(rows.map(r => r.wake))) / 2 : null, q: qs.length ? mean(qs) : null, rows };
+}
+let sleepQ = 0;
+function paintSleepQ(){ document.querySelectorAll('#sleep-q button').forEach(b => { const q = Number(b.dataset.q); b.classList.toggle('on', q <= sleepQ); b.setAttribute('aria-checked', String(q === sleepQ)); }); const l = $('sleep-q-lbl'); if(l) l.textContent = ['Sin valorar', 'Muy mala', 'Mala', 'Normal', 'Buena', 'Muy buena'][sleepQ]; }
+window.setSleepQ = q => { sleepQ = sleepQ === q ? 0 : q; paintSleepQ(); haptic('tap'); };
+async function sleepChartHTML(date){
+  const U = BulkEngine.util, days = []; for(let i = 13; i >= 0; i--){ const d = U.addDays(date, -i); days.push({ d, min: sleepMinutes(await getSleep(d)) }); }
+  if(!days.some(x => x.min !== null)) return '<div class="muted-line" style="margin:0;">Aún no hay noches registradas.</div>';
+  const W = 340, H = 118, top = 8, base = 96, max = 600, bw = W / 14, Y = m => base - (Math.min(m, max) / max) * (base - top);
+  const bars = days.map((x, i) => x.min === null ? `<rect x="${i * bw + 4}" y="${base - 2}" width="${bw - 8}" height="2" class="sl-none"/>` : `<rect x="${i * bw + 4}" y="${Y(x.min)}" width="${bw - 8}" height="${base - Y(x.min)}" rx="3" class="${x.min >= SLEEP_GOAL_MIN ? 'sl-ok' : 'sl-lo'}"><title>${shortDate(x.d)}: ${fmtHM(x.min)}</title></rect>`).join('');
+  const lbl = days.map((x, i) => `<text x="${i * bw + bw / 2}" y="${H - 4}" text-anchor="middle" class="sl-tx">${['L', 'M', 'X', 'J', 'V', 'S', 'D'][(new Date(x.d + 'T12:00').getDay() + 6) % 7]}</text>`).join('');
+  return `<svg class="sl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Horas de sueño en los últimos 14 días">${bars}<line x1="0" x2="${W}" y1="${Y(SLEEP_GOAL_MIN)}" y2="${Y(SLEEP_GOAL_MIN)}" class="sl-goal"/><text x="${W - 2}" y="${Y(SLEEP_GOAL_MIN) - 4}" text-anchor="end" class="sl-tx">7 h</text>${lbl}</svg>`;
+}
+async function renderSleep(date){
+  if(!$('sleep-card')) return;
+  const s = await getSleep(date), prev = s || await getSleep(BulkEngine.util.addDays(date, -1));
+  const bed = $('sleep-bed'), wake = $('sleep-wake');
+  if(document.activeElement !== bed) bed.value = s ? s.bed : (prev ? prev.bed : '23:30');
+  if(document.activeElement !== wake) wake.value = s ? s.wake : (prev ? prev.wake : '07:30');
+  sleepQ = s ? Number(s.q) || 0 : 0; paintSleepQ();
+  const min = sleepMinutes(s), st = await sleepStats(date, 7);
+  setMeta('meta-sleep', min !== null ? fmtHM(min) : '');
+  $('sleep-save').textContent = s ? 'Actualizar sueño' : 'Guardar sueño';
+  $('sleep-summary').innerHTML = (min !== null
+      ? `<div class="sleep-big" data-explain="sleep"><b>${fmtHM(min)}</b><span class="${min >= SLEEP_GOAL_MIN ? 'ok' : ''}">${min >= SLEEP_GOAL_MIN ? 'Objetivo de 7 h cumplido' : `${fmtHM(SLEEP_GOAL_MIN - min)} por debajo de 7 h`}</span></div>`
+      : `<div class="muted-line" style="margin:0 0 12px;">¿Cómo dormiste ${date === todayStr() ? 'anoche' : 'esa noche'}? Registra tu horario para ver duración, deuda y regularidad.</div>`)
+    + (st && st.n >= 2 ? `<div class="sleep-stats"><div data-explain="sleep"><b>${fmtHM(Math.round(st.avg))}</b><span>media 7 d</span></div><div data-explain="sleep"><b>${st.debt ? fmtHM(Math.round(st.debt)) : '0 h'}</b><span>deuda 7 d</span></div><div data-explain="sleep"><b>${st.reg !== null ? '±' + Math.round(st.reg) + ' min' : '—'}</b><span>horario ±</span></div></div>` : '');
+  $('sleep-detail').innerHTML = await sleepChartHTML(date);
+}
+window.saveSleep = async () => {
+  const s = { bed: $('sleep-bed').value, wake: $('sleep-wake').value, q: sleepQ || null, updatedAt: Date.now() };
+  const min = sleepMinutes(s);
+  if(min === null){ showToast('Revisa las horas: la noche debe durar entre 1 y 16 h.', true); return; }
+  const date = selectedLogDate, had = await getSleep(date);
+  await safeSet('sleep:' + date, s); haptic('ok');
+  showToast(`Sueño guardado: ${fmtHM(min)}`);
+  if(!had && min >= SLEEP_GOAL_MIN && date === todayStr()) celebrateOnce('sleep', null, $('sleep-card'));
+  await renderSleep(date);
+};
+async function sleepContextLine(asOf){
+  const st = await sleepStats(asOf, 7);
+  return st ? `SUEÑO (7 días, ${st.n} noches registradas): media ${fmtHM(Math.round(st.avg))}, deuda frente a 7 h ${fmtHM(Math.round(st.debt))}, variación media del horario ${st.reg !== null ? '±' + Math.round(st.reg) + ' min' : 'sin datos suficientes'}${st.q ? `, calidad media ${st.q.toFixed(1).replace('.', ',')}/5` : ''}.` : 'SUEÑO: sin registros.';
+}
+
+// =========================================================================
+// 📷 ESCÁNER DE CÓDIGOS DE BARRAS (A4) — base abierta Open Food Facts
+// =========================================================================
+let bcStream = null, bcTimer = null, bcProduct = null;
+window.openScanner = async () => {
+  haptic('tap');
+  gOpenSheet('bc-sheet', `<div class="sheet-head"><button class="secondary mini" onclick="closeScanner()" aria-label="Cerrar">✕</button><h4>Escanear producto</h4></div>
+    <div class="bc-wrap" id="bc-wrap"><video id="bc-video" playsinline muted></video><div class="bc-frame" aria-hidden="true"><i></i></div></div>
+    <div id="bc-msg" class="muted-line" style="text-align:center;">Apunta al código de barras del envase.</div>
+    <div class="inline-form"><input id="bc-code" inputmode="numeric" autocomplete="off" placeholder="O escribe el código (EAN)" maxlength="14" onkeydown="if(event.key==='Enter') lookupBarcode(this.value)"><button class="secondary" onclick="lookupBarcode($('bc-code').value)">Buscar</button></div>
+    <div id="bc-result" style="margin-top:16px;"></div>`);
+  const msg = $('bc-msg'), wrap = $('bc-wrap');
+  if(!('BarcodeDetector' in window) || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){
+    wrap.hidden = true; msg.textContent = 'Este navegador no puede leer códigos con la cámara (por ejemplo, Safari en iPhone). Escribe los números que hay bajo las barras.'; return;
+  }
+  try {
+    const det = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e'] });
+    bcStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+    const v = $('bc-video'); if(!v){ stopScanner(); return; }
+    v.srcObject = bcStream; await v.play();
+    const tick = async () => {
+      if(!bcStream) return;
+      try { const r = await det.detect(v); if(r && r.length){ const code = r[0].rawValue; haptic('ok'); stopScanner(); $('bc-code').value = code; lookupBarcode(code); return; } } catch(e){}
+      bcTimer = setTimeout(tick, 220);
+    };
+    tick();
+  } catch(e){ wrap.hidden = true; msg.textContent = 'No se pudo usar la cámara (permiso denegado o no disponible). Escribe el código a mano.'; }
+};
+function stopScanner(){ clearTimeout(bcTimer); if(bcStream){ bcStream.getTracks().forEach(t => t.stop()); bcStream = null; } const w = $('bc-wrap'); if(w) w.classList.add('done'); }
+window.closeScanner = () => { stopScanner(); gCloseSheet('bc-sheet'); };
+window.lookupBarcode = async code => {
+  code = String(code || '').replace(/\D/g, ''); const out = $('bc-result'); if(!out) return;
+  if(code.length < 8){ showToast('El código debe tener al menos 8 dígitos.', true); return; }
+  stopScanner(); out.innerHTML = skelHTML(3, 'Buscando el producto…');
+  let p = await safeGet('barcode:' + code);
+  if(!p){
+    try {
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${code}.json?fields=product_name,product_name_es,brands,nutriments,serving_quantity`);
+      const j = await r.json();
+      if(j && j.status === 1 && j.product){
+        const n = j.product.nutriments || {}, num = k => { const v = Number(n[k]); return n[k] !== undefined && n[k] !== '' && Number.isFinite(v) && v >= 0 ? v : null; };
+        const kcal = num('energy-kcal_100g') ?? (num('energy_100g') !== null ? num('energy_100g') / 4.184 : null);
+        p = { code, name: String(j.product.product_name_es || j.product.product_name || 'Producto').slice(0, 70), brand: String(j.product.brands || '').split(',')[0].trim().slice(0, 40),
+          kcal, p: num('proteins_100g'), c: num('carbohydrates_100g'), f: num('fat_100g'), s: num('sugars_100g'), fib: num('fiber_100g'), serving: Number(j.product.serving_quantity) || null, at: Date.now() };
+        if(p.kcal !== null) await safeSet('barcode:' + code, p);
+      }
+    } catch(e){ out.innerHTML = '<div class="alert warn">No se pudo consultar la base de productos (¿sin conexión?). Inténtalo de nuevo o registra la comida por texto.</div>'; haptic('error'); return; }
+  }
+  if(!p || p.kcal === null){ out.innerHTML = '<div class="alert warn">No encuentro ese producto o no tiene información nutricional. Puedes registrarlo por texto con los valores de la etiqueta, por ejemplo «150 g de yogur, por cada 100 g 60 kcal».</div>'; haptic('warn'); return; }
+  bcProduct = p; const g0 = p.serving || 100;
+  out.innerHTML = `<div class="bc-card"><div class="bc-name">${escAttr(p.name)}</div><div class="muted-line" style="margin-top:2px;">${escAttr(p.brand || '')}${p.brand ? ' · ' : ''}EAN ${p.code} · valores por 100 g</div>
+    <div class="bc-macros"><div><b>${Math.round(p.kcal)}</b><span>kcal</span></div><div><b style="color:var(--pro-color)">${fmtN(p.p ?? 0, 1)}</b><span>prot</span></div><div><b style="color:var(--car-color)">${fmtN(p.c ?? 0, 1)}</b><span>carb</span></div><div><b style="color:var(--fat-color)">${fmtN(p.f ?? 0, 1)}</b><span>grasa</span></div></div>
+    <div class="form-group" style="margin-top:14px;"><label for="bc-grams">Cantidad que has comido (g o ml)</label><input id="bc-grams" type="number" inputmode="decimal" min="1" step="1" value="${Math.round(g0)}"></div>
+    <button class="primary" onclick="useBarcodeProduct()">Revisar y registrar</button>
+    <div class="muted-line">Datos de Open Food Facts, una base colaborativa: comprueba que coinciden con la etiqueta.</div></div>`;
+};
+window.useBarcodeProduct = () => {
+  const p = bcProduct; if(!p) return;
+  const g = Number(String($('bc-grams').value).replace(',', '.'));
+  if(!(g > 0)){ showToast('Indica la cantidad en gramos.', true); return; }
+  const k = g / 100, r1 = x => Math.round((x || 0) * k * 10) / 10, kcal = Math.round(p.kcal * k);
+  const entry = { label: `${p.name}${p.brand ? ' (' + p.brand + ')' : ''}`.slice(0, 80), kcal, p: r1(p.p), c: r1(p.c), f: r1(p.f), s: r1(p.s), fib: p.fib !== null ? r1(p.fib) : undefined, al: 0, liquidMl: 0,
+    items: [{ food: p.name, grams: g, kcal, p: r1(p.p), c: r1(p.c), f: r1(p.f), s: r1(p.s) }], range: { low: kcal, high: kcal }, confidence: 'alta',
+    assumptions: ['Valores por 100 g de Open Food Facts'], question: null, warnings: [], explicitBasis: `etiqueta: ${Math.round(p.kcal)} kcal/100 g × ${g} g`,
+    source: 'Etiqueta (código de barras)', originalText: `${g} g de ${p.name} (EAN ${p.code})`, precision: 'label', barcode: p.code };
+  closeScanner(); nav('dash'); showFoodReview(entry, false);
+  setTimeout(() => $('food-review').scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+};
+
+// =========================================================================
+// ✂️ MINI-CUT (A10) — fase corta de déficit dentro del volumen
+// =========================================================================
+const MINICUT_DEFICIT = 0.20; // ~20 % por debajo del mantenimiento estimado (déficit moderado)
+function phaseOf(p = profile){ const ph = p && p.phase; return ph && ph.type === 'minicut' ? ph : null; }
+function minicutKcal(){ const M = getEngineState().maintenance; return Math.max(Math.round((M.bmr || 0) / 10) * 10, Math.round(M.posterior * (1 - MINICUT_DEFICIT) / 10) * 10); }
+async function minicutSuggestion(){
+  if(phaseOf() || (profile.minicutSnooze && profile.minicutSnooze >= todayStr())) return null;
+  let st; try { st = getEngineState(); } catch(e){ return null; }
+  const r = st.rate, R = st.range;
+  if(r && st.confidence.level !== 'BAJA' && r.ciLow > R.high)
+    return `Ganas ${fmtS(r.perWeek, 2)} kg/semana y hasta el extremo bajo de tu intervalo (${fmtS(r.ciLow, 2)}) supera tu rango objetivo (${fmtN(R.high, 2)} kg/semana): probablemente parte de lo que ganas es grasa.`;
+  try {
+    const m = await getLatestBodyMeasure();
+    if(m){
+      const bf = computeBodyFatConsensus({ weightKg: st.weight.level || profile.weight, heightCm: profile.height, age: profile.age, sex: profile.sex, neck: m.neck, waist: m.waist, hip: m.hip }), lim = profile.sex === 'f' ? 30 : 20;
+      if(bf && bf.hasMeasurements && bf.recommended >= lim) return `Tu grasa corporal estimada con tus medidas (~${fmtN(bf.recommended, 1)} %) supera el umbral orientativo de la app (${lim} %) para seguir en volumen sin pausa.`;
+    }
+  } catch(e){}
+  return null;
+}
+const phaseDay = ph => { const U = BulkEngine.util, total = U.diffDays(ph.start, ph.end); return { total, day: Math.max(1, Math.min(total, U.diffDays(ph.start, todayStr()) + 1)) }; };
+async function renderPhaseBox(){
+  const box = $('phase-box'); if(!box) return;
+  const ph = phaseOf();
+  if(ph){
+    const { total, day } = phaseDay(ph);
+    box.innerHTML = `<div class="phase on"><div class="phase-top"><span class="status-chip tone-warn">Mini-cut activo</span><b>día ${day} de ${total}</b></div><div class="phase-bar"><i style="width:${Math.round(day / total * 100)}%"></i></div>
+      <div class="muted-line">Objetivo fijado en <b>${fmtN(ph.kcal)} kcal</b> (~20 % por debajo de tu mantenimiento). Ajuste automático en pausa hasta el ${shortDate(ph.end)}.</div>
+      <button class="secondary" style="width:100%;margin-top:12px;" onclick="endMinicut()">Terminar el mini-cut y volver al volumen</button></div>`;
+    return;
+  }
+  const why = await minicutSuggestion();
+  box.innerHTML = why
+    ? `<div class="phase sug"><div class="phase-top"><span class="status-chip tone-warn">Sugerencia: mini-cut</span></div><p class="muted-line" style="margin:8px 0 12px;">${why} Un mini-cut de 2–6 semanas con déficit moderado frena la grasa sin perder el progreso.</p>
+        <div class="btn-row"><button class="secondary" onclick="planMinicut()">Ver propuesta</button><button class="secondary" onclick="snoozeMinicut()">Ahora no</button></div></div>`
+    : `<button class="link phase-link" onclick="planMinicut()">Planificar un mini-cut</button>`;
+}
+window.planMinicut = () => {
+  let M, kcal; try { M = getEngineState().maintenance; kcal = minicutKcal(); } catch(e){ showToast('Faltan datos para estimar tu mantenimiento.', true); return; }
+  gModal(`<h4 class="modal-title">Mini-cut</h4>
+    <div class="xp"><p>Una fase corta de déficit dentro del volumen. Tu objetivo pasaría de <b>${fmtN(profile.targetKcal)}</b> a <b>${fmtN(kcal)} kcal</b>: ~20 % por debajo de tu mantenimiento estimado (${fmtN(M.posterior)} kcal). La proteína se mantiene.</p>
+    <p>Durante el mini-cut el ajuste automático se pausa. Al terminar vuelves a tu objetivo de volumen y el análisis del ritmo empieza de nuevo ese día.</p></div>
+    <div class="form-group" style="margin-top:12px;"><label for="mc-weeks">Duración</label><select id="mc-weeks">${[2, 3, 4, 5, 6].map(w => `<option value="${w}"${w === 4 ? ' selected' : ''}>${w} semanas</option>`).join('')}</select></div>
+    <div class="btn-row" style="margin-top:16px;"><button class="secondary" onclick="G.closeModal()">Cancelar</button><button class="primary" style="margin-top:0;" onclick="startMinicut(Number($('mc-weeks').value))">Empezar mini-cut</button></div>`);
+};
+window.startMinicut = async weeks => {
+  const kcal = minicutKcal(), today = todayStr(), M = getEngineState().maintenance;
+  await updateProfile({ phase: { type: 'minicut', start: today, end: BulkEngine.util.addDays(today, weeks * 7), weeks, kcal, prevKcal: Number(profile.targetKcal) || null, prevPaused: !!profile.adjustmentPaused }, adjustmentPaused: true });
+  await setTargetKcal(kcal, 'minicut', `Mini-cut de ${weeks} semanas: ~20 % por debajo del mantenimiento estimado (${Math.round(M.posterior)} kcal).`);
+  __engineCache = null; gCloseModal(); haptic('ok'); $('prof-pause').checked = true;
+  showToast(`Mini-cut iniciado: ${fmtN(kcal)} kcal durante ${weeks} semanas`);
+  renderObjectiveSummary(); await updateDashboardUI();
+  if($('tab-body').classList.contains('active')) await renderBodyTab();
+};
+window.endMinicut = async (auto = false) => {
+  const ph = phaseOf(); if(!ph) return;
+  if(auto !== true && !confirm('¿Terminar el mini-cut y volver al volumen?')) return;
+  const today = todayStr();
+  await updateProfile({ phase: null, adjustmentPaused: !!ph.prevPaused, bulkStartDate: today, lastMinicut: { start: ph.start, end: today } });
+  __engineCache = null;
+  await setTargetKcal(ph.prevKcal || getEngineState().decision.needed, 'minicut-fin', `Fin del mini-cut (${ph.start} → ${today}): vuelves al objetivo de volumen. El ritmo se analiza de nuevo desde hoy.`);
+  __engineCache = null; $('prof-pause').checked = !!ph.prevPaused; $('prof-bulk-start').value = today;
+  showToast(auto === true ? 'Mini-cut completado: vuelves al volumen' : 'Mini-cut terminado: vuelves al volumen');
+  renderObjectiveSummary(); await updateDashboardUI();
+  if($('tab-body').classList.contains('active')) await renderBodyTab();
+};
+window.snoozeMinicut = async () => { await updateProfile({ minicutSnooze: BulkEngine.util.addDays(todayStr(), 14) }); renderPhaseBox(); };
+async function checkPhaseEnd(){ const ph = phaseOf(); if(ph && todayStr() >= ph.end) await endMinicut(true); }
+function renderPhaseBanner(){
+  const el = $('phase-banner'); if(!el) return;
+  const ph = phaseOf(); if(!ph){ el.hidden = true; return; }
+  const { total, day } = phaseDay(ph);
+  el.hidden = false; el.innerHTML = `<b>Mini-cut</b> · día ${day} de ${total} · objetivo ${fmtN(ph.kcal)} kcal`;
+}
+
+// =========================================================================
+// 🩹 LESIONES Y MOLESTIAS (A12) — 'gym:injuries' = { zones: [...], updatedAt }
+// =========================================================================
+const INJURY_ZONES = {
+  hombro:  { label: 'Hombro', mus: ['hombros', 'pecho'], re: /press|fondos|dominad|jal[oó]n|elevaci|aperturas|pull ?over|dips|fly|pull-?up|lat pulldown/i },
+  codo:    { label: 'Codo', mus: ['biceps', 'triceps'], re: /curl|press franc|extensi[oó]n de tr[ií]ceps|fondos|press cerrado|skull|dips/i },
+  muneca:  { label: 'Muñeca', mus: ['antebrazos'], re: /curl|press de banca|flexiones|fondos|sentadilla frontal|push-?up|front squat/i },
+  lumbar:  { label: 'Zona lumbar', mus: ['lumbares'], re: /peso muerto|remo con barra|buenos d[ií]as|sentadilla|hip thrust|good morning|deadlift|bent.?over row|squat/i },
+  cadera:  { label: 'Cadera', mus: ['gluteos', 'aductores', 'abductores'], re: /peso muerto|sentadilla|hip thrust|zancada|lunge|squat|deadlift/i },
+  rodilla: { label: 'Rodilla', mus: ['cuadriceps'], re: /sentadilla|zancada|prensa|extensi[oó]n de (cu[aá]driceps|piernas)|b[uú]lgara|step|salto|squat|lunge|leg press|leg extension|jump/i },
+  tobillo: { label: 'Tobillo', mus: ['gemelos'], re: /salto|comba|correr|zancada|sentadilla|jump|calf|lunge|squat/i },
+  cuello:  { label: 'Cuello', mus: ['cuello', 'trapecio'], re: /encogimiento|remo al cuello|shrug|upright row/i },
+};
+function gInjuries(){ const v = gReadRaw('gym:injuries'); return Array.isArray(v && v.zones) ? v.zones.filter(z => INJURY_ZONES[z]) : []; }
+function gInjuryHits(ex){
+  const zones = gInjuries(); if(!zones.length || !ex) return [];
+  const name = [ex.name || '', ...(ex.aliases || [])].join(' ');
+  return zones.filter(z => { const Z = INJURY_ZONES[z]; return Z.mus.includes(ex.primary) || Z.re.test(name); });
+}
+const gInjuryNames = h => h.map(z => INJURY_ZONES[z].label.toLowerCase()).join(', ');
+function gInjuryTag(ex){ const h = gInjuryHits(ex); return h.length ? ` <span class="mini-tag inj-tag" title="Puede cargar una zona con molestias">⚠ ${gInjuryNames(h)}</span>` : ''; }
+G.toggleInjury = async z => { const cur = gInjuries(), next = cur.includes(z) ? cur.filter(x => x !== z) : [...cur, z]; await safeSet('gym:injuries', { zones: next, updatedAt: Date.now() }); haptic('tap'); renderGymTab(); };
+function gInjuryControls(){
+  const cur = gInjuries();
+  return `<div class="sub-title" style="margin-top:16px;">Lesiones y molestias</div>
+    <div class="chip-line" style="margin-top:0;">${Object.entries(INJURY_ZONES).map(([k, Z]) => `<button class="chip-toggle${cur.includes(k) ? ' on' : ''}" aria-pressed="${cur.includes(k)}" onclick="G.toggleInjury('${k}')">${Z.label}</button>`).join('')}</div>
+    <div class="muted-line">Marca las zonas que te molestan: los ejercicios que suelen cargarlas se señalan con ⚠ en el entreno y en el buscador, con un acceso directo para sustituirlos. Si el dolor persiste, consulta a un profesional sanitario.</div>`;
+}
+function gInjuryAlert(){ const cur = gInjuries(); return cur.length ? `<div class="alert warn">Molestias activas: <b>${gInjuryNames(cur)}</b>. Los ejercicios que pueden cargarlas llevan ⚠ y se pueden sustituir con un toque.</div>` : ''; }
+
+// =========================================================================
+// 🥗 CALIDAD DE LA DIETA (B7) — días cerrados y completos, componentes enlazados a Ciencia
+// =========================================================================
+async function dietQuality(asOf = todayStr(), n = 7){
+  const U = BulkEngine.util, tgt = getTargets(); let w = Number(profile.weight); try { w = getEngineState().weight.level || w; } catch(e){}
+  const acc = { prot: [], dist: [], fat: [], fib: [], sug: [], alc: [] }; let days = 0;
+  for(let i = 1; i <= n + 14 && days < n; i++){
+    const d = U.addDays(asOf, -i), L = await getLog(d); if(!L.length) continue;
+    const S = sumEntries(L); if(S.kcal < tgt.kcal * 0.5) continue;           // fuera los días claramente incompletos
+    days++;
+    acc.prot.push(Math.min(1, S.p / (tgt.p * 0.95)));
+    acc.dist.push(Math.min(1, L.filter(e => (Number(e.p) || 0) >= 0.25 * w).length / 3));
+    const fp = 9 * S.f / S.kcal; acc.fat.push(fp >= 0.20 && fp <= 0.35 ? 1 : Math.max(0, 1 - Math.min(Math.abs(fp - 0.20), Math.abs(fp - 0.35)) / 0.15));
+    if(L.some(e => e.fib !== undefined && e.fib !== null)) acc.fib.push(Math.min(1, L.reduce((a, e) => a + (Number(e.fib) || 0), 0) / 25));
+    acc.sug.push(S.s <= tgt.s ? 1 : Math.max(0, tgt.s / S.s));
+    acc.alc.push(L.some(e => (Number(e.al) || 0) > 0) ? 0 : 1);
+  }
+  if(!days) return null;
+  const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const comps = [
+    { k: 'prot', label: 'Proteína suficiente', v: mean(acc.prot), ficha: 'proteina' },
+    { k: 'dist', label: 'Proteína repartida', v: mean(acc.dist), ficha: 'proteina_reparto', hint: `3 tomas o más de ≥${Math.round(0.25 * w)} g` },
+    { k: 'fat', label: 'Grasa entre el 20 y el 35 %', v: mean(acc.fat), ficha: 'carbos_grasas' },
+    { k: 'fib', label: 'Fibra ≥25 g', v: acc.fib.length ? mean(acc.fib) : null, ficha: 'fibra', hint: acc.fib.length ? '' : 'sin datos aún: las comidas nuevas la estiman' },
+    { k: 'sug', label: 'Azúcares en su límite', v: mean(acc.sug) },
+    { k: 'alc', label: 'Días sin alcohol', v: mean(acc.alc), ficha: 'alcohol' },
+  ];
+  return { days, score: Math.round(mean(comps.filter(c => c.v !== null).map(c => c.v)) * 100), comps };
+}
+async function renderDietQuality(){
+  const el = $('diet-quality-body'); if(!el) return;
+  const q = await dietQuality();
+  if(!q){ setMeta('meta-diet', ''); el.innerHTML = '<div class="muted-line" style="margin:0;">Registra algunos días completos para ver la calidad de tu dieta.</div>'; return; }
+  setMeta('meta-diet', `${q.score}/100`);
+  const tone = v => v >= 0.85 ? 'ok' : v >= 0.6 ? 'mid' : 'lo';
+  el.innerHTML = `<div class="dq-top"><div class="dq-ring" style="--p:${q.score}" data-explain="diet"><b>${q.score}</b></div><div class="muted-line" style="margin:0;">Últimos ${q.days} días completos. Toca un componente para ver su evidencia.</div></div>
+    ${q.comps.map(c => `<button class="dq-row" ${c.ficha ? `onclick="nav('ciencia');sciOpen('${c.ficha}')"` : 'disabled'}><span>${c.label}${c.hint ? `<small>${c.hint}</small>` : ''}</span><i class="dq-bar"><i class="${c.v === null ? '' : tone(c.v)}" style="width:${c.v === null ? 0 : Math.round(c.v * 100)}%"></i></i><b>${c.v === null ? '—' : Math.round(c.v * 100)}</b></button>`).join('')}`;
+}
+
+// =========================================================================
+// 🧍 MAPA CORPORAL (D10) — series efectivas/semana por músculo
+// =========================================================================
+// Formas estilizadas del lado izquierdo de una figura de 120×250; se reflejan.
+const BM_FRONT = [
+  ['hombros', '<ellipse cx="37" cy="50" rx="9" ry="8"/>'],
+  ['pecho', '<path d="M59 45 L45 47 Q38 55 42 65 Q51 71 59 67 Z"/>'],
+  ['biceps', '<ellipse cx="31" cy="73" rx="6" ry="12.5"/>'],
+  ['antebrazos', '<ellipse cx="26" cy="101" rx="5.2" ry="14" transform="rotate(8 26 101)"/>'],
+  ['abdominales', '<rect x="50" y="71" width="9" height="40" rx="4"/><path d="M48 73 Q42 86 45 106 L48 108 Z"/>'],
+  ['abductores', '<ellipse cx="41" cy="121" rx="5" ry="9"/>'],
+  ['cuadriceps', '<path d="M57 124 Q45 124 42 142 Q41 166 47 186 L56 186 Q59 160 57 124 Z"/>'],
+  ['aductores', '<path d="M58.5 126 L60 126 L60 154 Q56 152 55 140 Z"/>'],
+  ['gemelos', '<ellipse cx="46.5" cy="210" rx="5" ry="16"/>'],
+  ['cuello', '<rect x="55" y="31" width="5" height="9" rx="2"/>'],
+];
+const BM_BACK = [
+  ['trapecio', '<path d="M60 30 L44 46 L52 50 L60 66 Z"/>'],
+  ['hombros', '<ellipse cx="37" cy="50" rx="9" ry="8"/>'],
+  ['espalda_alta', '<ellipse cx="49" cy="58" rx="7" ry="7"/>'],
+  ['dorsales', '<path d="M58 66 Q45 63 40 72 Q43 94 56 102 Z"/>'],
+  ['triceps', '<ellipse cx="31" cy="73" rx="6" ry="12.5"/>'],
+  ['antebrazos', '<ellipse cx="26" cy="101" rx="5.2" ry="14" transform="rotate(8 26 101)"/>'],
+  ['lumbares', '<rect x="51" y="100" width="9" height="16" rx="3"/>'],
+  ['gluteos', '<ellipse cx="50" cy="127" rx="10.5" ry="10.5"/>'],
+  ['isquios', '<path d="M58 140 Q46 140 44 152 Q44 172 48 186 L57 186 Q60 162 58 140 Z"/>'],
+  ['gemelos', '<ellipse cx="48" cy="207" rx="6" ry="15"/>'],
+];
+const BM_BODY = '<circle cx="60" cy="17" r="11"/><rect x="54" y="26" width="12" height="10" rx="3"/><path d="M60 36 L36 41 Q26 44 25 56 L19 112 Q18 120 23 121 L30 118 L36 74 L40 116 Q38 124 41 130 L42 190 L44 236 Q45 244 51 244 L57 243 L59 190 L60 140 L61 190 L63 243 L69 244 Q75 244 76 236 L78 190 L79 130 Q82 124 80 116 L84 74 L90 118 L97 121 Q102 120 101 112 L95 56 Q94 44 84 41 Z"/>';
+function gBodyMapHTML(ms, weeksF){
+  const v = k => (ms[k] || 0) / weeksF, cls = x => x <= 0 ? 'm0' : x < GY.WEEKLY_SETS.low ? 'mlo' : x <= GY.WEEKLY_SETS.high ? 'mok' : 'mhi';
+  const fig = (list, ox, title) => `<g transform="translate(${ox} 0)"><g class="bm-body">${BM_BODY}</g>${list.map(([k, shape]) => {
+      const x = v(k), lab = `${gMusLabel(k)}: ${String(Math.round(x * 10) / 10).replace('.', ',')} series/semana`;
+      return `<g class="bm-m ${cls(x)}" style="--o:${x <= 0 ? 0.0 : Math.min(1, 0.45 + x / 30)}" data-m="${k}" onclick="gBodyMapPick('${k}')" role="img" aria-label="${lab}"><title>${lab}</title>${shape}<g transform="matrix(-1 0 0 1 120 0)">${shape}</g></g>`; }).join('')}
+      <text x="60" y="258" text-anchor="middle" class="bm-tx">${title}</text></g>`;
+  window.__bmData = Object.fromEntries(Object.keys(GY.MUSCLES).map(k => [k, v(k)]));
+  return `<div class="bm-wrap"><svg class="bm" viewBox="0 0 270 264" role="group" aria-label="Mapa corporal de series semanales">${fig(BM_FRONT, 10, 'Frente')}${fig(BM_BACK, 140, 'Espalda')}</svg>
+    <div class="bm-legend"><span class="mlo">&lt;10</span><span class="mok">10–20</span><span class="mhi">&gt;20</span><span class="m0">0</span><button class="link" onclick="openExplain('bodymap')">series/semana · ¿qué es?</button></div>
+    <div class="bm-info" id="bm-info">Toca un músculo para ver sus series.</div></div>`;
+}
+window.gBodyMapPick = k => {
+  const x = (window.__bmData || {})[k] || 0, el = $('bm-info'); haptic('tap');
+  document.querySelectorAll('.bm-m').forEach(g => g.classList.toggle('sel', g.dataset.m === k));
+  if(el) el.innerHTML = `<b>${gMusLabel(k)}</b> · ${String(Math.round(x * 10) / 10).replace('.', ',')} series/semana${x < GY.WEEKLY_SETS.low ? ' · por debajo de 10' : x > GY.WEEKLY_SETS.high ? ' · por encima de 20' : x ? ' · en la zona de 10–20' : ''}`;
+};
+
+// =========================================================================
+// 📄 INFORME MENSUAL EN PDF (A15) — documento imprimible («Guardar como PDF»)
+// =========================================================================
+const MONTHS_LONG = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const monthLabel = m => { const [y, mo] = m.split('-').map(Number); return `${MONTHS_LONG[mo - 1]} de ${y}`; };
+function reportMonths(){
+  const set = new Set();
+  for(let i = 0; i < localStorage.length; i++){ const m = /^(?:log|weight|gym:session|sleep):(\d{4}-\d{2})-\d{2}$/.exec(localStorage.key(i) || ''); if(m) set.add(m[1]); }
+  return [...set].sort().reverse();
+}
+function renderReportControls(){
+  const sel = $('report-month'); if(!sel) return;
+  const ms = reportMonths(), cur = sel.value;
+  sel.innerHTML = ms.length ? ms.map(m => `<option value="${m}">${monthLabel(m)}</option>`).join('') : '<option value="">Sin datos todavía</option>';
+  if(cur && ms.includes(cur)) sel.value = cur;
+  $('report-go').disabled = !ms.length;
+}
+function repLineSVG(pts, w = 640, h = 170){
+  if(pts.length < 2) return '<p class="muted">Pocos pesajes este mes.</p>';
+  const xs = pts.map(p => p.x), ys = pts.flatMap(p => [p.kg, p.trend].filter(v => v !== null && v !== undefined));
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys) - 0.3, y1 = Math.max(...ys) + 0.3;
+  const X = x => 30 + (x - x0) / Math.max(1, x1 - x0) * (w - 40), Y = y => 10 + (1 - (y - y0) / (y1 - y0)) * (h - 30);
+  const tr = pts.filter(p => p.trend !== null && p.trend !== undefined);
+  const ticks = [y0 + 0.3, (y0 + y1) / 2, y1 - 0.3];
+  return `<svg viewBox="0 0 ${w} ${h}" class="ch">${ticks.map(t => `<line x1="30" x2="${w - 10}" y1="${Y(t)}" y2="${Y(t)}" class="gr"/><text x="2" y="${Y(t) + 3}" class="tx">${t.toFixed(1).replace('.', ',')}</text>`).join('')}
+    ${pts.map(p => `<circle cx="${X(p.x)}" cy="${Y(p.kg)}" r="2.6" class="dot"/>`).join('')}<polyline points="${tr.map(p => `${X(p.x)},${Y(p.trend)}`).join(' ')}" class="ln"/></svg>`;
+}
+function repBarsSVG(days, target, w = 640, h = 170){
+  if(!days.length) return '<p class="muted">Sin comidas registradas este mes.</p>';
+  const max = Math.max(target * 1.25, ...days.map(d => d.kcal)), bw = (w - 40) / days.length, Y = v => 10 + (1 - v / max) * (h - 30);
+  return `<svg viewBox="0 0 ${w} ${h}" class="ch">${days.map((d, i) => `<rect x="${30 + i * bw + 1}" y="${Y(d.kcal)}" width="${Math.max(1, bw - 2)}" height="${h - 20 - Y(d.kcal)}" class="${d.kcal >= target * 0.9 ? 'bar' : 'bar lo'}"/>`).join('')}
+    <line x1="30" x2="${w - 10}" y1="${Y(target)}" y2="${Y(target)}" class="tg"/><text x="${w - 12}" y="${Y(target) - 4}" text-anchor="end" class="tx">objetivo ${Math.round(target)}</text><text x="2" y="${Y(0)}" class="tx">0</text></svg>`;
+}
+async function buildMonthlyReport(month){
+  const U = BulkEngine.util, [y, mo] = month.split('-').map(Number), first = `${month}-01`, today = todayStr();
+  const last = `${month}-${String(new Date(y, mo, 0).getDate()).padStart(2, '0')}`, end = last < today ? last : today;
+  const dates = []; for(let d = first; d <= end; d = U.addDays(d, 1)) dates.push(d);
+  const st = getEngineState(), tgt = getTargets(), fN = (x, dec = 0) => sciFmt(x, dec), dX = d => U.diffDays(first, d);
+  // Peso
+  const wp = st.weight.points.filter(p => p.date >= first && p.date <= end), tr = wp.filter(p => p.trend !== null && p.trend !== undefined);
+  const w0 = tr.length ? tr[0].trend : null, w1 = tr.length ? tr[tr.length - 1].trend : null;
+  // Nutrición
+  const days = []; for(const d of dates){ const L = await getLog(d); if(L.length){ const S = sumEntries(L); days.push({ d, ...S, al: L.reduce((a, e) => a + (Number(e.al) || 0), 0) }); } }
+  const closed = days.filter(x => x.d < today);   // hoy está a medias: no entra en las medias
+  const avg = k => closed.length ? closed.reduce((a, x) => a + x[k], 0) / closed.length : null;
+  const protDays = closed.filter(x => x.p >= tgt.p * 0.95).length;
+  const dq = await dietQuality(U.addDays(end, 1), Math.max(1, Math.min(31, dates.length)));
+  // Entreno
+  const gd = gymData(), A = gymAnalysis(), ws = gd.workouts.filter(w => w.date >= first && w.date <= end);
+  const tot = ws.reduce((a, w) => { const s = GY.workoutSummary(w); a.v += s.volume; a.s += s.sets; a.t += s.durationSec; return a; }, { v: 0, s: 0, t: 0 });
+  const prs = ws.flatMap(w => (A.prsByWorkout[w.id] || []).map(p => ({ ...p, date: w.date })));
+  const best = {};
+  ws.forEach(w => w.exercises.forEach(e => (e.sets || []).forEach(s => { if(!GY.isWorking(s) || !(Number(s.kg) > 0) || !(Number(s.reps) > 0)) return; const r = GY.e1rm(Number(s.kg), Number(s.reps), s.rpe), b = best[e.exId] || (best[e.exId] = { n: 0, e1: 0, set: null }); b.n++; if(r > b.e1){ b.e1 = r; b.set = s; } })));
+  const top = Object.entries(best).sort((a, b) => b[1].n - a[1].n).slice(0, 6);
+  // Hábitos
+  const base = await waterBase(); let stS = 0, stN = 0, waS = 0, waN = 0;
+  for(const d of dates){ const s = await getSteps(d); if(s){ stS += s; stN++; } const h = await hydrationOn(d, base); if(h.totalMl > 0){ waS += h.totalMl; waN++; } }
+  const sl = await sleepStats(end, dates.length);
+  const ph = profile.phase && profile.phase.start <= end && profile.phase.end >= first ? profile.phase : (profile.lastMinicut && profile.lastMinicut.end >= first && profile.lastMinicut.start <= end ? profile.lastMinicut : null);
+  const kpi = (v, l, sub = '') => `<div class="kpi"><b>${v}</b><span>${l}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+  const title = `Informe de ${monthLabel(month)}`; // «Informe de octubre de 2026»
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Bulking OS · ${title}</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 14mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Manrope', system-ui, sans-serif; color: #15171b; font-size: 11.5px; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; padding-bottom: 12px; border-bottom: 2px solid #15171b; margin-bottom: 16px; }
+  .brand { font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #b8701f; }
+  h1 { font-family: 'Space Grotesk', sans-serif; font-size: 26px; letter-spacing: -.03em; line-height: 1.1; margin-top: 4px; }
+  .meta { text-align: right; color: #6b7079; font-size: 10px; }
+  h2 { font-family: 'Space Grotesk', sans-serif; font-size: 14px; margin: 18px 0 8px; display: flex; align-items: center; gap: 8px; }
+  h2::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: #e3a766; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #e3e1dc; border-radius: 10px; overflow: hidden; }
+  .kpi { padding: 10px 12px; border-left: 1px solid #e3e1dc; } .kpi:first-child { border-left: none; }
+  .kpi b { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 18px; letter-spacing: -.02em; }
+  .kpi span { color: #6b7079; font-size: 10px; } .kpi small { display: block; color: #9a9ea6; font-size: 9.5px; }
+  .ch { width: 100%; height: auto; display: block; border: 1px solid #ecebe7; border-radius: 10px; padding: 6px; }
+  .gr { stroke: #ecebe7; } .tx { fill: #8a8f98; font-size: 9px; } .dot { fill: #b9bdc4; } .ln { fill: none; stroke: #c47a2c; stroke-width: 2.2; }
+  .bar { fill: #e3a766; } .bar.lo { fill: #f0d4b1; } .tg { stroke: #15171b; stroke-dasharray: 4 3; }
+  table { width: 100%; border-collapse: collapse; } th { text-align: left; font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; color: #6b7079; border-bottom: 1px solid #d9d7d1; padding: 6px 4px; }
+  td { padding: 6px 4px; border-bottom: 1px solid #ecebe7; font-variant-numeric: tabular-nums; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .muted { color: #8a8f98; } .note { margin-top: 18px; padding-top: 10px; border-top: 1px solid #e3e1dc; color: #8a8f98; font-size: 9.5px; }
+  .bar-row { display: grid; grid-template-columns: 1fr 120px 32px; gap: 8px; align-items: center; padding: 3px 0; } .bar-row i { height: 6px; border-radius: 99px; background: #ecebe7; display: block; overflow: hidden; } .bar-row i i { height: 100%; background: #74c095; }
+  section { break-inside: avoid; }
+</style></head><body>
+<header><div><div class="brand">Bulking OS</div><h1>${title}</h1></div><div class="meta">${dates.length} días · del ${shortDate(first)} al ${shortDate(end)}<br>Generado el ${shortDate(today)}</div></header>
+<section><h2>Resumen</h2><div class="kpis">
+  ${kpi(w1 !== null ? fN(w1, 1) + ' kg' : '—', 'peso tendencia', w0 !== null && w1 !== null ? `${w1 - w0 >= 0 ? '+' : ''}${fN(w1 - w0, 2)} kg en el mes` : '')}
+  ${kpi(avg('kcal') !== null ? fN(avg('kcal')) : '—', 'kcal medias', `objetivo actual ${fN(tgt.kcal)}`)}
+  ${kpi(avg('p') !== null ? fN(avg('p')) + ' g' : '—', 'proteína media', `${protDays}/${closed.length} días completos en objetivo`)}
+  ${kpi(dq ? dq.score + '/100' : '—', 'calidad de la dieta')}
+</div><div class="kpis" style="margin-top:8px;">
+  ${kpi(ws.length, 'entrenos', `${fN(tot.s)} series`)}
+  ${kpi(fN(tot.v) + ' kg', 'volumen total')}
+  ${kpi(stN ? fN(stS / stN) : '—', 'pasos/día', stN ? `${stN} días registrados` : '')}
+  ${kpi(sl ? fmtHM(Math.round(sl.avg)) : '—', 'sueño medio', sl ? `${sl.n} ${sl.n === 1 ? 'noche' : 'noches'}${sl.reg !== null ? ` · horario ±${Math.round(sl.reg)} min` : ''}` : '')}
+</div>${ph ? `<p class="muted" style="margin-top:8px;">Este mes incluye un mini-cut (${shortDate(ph.start)} → ${shortDate(ph.end)}).</p>` : ''}</section>
+<section><h2>Peso</h2>${repLineSVG(wp.map(p => ({ x: dX(p.date), kg: p.kg, trend: p.trend })))}<p class="muted" style="margin-top:4px;">Puntos: pesajes. Línea: peso tendencia (media exponencial).</p></section>
+<section><h2>Calorías por día</h2>${repBarsSVG(days, tgt.kcal)}<p class="muted" style="margin-top:4px;">${days.length} días con registro · media de agua ${waN ? fmtL(waS / waN) + ' L/día' : '—'}.</p></section>
+<div class="two">
+<section><h2>Calidad de la dieta</h2>${dq ? dq.comps.map(c => `<div class="bar-row"><span>${c.label}</span><i><i style="width:${c.v === null ? 0 : Math.round(c.v * 100)}%"></i></i><b>${c.v === null ? '—' : Math.round(c.v * 100)}</b></div>`).join('') : '<p class="muted">Sin días completos suficientes.</p>'}</section>
+<section><h2>Récords del mes</h2>${prs.length ? `<table><tbody>${prs.slice(-8).reverse().map(p => `<tr><td>${escAttr(gymExInfo({ exId: p.exId }).name)}</td><td>${(p.labels || []).join(' · ')}</td><td class="muted">${shortDate(p.date)}</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Sin récords este mes.</p>'}</section>
+</div>
+<section><h2>Ejercicios principales</h2>${top.length ? `<table><thead><tr><th>Ejercicio</th><th>Series</th><th>Mejor serie</th><th>1RM estimado</th></tr></thead><tbody>${top.map(([id, b]) => `<tr><td>${escAttr(gymExInfo({ exId: id }).name)}</td><td>${b.n}</td><td>${b.set ? `${fN(Number(b.set.kg), 1)} kg × ${b.set.reps}` : '—'}</td><td>${fN(b.e1, 1)} kg</td></tr>`).join('')}</tbody></table>` : '<p class="muted">Sin entrenos de fuerza registrados este mes.</p>'}</section>
+<p class="note">Informe generado por Bulking OS a partir de tus registros. Las estimaciones (peso tendencia, 1RM, calidad de la dieta) son orientativas. Información educativa: no sustituye a un profesional sanitario.</p>
+</body></html>`;
+}
+window.printMonthlyReport = async () => {
+  const month = $('report-month').value; if(!month) return;
+  const btn = $('report-go'); btn.disabled = true; const label = btn.textContent; btn.textContent = 'Preparando…';
+  try {
+    const html = await buildMonthlyReport(month);
+    const fr = document.createElement('iframe'); fr.setAttribute('aria-hidden', 'true'); fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
+    document.body.appendChild(fr);
+    fr.onload = () => setTimeout(() => { try { fr.contentWindow.focus(); fr.contentWindow.print(); } catch(e){ showToast('No se pudo abrir la impresión.', true); } setTimeout(() => fr.remove(), 60000); }, 450);
+    fr.srcdoc = html; haptic('ok');
+  } catch(e){ console.error(e); showToast('No se pudo generar el informe.', true); }
+  finally { btn.disabled = false; btn.textContent = label; }
+};
+
+
 // NAVEGACIÓN
 function nav(tab){
-  document.querySelectorAll('.section').forEach(e=>e.classList.remove('active'));
+  const prevId = (document.querySelector('.section.active') || {}).id || '';
+  if(prevId !== 'tab-' + tab) haptic('tap');
+  document.querySelectorAll('.section').forEach(e=>e.classList.remove('active', 'nav-fwd', 'nav-back'));
   document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));
   $('tab-'+tab).classList.add('active');
   document.querySelector(`.nav-item[data-tab="${tab}"]`).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(e => e.dataset.tab === tab ? e.setAttribute('aria-current', 'page') : e.removeAttribute('aria-current'));
   window.scrollTo(0, 0);
+  { const from = TAB_ORDER.indexOf(prevId.replace('tab-', '')), to = TAB_ORDER.indexOf(tab);
+    if(from >= 0 && to >= 0 && from !== to && !reduceMotion()) $('tab-' + tab).classList.add(to > from ? 'nav-fwd' : 'nav-back'); }
   if(tab==='body'){ renderBodyTab(); renderBodyCompositionBlock(); }
   else if(tab==='gym') renderGymTab();
   else if(tab==='ciencia') renderCienciaTab();
-  else if(tab==='settings') renderSettingsTab();
+  else if(tab==='settings'){ renderSettingsTab(); renderAppearance(); }
 }
 
 // BACKUP IMPORT/EXPORT
@@ -7041,6 +8104,7 @@ window.onload = async () => {
   renderNoSyncBanner();
   await pruneOldCaches();
 
+  await checkPhaseEnd();
   await runDailyEvaluation();
   try { const needMacroMigr = profile.macroSchema !== 2; await syncDynamicMacros(needMacroMigr); if(needMacroMigr) await updateProfile({ macroSchema: 2 }); } catch(e){ console.error('Macros dinámicos', e); }
   if(migration){
@@ -7053,6 +8117,7 @@ window.onload = async () => {
   await checkBackupReminder();
 
   $('manual-text').addEventListener('keydown', e => { if(e.key==='Enter') processText(); });
+  applyTheme(); initGestures(); initPWA(); renderAppearance();
   $('input-weight-date').addEventListener('change', renderWeightDayList);
   $('input-measure-date').addEventListener('change', renderBodyMeasureDayList);
   $('input-steps-date').addEventListener('change', loadStepsForDate);
@@ -7175,6 +8240,8 @@ CIENCIA_REFS = {
     # ---------------- Cuerpo
     "wackerhage2019": _ref("Wackerhage H, et al.", 2019, "Stimuli and sensors that initiate skeletal muscle hypertrophy following resistance exercise", "Estímulos y sensores que inician la hipertrofia tras el entrenamiento de fuerza", "J Appl Physiol", "revision", None, None, "30335577", "10.1152/japplphysiol.00685.2018"),
     "hubal2005": _ref("Hubal MJ, et al.", 2005, "Variability in muscle size and strength gain after unilateral resistance training", "Variabilidad en el aumento de tamaño y fuerza tras el mismo entrenamiento", "Med Sci Sports Exerc", "ensayo", None, 585, "15947721", None),
+    "efsaFibre": _ref("EFSA NDA Panel", 2010, "Scientific Opinion on Dietary Reference Values for carbohydrates and dietary fibre", "Valores dietéticos de referencia para carbohidratos y fibra alimentaria", "EFSA Journal", "oficial", None, None, None, "10.2903/j.efsa.2010.1462"),
+    "reynolds2019": _ref("Reynolds A, et al.", 2019, "Carbohydrate quality and human health: a series of systematic reviews and meta-analyses", "Calidad de los carbohidratos y salud: serie de revisiones sistemáticas y meta-análisis", "Lancet", "meta", 243, None, "30638909", "10.1016/S0140-6736(18)31809-9"),
     "webborn2015": _ref("Webborn N, et al.", 2015, "Direct-to-consumer genetic testing for predicting sports performance and talent identification: consensus statement", "Test genéticos comerciales para predecir rendimiento deportivo: declaración de consenso", "Br J Sports Med", "guia", None, None, "26582191", "10.1136/bjsports-2015-095343"),
 }
 
@@ -7189,12 +8256,7 @@ CIENCIA_PILARES = [
 ]
 
 # Apartados anunciados que todavía no existen en la app.
-CIENCIA_PROXIMAMENTE = [
-    {"pilar": "descanso", "title": "Registro de sueño",
-     "texto": "Podrás registrar tu sueño y compararlo con la evidencia. No basta con las horas: en 60.977 personas, la regularidad del horario predijo la mortalidad mejor que la duración.",
-     "items": ["Duración (objetivo: 7 h o más)", "Regularidad: misma hora de acostarte y levantarte", "Cómo influye en tu peso, tu fuerza y tus entrenos"],
-     "refs": ["watson2015", "windred2024"]},
-]
+CIENCIA_PROXIMAMENTE = []  # el registro de sueño ya existe (Hoy → Sueño)
 
 # --- Figuras: datos exactos de los estudios (abstract o documento oficial).
 def _forest(title, rows, src, null=0, xmin=None, xmax=None, unit="", left="", right="", note=""):
@@ -7303,6 +8365,15 @@ CIENCIA_FICHAS = [
         ["Reparte el total en al menos 3–4 tomas de ~0,4 g/kg.",
          "Incluye proteína en alguna comida antes o después de entrenar, sin obsesionarte con los minutos."],
         [], ["schoenfeld2013", "jager2017", "schoenfeldAragon2018"], [], "timing ventana anabolica batido post entreno comidas"),
+    _ficha("fibra", "nutricion", "Fibra", "si", ("≥25 g", "de fibra al día (EFSA)"),
+        "La EFSA considera adecuados 25 g de fibra al día en adultos. En el gran meta-análisis de The Lancet, la mayor reducción de riesgo de enfermedades crónicas se observó entre 25 y 29 g/día.",
+        ["Llega a 25 g/día o más con legumbres, cereales integrales, fruta, verdura y frutos secos.",
+         "Sustituye cereales refinados por integrales: es el cambio con más respaldo.",
+         "Sube la fibra poco a poco y bebe suficiente agua para tolerarla mejor."],
+        ["Los datos de mortalidad y enfermedad vienen sobre todo de estudios observacionales; los ensayos muestran menos peso corporal, presión arterial y colesterol."],
+        ["efsaFibre", "reynolds2019"],
+        [],
+        "fibra integral legumbres fruta verdura"),
     _ficha("carbos_grasas", "nutricion", "Carbohidratos y grasas", "si", ("20–35 %", "de las calorías en grasa"),
         "Con la proteína y las calorías cubiertas, el reparto entre carbohidratos y grasas importa poco para la composición corporal. Los carbohidratos ayudan a rendir.",
         ["Grasas: 20–35 % de las calorías; no bajes de forma crónica del 20 %.",
@@ -7538,6 +8609,62 @@ CIENCIA_FICHAS = [
         "No hay evidencia suficiente de que los multivitamínicos prevengan enfermedades en adultos sanos.", refs=["uspstf2022"], tags="multivitaminico dieta"),
 ]
 
+# Comparador de suplementos (Ciencia → Comparador). Solo resume lo que dicen las
+# fichas; no se incluyen precios porque no hay una fuente verificable.
+CIENCIA_CMP = {
+    "creatina": ("Más fuerza y masa magra con entreno de fuerza (+1,1 kg de masa magra)", "3–5 g/día", "Segura en personas sanas (hasta 30 g/día durante 5 años)"),
+    "cafeina": ("Mejora fuerza, resistencia muscular y potencia", "3–6 mg/kg, ~60 min antes", "≤200 mg por toma y ≤400 mg/día (EFSA); empeora el sueño si es tarde"),
+    "otros_rendimiento": ("Esfuerzos intensos de 1–4 min; no aumenta la masa muscular", "Beta-alanina 4–6 g/día", "Hormigueo (beta-alanina)"),
+    "bcaa": ("Sin efecto si ya llegas a tu proteína", "—", "Innecesario"),
+    "multivitaminico": ("Sin beneficio demostrado en adultos sanos", "—", "Betacaroteno y vitamina E: desaconsejados"),
+    "vitamina_d": ("Sin beneficio por encima de lo recomendado en sanos <75 años", "Solo con indicación médica", "Evita megadosis"),
+    "magnesio": ("Sin efecto sin déficit", "Cúbrelo con la dieta", ">250 mg/día en suplemento: diarrea"),
+    "omega3": ("Cápsulas sin beneficio cardiovascular en sanos", "Mejor 1–2 raciones de pescado/semana", "Más fibrilación auricular, sobre todo >1 g/día"),
+    "colageno": ("Certeza baja-moderada; no es proteína completa", "—", "—"),
+    "hmb": ("Sin efecto en masa magra ni fuerza", "—", "—"),
+    "citrulina": ("Sin efecto en fuerza", "—", "—"),
+    "glutamina": ("Poca o ninguna evidencia para ganar músculo", "—", "—"),
+    "testo_boosters": ("La mayoría no sube la testosterona", "—", "—"),
+    "ashwagandha": ("Evidencia de certeza baja", "—", "Casos de daño hepático"),
+    "quemagrasas": ("Pérdidas pequeñas e inconsistentes", "—", "—"),
+    "glp1": ("−15 a −21 % de peso en obesidad", "Solo con receta", "Náuseas, diarrea; pérdida de masa magra"),
+    "peptidos": ("Sin datos clínicos en humanos", "—", "No aprobados; prohibidos en el deporte"),
+    "sarms": ("Más masa magra a costa de riesgos graves", "—", "Daño hepático, cardiovascular y de tendones"),
+}
+
+# Glosario (Ciencia → Glosario y términos enlazados en los textos). Definiciones
+# descriptivas; las cifras y recomendaciones viven en las fichas con sus fuentes.
+CIENCIA_GLOSARIO = [
+    {"id": "rir", "t": "RIR", "alt": ["repeticiones en reserva"], "d": "Repeticiones en reserva: cuántas repeticiones más podrías haber hecho al terminar la serie. RIR 0 es el fallo; RIR 2, que te quedaban dos."},
+    {"id": "rpe", "t": "RPE", "alt": [], "d": "Esfuerzo percibido de 1 a 10. En fuerza se usa como RPE 10 = fallo, RPE 9 = 1 repetición en reserva, y así sucesivamente."},
+    {"id": "1rm", "t": "1RM", "alt": [], "d": "El peso máximo que puedes levantar una sola vez con buena técnica. La app lo estima a partir de tus series (fórmula de Epley)."},
+    {"id": "hipertrofia", "t": "hipertrofia", "alt": [], "d": "Aumento del tamaño del músculo, sobre todo por el crecimiento de sus fibras."},
+    {"id": "volumen", "t": "volumen", "alt": ["series efectivas"], "d": "En entreno, cantidad de trabajo: normalmente series efectivas por músculo y semana (sin contar el calentamiento). En nutrición, «volumen» también es la fase de superávit."},
+    {"id": "fallo", "t": "fallo muscular", "alt": ["fallo"], "d": "El punto de la serie en el que no puedes completar otra repetición con buena técnica."},
+    {"id": "sobrecarga", "t": "sobrecarga progresiva", "alt": [], "d": "Aumentar poco a poco la exigencia (peso, repeticiones o series) para que el cuerpo siga adaptándose."},
+    {"id": "deload", "t": "deload", "alt": ["descarga"], "d": "Semana de entreno más ligero (menos series o peso) para recuperarse."},
+    {"id": "mantenimiento", "t": "mantenimiento", "alt": ["TDEE", "gasto energético"], "d": "Las calorías que gastas al día y con las que tu peso se mantiene estable. La app lo estima con una fórmula y lo corrige con tus datos reales de peso e ingesta."},
+    {"id": "neat", "t": "NEAT", "alt": [], "d": "Gasto por la actividad que no es ejercicio: caminar, estar de pie, moverte. Los pasos son su mejor indicador."},
+    {"id": "superavit", "t": "superávit", "alt": ["superávit calórico"], "d": "Comer más calorías de las que gastas. Es lo que permite ganar peso y facilita ganar músculo."},
+    {"id": "deficit", "t": "déficit", "alt": ["déficit calórico"], "d": "Comer menos calorías de las que gastas. Es lo que hace perder grasa."},
+    {"id": "minicut", "t": "mini-cut", "alt": [], "d": "Fase corta de déficit (pocas semanas) dentro de una etapa de volumen para frenar la ganancia de grasa."},
+    {"id": "masamagra", "t": "masa magra", "alt": ["masa libre de grasa"], "d": "Todo lo que no es grasa: músculo, huesos, órganos y agua."},
+    {"id": "ffmi", "t": "FFMI", "alt": [], "d": "Índice de masa libre de grasa: tu masa magra en relación con tu altura (kg/m²). Sirve para comparar musculatura entre personas de distinta estatura."},
+    {"id": "tendencia", "t": "tendencia", "alt": ["peso tendencia"], "d": "Tu peso suavizado (media exponencial de los pesajes) para que el agua o la comida de un día no oculten el cambio real."},
+    {"id": "ic", "t": "intervalo de confianza", "alt": ["IC"], "d": "Rango de valores compatibles con los datos. Cuanto más estrecho, más precisa es la estimación."},
+    {"id": "meta", "t": "meta-análisis", "alt": [], "d": "Estudio que combina estadísticamente los resultados de muchos estudios sobre la misma pregunta. Es uno de los niveles de evidencia más altos."},
+    {"id": "ensayo", "t": "ensayo aleatorizado", "alt": ["ensayos aleatorizados"], "d": "Estudio en el que se asigna al azar quién recibe la intervención y quién no. Es la mejor forma de saber si algo causa un efecto."},
+    {"id": "cohorte", "t": "estudio de cohortes", "alt": ["cohortes", "observacional", "observacionales"], "d": "Estudio que sigue a un grupo de personas en el tiempo sin intervenir. Muestra asociaciones, pero no demuestra causa."},
+    {"id": "rr", "t": "riesgo relativo", "alt": [], "d": "Cuánto cambia el riesgo frente a un grupo de referencia. 1 = igual; 0,80 = un 20 % menos; 1,25 = un 25 % más."},
+    {"id": "efecto", "t": "tamaño del efecto", "alt": ["diferencia estandarizada"], "d": "Cuánto difieren dos grupos en unidades comparables entre estudios. Orientativamente: 0,2 pequeño, 0,5 moderado y 0,8 grande."},
+    {"id": "significativo", "t": "significativo", "alt": ["no significativo", "n.s."], "d": "Que el resultado probablemente no se debe al azar. No dice si el efecto es grande o importante."},
+    {"id": "proteinacompleta", "t": "proteína completa", "alt": [], "d": "Proteína que aporta todos los aminoácidos esenciales en cantidad suficiente (carne, pescado, huevo, lácteos, soja)."},
+    {"id": "eaa", "t": "aminoácidos esenciales", "alt": [], "d": "Los aminoácidos que el cuerpo no fabrica y hay que tomar con la dieta. Son los que construyen músculo."},
+    {"id": "mps", "t": "síntesis de proteína muscular", "alt": ["síntesis muscular"], "d": "El proceso por el que el músculo fabrica proteína nueva. El entreno de fuerza y la proteína la estimulan."},
+    {"id": "regularidad", "t": "regularidad del sueño", "alt": [], "d": "Lo constante que es tu horario de acostarte y levantarte de un día a otro."},
+    {"id": "adherencia", "t": "adherencia", "alt": [], "d": "Qué parte de tu objetivo cumples de verdad (por ejemplo, kcal comidas frente a kcal objetivo)."},
+]
+
 def ciencia_json():
     """Contenido de la pestaña Ciencia serializado para inyectarlo en el HTML."""
     import json
@@ -7550,8 +8677,13 @@ def ciencia_json():
     ids = [f["id"] for f in CIENCIA_FICHAS]
     if len(ids) != len(set(ids)):
         raise ValueError("Ids de fichas de Ciencia duplicados")
+    bad_cmp = [k for k in CIENCIA_CMP if k not in ids]
+    if bad_cmp:
+        raise ValueError(f"Comparador con fichas inexistentes: {bad_cmp}")
     data = {"revisado": CIENCIA_REVISADO, "pilares": CIENCIA_PILARES, "fichas": CIENCIA_FICHAS,
-            "refs": CIENCIA_REFS, "proximamente": CIENCIA_PROXIMAMENTE}
+            "refs": CIENCIA_REFS, "proximamente": CIENCIA_PROXIMAMENTE,
+            "cmp": {k: {"efecto": v[0], "dosis": v[1], "seguridad": v[2]} for k, v in CIENCIA_CMP.items()},
+            "glosario": CIENCIA_GLOSARIO}
     return json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
 
 def get_injected_html():
@@ -7564,9 +8696,102 @@ def get_injected_html():
     html = html.replace("__FIREBASE_DB_URL__", FIREBASE_DB_URL)
     return html
 
+# ============================================================================
+# 📲 PWA — app instalable y con funcionamiento sin conexión
+# ============================================================================
+# El .py sigue siendo la única fuente: genera junto a index.html el manifiesto,
+# el service worker (no puede ir dentro del HTML: el navegador exige un archivo
+# del mismo origen) y los iconos PNG (dibujados aquí, sin dependencias).
+PWA_FILES = ["manifest.webmanifest", "sw.js", "icon-192.png", "icon-512.png", "apple-touch-icon.png"]
+
+PWA_MANIFEST = {
+    "name": "Bulking OS", "short_name": "Bulking", "lang": "es",
+    "description": "Nutrición, entreno, sueño y ciencia para ganar músculo.",
+    "start_url": "./", "scope": "./", "display": "standalone", "orientation": "portrait",
+    "background_color": "#090a0c", "theme_color": "#090a0c",
+    "icons": [
+        {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+        {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    ],
+}
+
+# Estrategias: la app (HTML) red primero y caché si no hay conexión; librerías y
+# fuentes, caché que se actualiza en segundo plano; datos (Firebase, Gemini,
+# Open Food Facts) siempre por red, nunca cacheados.
+SW_TEMPLATE = r"""/* Bulking OS · service worker (generado por bulking_app.py, no editar a mano) */
+const CACHE = 'bulking-__VERSION__';
+const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const NEVER = /firebasedatabase\.app|generativelanguage\.googleapis\.com|openfoodfacts\.org/;
+self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
+self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
+self.addEventListener('fetch', e => {
+  const req = e.request; if(req.method !== 'GET') return;
+  const url = new URL(req.url); if(NEVER.test(url.hostname)) return;
+  if(req.mode === 'navigate'){
+    e.respondWith(fetch(req).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put('./index.html', copy)); return r; })
+      .catch(() => caches.match('./index.html', { ignoreSearch: true })));
+    return;
+  }
+  e.respondWith(caches.match(req, { ignoreSearch: url.origin === location.origin }).then(hit => {
+    const net = fetch(req).then(r => { if(r && (r.ok || r.type === 'opaque')){ const copy = r.clone(); caches.open(CACHE).then(c => c.put(req, copy)); } return r; }).catch(() => hit);
+    return hit || net;
+  }));
+});
+"""
+
+def _png(size, draw):
+    """PNG RGBA mínimo sin dependencias (zlib + struct). draw(x, y) -> (r, g, b, a) en 0..1."""
+    import zlib, struct
+    raw = bytearray()
+    for y in range(size):
+        raw.append(0)
+        for x in range(size):
+            r, g, b, a = draw((x + .5) / size, (y + .5) / size)
+            raw += bytes((int(r * 255 + .5), int(g * 255 + .5), int(b * 255 + .5), int(a * 255 + .5)))
+    def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b"")
+
+def _icon_draw(ss=3):
+    """Icono: fondo grafito a sangre (válido como «maskable») y mancuerna ámbar centrada."""
+    bg, fg = (0.067, 0.075, 0.09), (0.89, 0.655, 0.40)
+    def rrect(x, y, x0, y0, x1, y1, r):
+        cx, cy = min(max(x, x0 + r), x1 - r), min(max(y, y0 + r), y1 - r)
+        return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+    shapes = [(0.24, 0.475, 0.76, 0.525, 0.012),                      # barra
+              (0.29, 0.355, 0.355, 0.645, 0.022), (0.645, 0.355, 0.71, 0.645, 0.022),   # discos grandes
+              (0.225, 0.405, 0.285, 0.595, 0.02), (0.715, 0.405, 0.775, 0.595, 0.02)]  # discos pequeños
+    def draw(u, v):
+        hits = 0
+        for i in range(ss):
+            for j in range(ss):
+                x, y = u + (i - (ss - 1) / 2) / (ss * 400), v + (j - (ss - 1) / 2) / (ss * 400)
+                if any(rrect(x, y, *sh) for sh in shapes): hits += 1
+        k = hits / (ss * ss)
+        glow = max(0.0, 1 - ((u - .5) ** 2 + (v - .3) ** 2) * 3.2) * 0.05
+        base = tuple(min(1, c + glow) for c in bg)
+        return tuple(base[i] * (1 - k) + fg[i] * k for i in range(3)) + (1.0,)
+    return draw
+
+def write_pwa_files(html):
+    import json, hashlib
+    d = PROJECT_DIR
+    with open(os.path.join(d, "manifest.webmanifest"), "w", encoding="utf-8") as f:
+        json.dump(PWA_MANIFEST, f, ensure_ascii=False, indent=2)
+    version = hashlib.sha256(html.encode("utf-8")).hexdigest()[:12]
+    with open(os.path.join(d, "sw.js"), "w", encoding="utf-8") as f:
+        f.write(SW_TEMPLATE.replace("__VERSION__", version))
+    for name, size in [("icon-192.png", 192), ("icon-512.png", 512), ("apple-touch-icon.png", 180)]:
+        path = os.path.join(d, name)
+        if not os.path.exists(path):  # dibujar es lento en Python puro: solo la primera vez
+            with open(path, "wb") as f:
+                f.write(_png(size, _icon_draw()))
+
 def write_index():
+    html = get_injected_html()
     with open(INDEX_FILE, "w", encoding="utf-8") as f:
-        f.write(get_injected_html())
+        f.write(html)
+    write_pwa_files(html)
 
 # Si el script se llama con el arg "--export-only", solo exporta y cierra.
 # Útil para el subproceso del watcher.
@@ -7618,7 +8843,8 @@ def run_git(cmd, timeout=30):
         )
 
 def has_changes():
-    ok, out = run_git(f'git status --porcelain -- "index.html" "{os.path.basename(THIS_FILE)}"')
+    files = " ".join(f'"{x}"' for x in ["index.html", os.path.basename(THIS_FILE), *PWA_FILES])
+    ok, out = run_git(f'git status --porcelain -- {files}')
     return ok and out.strip() != ""
 
 def current_branch():
@@ -7654,7 +8880,8 @@ def commit_and_push():
     branch = current_branch()
     msg = f"Auto-update config/app {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-    ok, out = run_git(f'git add "index.html" "{os.path.basename(THIS_FILE)}"')
+    files = " ".join(f'"{x}"' for x in ["index.html", os.path.basename(THIS_FILE), *PWA_FILES])
+    ok, out = run_git(f'git add {files}')
     if not ok:
         log(f"❌ git add falló (revisa que estos archivos existan en la raíz del repo): {out}")
         return
