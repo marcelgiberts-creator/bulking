@@ -600,6 +600,38 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   .seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(16,18,21,.88); border: 1px solid var(--glass-border); margin-bottom: 10px; position: sticky; top: 8px; z-index: 20; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
   .seg button { flex: 1; background: none; border: none; color: var(--text-dim); font-weight: 700; font-size: .74rem; padding: 9px 4px; border-radius: 10px; cursor: pointer; }
   .seg button.on { color: var(--tone, var(--accent)); background: rgba(var(--tone-rgb, 217,171,106), .14); }
+
+  /* 🔬 CIENCIA */
+  .sci-intro p { font-size: .84rem; color: var(--text-mid); line-height: 1.6; margin-bottom: 8px; }
+  .sci-search { width: 100%; margin-top: 4px; }
+  .sci-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; scrollbar-width: none; }
+  .sci-chips::-webkit-scrollbar { display: none; }
+  .sci-chips .chip-toggle { white-space: nowrap; flex: none; }
+  details.fold.sci-card > summary { font-family: 'Manrope', sans-serif; text-transform: none; letter-spacing: 0; font-size: .9rem; color: var(--text); gap: 10px; }
+  details.fold.sci-card > summary > span::before { display: none; }
+  .sci-card > summary .sci-ico { font-size: 1.15rem; flex: none; }
+  .sci-card > summary .sci-ttl { flex: 1; min-width: 0; font-weight: 700; line-height: 1.35; }
+  .sci-badge { flex: none; font-size: .62rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; padding: 4px 8px; border-radius: 99px; color: var(--tone); background: rgba(var(--tone-rgb), .13); border: 1px solid rgba(var(--tone-rgb), .35); }
+  .sci-v-si { --tone: rgb(127,174,148); --tone-rgb: 127,174,148; }
+  .sci-v-no { --tone: rgb(168,173,182); --tone-rgb: 168,173,182; }
+  .sci-v-riesgo { --tone: rgb(197,131,122); --tone-rgb: 197,131,122; }
+  .sci-v-info { --tone: rgb(138,162,200); --tone-rgb: 138,162,200; }
+  .sci-v-mito { --tone: rgb(217,171,106); --tone-rgb: 217,171,106; }
+  .sci-lead { font-size: .9rem; line-height: 1.6; color: var(--text); margin-bottom: 12px; }
+  .sci-personal { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius-sm); font-size: .82rem; line-height: 1.55; color: var(--text-mid); background: rgba(178,145,171,.08); border: 1px solid rgba(178,145,171,.25); }
+  .sci-personal b { color: var(--text); }
+  .sci-h { font-size: .66rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--text-dim); margin: 12px 0 6px; }
+  .sci-list { padding-left: 18px; font-size: .84rem; line-height: 1.6; color: var(--text-mid); }
+  .sci-list li { margin-bottom: 5px; }
+  .sci-list.warn li::marker { color: var(--red); }
+  .sci-refs { padding-left: 18px; font-size: .74rem; line-height: 1.5; color: var(--text-dim); }
+  .sci-refs li { margin-bottom: 8px; }
+  .sci-refs .sci-n { display: block; color: var(--text-mid); font-weight: 600; }
+  .sci-refs a { color: rgb(178,145,171); text-decoration: none; font-weight: 700; margin-right: 8px; }
+  .sci-meta { font-size: .68rem; color: var(--text-dim); margin-top: 10px; }
+  .sci-ans { margin-top: 12px; font-size: .86rem; line-height: 1.6; color: var(--text-mid); white-space: pre-line; }
+  .sci-ans-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .sci-empty { text-align: center; color: var(--text-dim); font-size: .84rem; padding: 24px 0; }
   .seg.small { position: static; margin: 4px 0 12px; } .seg.small button.on { color: rgb(138,162,200); background: rgba(138,162,200,.14); }
   .gym-view { display: none; } .gym-view.on { display: block; animation: sectionIn .25s var(--ease); }
   .gym-hero-title { font-family: 'Space Grotesk', sans-serif; font-size: 1.5rem; font-weight: 600; letter-spacing: -.03em; }
@@ -941,6 +973,13 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
 
   <!-- ========================================================================= -->
+  <!-- 🔬 CIENCIA (contenido en CIENCIA_FICHAS del .py, render en renderCienciaTab) -->
+  <!-- ========================================================================= -->
+  <div id="tab-ciencia" class="section">
+    <div id="ciencia-root"></div>
+  </div>
+
+  <!-- ========================================================================= -->
   <!-- ⚙️ AJUSTES                                                             -->
   <!-- ========================================================================= -->
   <div id="tab-settings" class="section">
@@ -1014,6 +1053,7 @@ APP_HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="nav-item active" data-tab="dash" data-tone="amber" onclick="nav('dash')"><span class="nav-icon">📊</span>Hoy</div>
   <div class="nav-item" data-tab="body" data-tone="green" onclick="nav('body')"><span class="nav-icon">📈</span>Progreso</div>
   <div class="nav-item" data-tab="gym" data-tone="blue" onclick="nav('gym')"><span class="nav-icon">🏋️</span>Gym</div>
+  <div class="nav-item" data-tab="ciencia" data-tone="violet" onclick="nav('ciencia')"><span class="nav-icon">🔬</span>Ciencia</div>
   <div class="nav-item" data-tab="settings" data-tone="slate" onclick="nav('settings')"><span class="nav-icon">⚙️</span>Ajustes</div>
 </div>
 
@@ -3833,6 +3873,8 @@ ${context}
 
 Nota sobre fiabilidad: las entradas marcadas como pesadas con báscula o por etiqueta nutricional son prácticamente exactas (trátalas como dato de laboratorio, no como estimación); el error real está casi todo en las comidas estimadas por IA sin pesar. Los pesos corporales también son muy fiables (en ayunas, a primera hora); ignora a qué hora del día se registraron en la app, lo que importa es que siempre se toman en las mismas condiciones.
 
+${cienciaPromptBlock()}
+
 Haz un análisis largo y con sustancia, cruzando TODOS los datos disponibles entre sí (nutrición, peso/tendencia/ritmo, hidratación, pasos/actividad, entrenamiento si hay datos de gym, composición corporal, adherencia y fiabilidad del registro) — no te quedes en lo obvio, busca relaciones entre ellos (p. ej. si los días con menos pasos coinciden con menos progreso, si la hidratación es baja en días de entreno, si la adherencia explica la falta de progreso más que el objetivo en sí). Sé transparente y directo, sin paños calientes, como en una consulta clínica real, pero sin alarmismo innecesario.
 
 Devuelve SOLO este JSON, sin texto ni markdown fuera de él:
@@ -4622,7 +4664,7 @@ const GYM_ACTIVE_KEY = 'gym:active';
 const GYM_DEFAULTS = { restCompound: 150, restIsolation: 90, bar: 20, plates: [25, 20, 15, 10, 5, 2.5, 1.25], rpe: false, autoRest: true, sound: true, vibrate: true, wakeLock: true, incBarbell: 2.5, incDumbbell: 2, incOther: 2.5 };
 const G = window.G = {};
 const gUid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const gNorm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+const gNorm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 const gFmtInt = x => Math.round(Number(x) || 0).toLocaleString('es-ES');
 const gFmtKg = x => (Math.round((Number(x) || 0) * 100) / 100).toLocaleString('es-ES', { maximumFractionDigits: 2 });
 function gFmtClock(sec){ sec = Math.max(0, Math.round(sec || 0)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`; }
@@ -5463,6 +5505,7 @@ PRIORIDADES/LESIONES: ${notes || 'ninguna indicada'}.
 HISTORIAL DE ENTRENAMIENTO REGISTRADO:\n${ctx}
 
 Reglas basadas en evidencia: 10-20 series efectivas por músculo y semana (más en los prioritarios), cada músculo ≥2 veces por semana si los días lo permiten, multiarticulares primero (6-10 reps, descanso 150-180 s), aislamiento 10-15 reps (60-90 s), 0-3 repeticiones en reserva, sesión que quepa en ${mins} min (≈ 1 serie cada 2,5-3 min con descanso). Si hay historial, aprovecha los ejercicios que ya hace y respeta sus lesiones.
+${cienciaPromptBlock()}
 Usa SOLO ejercicios de este catálogo (por su id exacto):
 ${catalog}
 
@@ -5810,6 +5853,8 @@ ${ctx}
 Fiabilidad: pesos corporales en ayunas (muy fiables); comidas pesadas con báscula/etiqueta ≈ exactas; el resto lleva error de estimación.
 Criterios basados en evidencia: 10-20 series efectivas/músculo/semana, frecuencia ≥2×/semana por músculo, progresión de cargas (doble progresión), 0-3 repeticiones en reserva, descansos 2-3 min en multiarticulares, proteína 1,6-2,2 g/kg, superávit moderado. Busca relaciones entre fuerza y peso (¿la ganancia es magra?), volumen y recuperación, días de entreno y comida, desequilibrios musculares, estancamientos y riesgos de lesión por saltos de carga.
 
+${cienciaPromptBlock()}
+
 Devuelve SOLO este JSON, sin texto fuera:
 {"veredicto":"2-3 frases con los números clave","secciones":[{"titulo":"Volumen y frecuencia","texto":"3-6 frases"},{"titulo":"Progresión y fuerza","texto":"3-6 frases con ejercicios concretos"},{"titulo":"Equilibrio muscular","texto":"2-5 frases"},{"titulo":"Recuperación, nutrición y peso","texto":"3-6 frases cruzando kcal, proteína, peso tendencia y rendimiento"},{"titulo":"Riesgos y puntos de atención","texto":"2-4 frases o decir que no hay"}],"metricas":[{"valor":"dato con número, máx 6 palabras","etiqueta":"1-2 palabras"}],"acciones":["acción concreta (incluye pesos/reps/series objetivo para la próxima sesión cuando aplique), máx 20 palabras"]}
 4-6 métricas y 4-6 acciones priorizadas.`;
@@ -5934,6 +5979,206 @@ function gymReportCalculated(){
     perWorkout: d.workouts.map(w => ({ id: w.id, date: w.date, name: w.name, ...GY.workoutSummary(w), prs: (A.prsByWorkout[w.id] || []).length })) };
 }
 
+// =========================================
+// 🔬 CIENCIA — fichas basadas en evidencia
+// =========================================
+// El contenido (fichas + referencias verificadas) vive en CIENCIA_FICHAS /
+// CIENCIA_REFS del .py y se inyecta aquí como JSON. Esta parte solo pinta,
+// filtra, personaliza con los datos del usuario y alimenta a la IA.
+const CIENCIA = __CIENCIA_JSON__;
+const SCI_VERDICT = { si: 'Respaldado', no: 'No recomendado', riesgo: 'Evitar', info: 'Cómo funciona', mito: 'Mito' };
+const sciState = { q: '', pilar: 'all' };
+const sciFicha = id => CIENCIA.fichas.find(f => f.id === id);
+const sciNorm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const sciDate = iso => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${MONTHS_SHORT[m - 1]} ${y}`; };
+
+// Datos del usuario para personalizar (peso tendencia si existe; si no, el del perfil).
+function sciCtx(){
+  const c = { w: Number(profile.weight) || null, sex: profile.sex, age: Number(profile.age) || null, meals: Number(profile.mealsPerDay) || null,
+    kcal: Number(profile.targetKcal) || null, prot: Number(profile.targetProtein) || null, fat: Number(profile.targetFat) || null };
+  try {
+    const st = getEngineState();
+    if(st.weight && st.weight.level > 0) c.w = st.weight.level;
+    if(st.rate && Number.isFinite(st.rate.perWeek)) c.rate = st.rate.perWeek;
+    if(st.activity && st.activity.avg7) c.steps = st.activity.avg7;
+  } catch(e){}
+  return c;
+}
+// Una función por ficha: devuelve una frase con TUS números (o '' si faltan datos).
+const SCI_PERSONAL = {
+  proteina: c => {
+    if(!c.w) return '';
+    const lo = c.w * 1.6, hi = c.w * 2.2;
+    let s = `Con tu peso (${fmtN(c.w, 1)} kg): <b>${fmtN(lo)}–${fmtN(hi)} g de proteína al día</b>.`;
+    if(c.prot) s += ` Tu objetivo en la app es ${fmtN(c.prot)} g: ${c.prot < lo - 1 ? 'por debajo del rango.' : c.prot > hi + 1 ? 'por encima de 2,2 g/kg (no añade más músculo, aunque en personas sanas no daña el riñón).' : 'dentro del rango ✓'}`;
+    return s;
+  },
+  proteina_reparto: c => c.w ? `Para ti: <b>~${fmtN(c.w * 0.4)}–${fmtN(c.w * 0.55)} g por toma</b>${c.meals ? `, repartidos entre tus ${c.meals} comidas` : ''}.` : '',
+  superavit: c => {
+    if(!c.w) return '';
+    const lo = c.w * 0.0025, hi = c.w * 0.005;
+    let s = `Ritmo orientativo para ti: <b>${fmtN(lo, 2)}–${fmtN(hi, 2)} kg/semana</b>.`;
+    if(Number.isFinite(c.rate)) s += ` Tu ritmo actual según la tendencia: <b>${fmtS(c.rate, 2)} kg/semana</b> (${fmtS(c.rate / c.w * 100, 2)} % de tu peso).`;
+    return s;
+  },
+  carbos_grasas: c => c.kcal ? `Con tu objetivo de ${fmtN(c.kcal)} kcal, el 20–35 % en grasa son <b>${fmtN(c.kcal * 0.2 / 9)}–${fmtN(c.kcal * 0.35 / 9)} g de grasa al día</b>${c.fat ? ` (en la app tienes ${fmtN(c.fat)} g)` : ''}.` : '',
+  hidratacion: c => `Tu referencia EFSA: <b>${c.sex === 'f' ? '2,0' : '2,5'} L de agua total al día</b> (comida incluida), más lo que sudes al entrenar.`,
+  cafeina: c => c.w ? `Para ti, 3 mg/kg son ~${fmtN(c.w * 3)} mg. Dosis de inicio sugerida: <b>${fmtN(Math.min(c.w * 3, 200))} mg</b>${c.w * 3 > 200 ? ' (limitada a los 200 mg por toma que la EFSA considera seguros)' : ''}. Como referencia, una taza de café de 250 ml tiene ~107 mg.` : '',
+  pasos: c => {
+    const goal = c.age && c.age >= 60 ? '6.000–8.000' : '8.000–10.000';
+    return c.steps ? `Tu media de 7 días: <b>${fmtN(c.steps)} pasos</b>. Zona donde se estabiliza el beneficio para tu edad: ${goal}.` : `Zona donde se estabiliza el beneficio para tu edad: <b>${goal} pasos/día</b>. Registra tus pasos en Gym → Estadísticas para compararte.`;
+  },
+  volumen: () => {
+    try {
+      const d = gymData(); if(!d.workouts.length) return '';
+      const today = todayStr(), ms = GY.muscleSets(d.workouts, BulkEngine.util.addDays(today, -27), today, gExInfoSets);
+      const rows = Object.entries(ms).filter(([k]) => k !== 'cardio').map(([k, v]) => [GYM_MUSCLES[k] || k, v / 4]).sort((a, b) => a[1] - b[1]);
+      if(!rows.length) return '';
+      const low = rows.filter(r => r[1] < 10);
+      return `Tus series efectivas por semana (media de 4 semanas): ${rows.map(([n, v]) => `${n} ${fmtN(v, 1)}`).join(' · ')}.${low.length ? ` <b>Por debajo de 10:</b> ${low.map(r => r[0]).join(', ')}.` : ' <b>Todos los músculos registrados llegan a 10 ✓</b>'}`;
+    } catch(e){ return ''; }
+  },
+};
+
+function sciRefHTML(key){
+  const r = CIENCIA.refs[key]; if(!r) return '';
+  const links = [r.pmid ? `<a href="https://pubmed.ncbi.nlm.nih.gov/${r.pmid}/" target="_blank" rel="noopener">PubMed ↗</a>` : '',
+    r.doi ? `<a href="https://doi.org/${r.doi}" target="_blank" rel="noopener">DOI ↗</a>` : '',
+    r.url ? `<a href="${escAttr(r.url)}" target="_blank" rel="noopener">Fuente oficial ↗</a>` : ''].join('');
+  return `<li><span class="sci-n">${escAttr(r.n)}</span>${escAttr(r.a)}${r.y ? ` (${r.y})` : ''}. ${escAttr(r.t)}. <i>${escAttr(r.j)}</i>.<br>${links}</li>`;
+}
+function sciCardHTML(f){
+  const list = (arr, cls = '') => arr.length ? `<ul class="sci-list ${cls}">${arr.map(x => `<li>${escAttr(x)}</li>`).join('')}</ul>` : '';
+  return `<details class="glass-card fold sci-card" id="sci-${f.id}" data-id="${f.id}">
+    <summary><span class="sci-ico">${f.icon}</span><span class="sci-ttl">${escAttr(f.title)}</span><span class="sci-badge sci-v-${f.verdict}">${SCI_VERDICT[f.verdict]}</span></summary>
+    <div class="fold-body">
+      <div class="sci-lead">${escAttr(f.resumen)}</div>
+      ${SCI_PERSONAL[f.id] ? '<div class="sci-personal" hidden></div>' : ''}
+      ${f.hacer.length ? `<div class="sci-h">Qué hacer</div>${list(f.hacer)}` : ''}
+      ${f.cuidado.length ? `<div class="sci-h">Precauciones</div>${list(f.cuidado, 'warn')}` : ''}
+      ${f.fondo.length ? `<details class="sub"><summary>Más a fondo: qué dicen los estudios</summary><div>${list(f.fondo)}</div></details>` : ''}
+      <div class="sci-h">Fuentes (${f.refs.length})</div>
+      <ol class="sci-refs">${f.refs.map(sciRefHTML).join('')}</ol>
+      <div class="sci-meta">Revisado: ${sciDate(CIENCIA.revisado)} · Información educativa, no sustituye a un profesional sanitario.</div>
+    </div>
+  </details>`;
+}
+function sciFillPersonal(card){
+  const fn = SCI_PERSONAL[card.dataset.id], box = card.querySelector('.sci-personal');
+  if(!fn || !box) return;
+  const html = fn(sciCtx());
+  box.innerHTML = html ? `🎯 ${html}` : ''; box.hidden = !html;
+}
+function sciMatches(f){
+  if(sciState.pilar !== 'all' && f.pilar !== sciState.pilar) return false;
+  if(!sciState.q) return true;
+  const hay = sciNorm([f.title, f.resumen, f.tags, ...f.hacer, ...f.fondo, ...f.cuidado].join(' '));
+  return sciNorm(sciState.q).split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+function sciRenderList(){
+  const box = $('sci-list'); if(!box) return;
+  const shown = CIENCIA.fichas.filter(sciMatches);
+  if(!shown.length){ box.innerHTML = '<div class="sci-empty">Nada en la base verificada con esa búsqueda.<br>Prueba con otra palabra o pregunta a la IA arriba.</div>'; return; }
+  box.innerHTML = CIENCIA.pilares.map(p => {
+    const fs = shown.filter(f => f.pilar === p.id);
+    return fs.length ? `<div class="folder-title">${p.icon} ${p.label}</div>${fs.map(sciCardHTML).join('')}` : '';
+  }).join('');
+  box.querySelectorAll('details.sci-card').forEach(d => d.addEventListener('toggle', () => { if(d.open) sciFillPersonal(d); }));
+}
+function sciSetPilar(p){
+  sciState.pilar = p;
+  document.querySelectorAll('#sci-chips .chip-toggle').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  sciRenderList();
+}
+function sciOpen(id){
+  if(!sciFicha(id)) return;
+  sciState.q = ''; const s = $('sci-search'); if(s) s.value = '';
+  sciSetPilar('all');
+  const card = $('sci-' + id); if(!card) return;
+  card.open = true; sciFillPersonal(card);
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderCienciaTab(){
+  const root = $('ciencia-root'); if(!root || !CIENCIA) return;
+  if(!root.dataset.built){
+    const nRefs = Object.keys(CIENCIA.refs).length;
+    root.innerHTML = `
+      <div class="glass-card sci-intro" data-tone="violet">
+        <div class="card-head"><h3>Ciencia</h3><b class="card-meta">${CIENCIA.fichas.length} fichas · ${nRefs} fuentes</b></div>
+        <p>Solo meta-análisis, ensayos grandes, guías clínicas y posicionamientos oficiales (OMS, EFSA, ISSN, ACSM, COI, Cochrane…). Cada fuente se ha comprobado una a una en PubMed o en el organismo oficial.</p>
+        <p>Si algo no tiene respaldo suficiente o puede ser peligroso, la ficha lo dice: <b>No recomendado</b> o <b>Evitar</b>. Cuando hay datos tuyos, verás 🎯 tus números.</p>
+        <div class="muted-line">Revisado: ${sciDate(CIENCIA.revisado)}. Información educativa: ante una enfermedad, medicación o embarazo, consulta a un profesional sanitario.</div>
+      </div>
+      <div class="glass-card" data-tone="violet">
+        <div class="card-head"><h3>Pregunta a la ciencia</h3></div>
+        <div class="inline-form" style="margin-top:0;">
+          <input type="text" id="sci-ask-input" placeholder="Ej.: ¿cuánta proteína necesito? ¿sirve el magnesio?" style="flex:1;" onkeydown="if(event.key==='Enter') sciAsk()">
+          <button class="secondary" id="sci-ask-btn" onclick="sciAsk()">Preguntar</button>
+        </div>
+        <div class="muted-line">La IA responde solo con lo que dicen estas fichas. Si algo no está, te lo dirá.</div>
+        <div id="sci-ask-out" hidden></div>
+      </div>
+      <div data-tone="violet">
+        <input type="search" id="sci-search" class="sci-search" placeholder="🔍 Buscar: creatina, sueño, series, pasos…">
+        <div class="sci-chips" id="sci-chips">
+          <button class="chip-toggle on" data-p="all" onclick="sciSetPilar('all')">Todo</button>
+          ${CIENCIA.pilares.map(p => `<button class="chip-toggle" data-p="${p.id}" onclick="sciSetPilar('${p.id}')">${p.icon} ${p.label}</button>`).join('')}
+        </div>
+        <div id="sci-list"></div>
+      </div>`;
+    $('sci-search').addEventListener('input', e => { sciState.q = e.target.value.trim(); sciRenderList(); });
+    root.dataset.built = '1';
+  }
+  sciRenderList();
+}
+
+// Texto de la base para la IA. full=true incluye «Más a fondo» y fuentes.
+function sciKnowledgeText(full = false){
+  return CIENCIA.fichas.map(f => {
+    let s = `[${f.id}] ${f.title} — ${SCI_VERDICT[f.verdict].toUpperCase()}: ${f.resumen}`;
+    if(f.hacer.length) s += ` | Qué hacer: ${f.hacer.join(' ')}`;
+    if(f.cuidado.length) s += ` | Precauciones: ${f.cuidado.join(' ')}`;
+    if(full && f.fondo.length) s += ` | Estudios: ${f.fondo.join(' ')}`;
+    if(full) s += ` | Fuentes: ${f.refs.map(k => { const r = CIENCIA.refs[k]; return `${r.a.split(',')[0]}${r.y ? ' ' + r.y : ''}`; }).join('; ')}`;
+    return s;
+  }).join('\n');
+}
+// Bloque que se añade a los prompts de análisis para que la IA no contradiga la base.
+function cienciaPromptBlock(){
+  return `BASE CIENTÍFICA VERIFICADA DE LA APP (pestaña Ciencia; meta-análisis, guías y posicionamientos oficiales). Úsala como criterio y NO la contradigas. Reglas: no recomiendes ningún suplemento o sustancia marcado como NO RECOMENDADO o EVITAR; si sugieres un suplemento, que sea uno marcado como RESPALDADO y a las dosis indicadas; nunca des pautas de péptidos, SARMs ni fármacos.
+${sciKnowledgeText(false)}`;
+}
+
+async function sciAsk(){
+  const inp = $('sci-ask-input'), q = (inp.value || '').trim();
+  if(!q) return;
+  const btn = $('sci-ask-btn'), out = $('sci-ask-out');
+  btn.disabled = true; btn.textContent = 'Consultando…';
+  try {
+    const c = sciCtx();
+    const prompt = `Eres un asistente de divulgación científica sobre entrenamiento, nutrición y salud. Responde a la pregunta del usuario usando EXCLUSIVAMENTE la base de fichas verificadas de abajo. Es información educativa.
+REGLAS ESTRICTAS:
+1. Si la base no cubre la pregunta, dilo claramente ("Esto no está en la base verificada de la app") y no inventes datos, cifras ni estudios.
+2. No recomiendes nada marcado como NO RECOMENDADO o EVITAR. Nunca des dosis ni pautas de péptidos, SARMs, esteroides ni fármacos.
+3. Si la pregunta implica síntomas, enfermedad, medicación, embarazo o menores, responde de forma general y recomienda consultar a un profesional sanitario.
+4. Usa solo cifras que aparezcan en la base o en el perfil. Español de España, claro y sencillo, 3-8 frases.
+PERFIL DEL USUARIO: ${c.sex === 'f' ? 'mujer' : 'hombre'}, ${c.age || '?'} años, ${c.w ? fmtN(c.w, 1) + ' kg' : 'peso desconocido'}, en fase de volumen (ganar músculo), objetivo ${c.kcal ? fmtN(c.kcal) + ' kcal' : 'kcal sin definir'} y ${c.prot ? fmtN(c.prot) + ' g de proteína' : 'proteína sin definir'}.
+BASE DE FICHAS:
+${sciKnowledgeText(true)}
+
+PREGUNTA: ${q}
+
+Devuelve SOLO este JSON: {"respuesta":"texto","fichas":["ids de las fichas usadas, máx 4"],"cubierto":true}`;
+    const res = await callGemini(prompt, true, GEMINI_MODEL_SUMMARY, 2, { timeoutMs: 60000 });
+    if(!res || !res.respuesta){ showToast('No se pudo responder ahora mismo. Prueba otra vez.', true); return; }
+    const ids = (Array.isArray(res.fichas) ? res.fichas : []).filter(sciFicha).slice(0, 4);
+    out.hidden = false;
+    out.innerHTML = `<div class="sci-ans">${escAttr(res.respuesta)}</div>
+      ${ids.length ? `<div class="sci-ans-links">${ids.map(id => { const f = sciFicha(id); return `<button class="chip-toggle on" onclick="sciOpen('${id}')">${f.icon} ${escAttr(f.title)}</button>`; }).join('')}</div>` : ''}
+      <div class="muted-line">Respuesta generada por IA a partir de las fichas${res.cubierto === false ? '. Tu pregunta no está cubierta por la base verificada' : '; las fuentes están en cada ficha'}.</div>`;
+  } finally { btn.disabled = false; btn.textContent = 'Preguntar'; }
+}
+
 // NAVEGACIÓN
 function nav(tab){
   document.querySelectorAll('.section').forEach(e=>e.classList.remove('active'));
@@ -5942,6 +6187,7 @@ function nav(tab){
   document.querySelector(`.nav-item[data-tab="${tab}"]`).classList.add('active');
   if(tab==='body'){ renderBodyTab(); renderBodyCompositionBlock(); }
   else if(tab==='gym') renderGymTab();
+  else if(tab==='ciencia') renderCienciaTab();
   else if(tab==='settings') renderSettingsTab();
 }
 
@@ -6393,9 +6639,408 @@ window.onload = async () => {
 </html>
 """
 
+# ============================================================================
+# 🔬 CIENCIA — CONTENIDO DE LA PESTAÑA (fichas + fuentes)
+# ============================================================================
+# Criterio de inclusión: solo meta-análisis, revisiones sistemáticas, ensayos
+# aleatorizados grandes, guías clínicas y posicionamientos oficiales (ISSN,
+# ACSM, COI, OMS, EFSA, USPSTF, Endocrine Society, Cochrane...). Cada referencia
+# se verificó contra PubMed/Crossref (título, autores, revista, año, DOI) y las
+# cifras de las fichas salen del abstract o del documento oficial.
+# Si algo no tiene respaldo suficiente o puede ser peligroso, la ficha dice
+# «No recomendado» o «Evitar» en vez de dar una pauta.
+# Veredictos: si = respaldado · no = no recomendado · riesgo = evitar ·
+#             info = cómo funciona · mito = creencia falsa.
+# Para editar: cambia los textos aquí; el watcher regenera y sube la web.
+
+CIENCIA_REVISADO = "2026-10-08"
+
+def _ref(a, y, t, j, n, pmid=None, doi=None, url=None):
+    return {"a": a, "y": y, "t": t, "j": j, "n": n, "pmid": pmid, "doi": doi, "url": url}
+
+CIENCIA_REFS = {
+    # --- Proteína y dieta
+    "morton2018": _ref("Morton RW, Murphy KT, McKellar SR, et al.", 2018, "A systematic review, meta-analysis and meta-regression of the effect of protein supplementation on resistance training-induced gains in muscle mass and strength in healthy adults", "Br J Sports Med 52:376-384", "Meta-análisis · 49 ensayos aleatorizados · n = 1.863", "28698222", "10.1136/bjsports-2017-097608"),
+    "jager2017": _ref("Jäger R, Kerksick CM, Campbell BI, et al.", 2017, "International Society of Sports Nutrition Position Stand: protein and exercise", "J Int Soc Sports Nutr 14:20", "Posicionamiento oficial · ISSN", "28642676", "10.1186/s12970-017-0177-8"),
+    "schoenfeldAragon2018": _ref("Schoenfeld BJ, Aragon AA", 2018, "How much protein can the body use in a single meal for muscle-building? Implications for daily protein distribution", "J Int Soc Sports Nutr 15:10", "Revisión de la literatura", "29497353", "10.1186/s12970-018-0215-1"),
+    "schoenfeld2013": _ref("Schoenfeld BJ, Aragon AA, Krieger JW", 2013, "The effect of protein timing on muscle strength and hypertrophy: a meta-analysis", "J Int Soc Sports Nutr 10:53", "Meta-análisis · 23 estudios de hipertrofia · n = 525", "24299050", "10.1186/1550-2783-10-53"),
+    "devries2018": _ref("Devries MC, Sithamparapillai A, Brimble KS, et al.", 2018, "Changes in kidney function do not differ between healthy adults consuming higher- compared with lower- or normal-protein diets: a systematic review and meta-analysis", "J Nutr 148:1760-1775", "Meta-análisis · 28 ensayos aleatorizados · n = 1.358", "30383278", "10.1093/jn/nxy197"),
+    "aragon2017": _ref("Aragon AA, Schoenfeld BJ, Wildman R, et al.", 2017, "International Society of Sports Nutrition position stand: diets and body composition", "J Int Soc Sports Nutr 14:16", "Posicionamiento oficial · ISSN", "28630601", "10.1186/s12970-017-0174-y"),
+    "iraki2019": _ref("Iraki J, Fitschen P, Espinar S, et al.", 2019, "Nutrition recommendations for bodybuilders in the off-season: a narrative review", "Sports (Basel) 7(7):154", "Revisión narrativa", "31247944", "10.3390/sports7070154"),
+    "helms2023": _ref("Helms ER, Spence AJ, Sousa C, et al.", 2023, "Effect of small and large energy surpluses on strength, muscle, and skinfold thickness in resistance-trained individuals: a parallel groups design", "Sports Med Open 9:102", "Ensayo aleatorizado · n = 17 completaron (pequeño)", "37914977", "10.1186/s40798-023-00651-y"),
+    "thomas2016": _ref("Thomas DT, Erdman KA, Burke LM", 2016, "American College of Sports Medicine Joint Position Statement. Nutrition and Athletic Performance", "Med Sci Sports Exerc 48:543-568", "Posicionamiento conjunto · ACSM + Academy of Nutrition and Dietetics + Dietitians of Canada", "26891166", "10.1249/MSS.0000000000000852"),
+    "efsaWater": _ref("EFSA Panel on Dietetic Products, Nutrition and Allergies", 2010, "Scientific Opinion on Dietary Reference Values for water", "EFSA Journal 8(3):1459", "Opinión científica oficial · Autoridad Europea de Seguridad Alimentaria", None, "10.2903/j.efsa.2010.1459"),
+    "sawka2007": _ref("American College of Sports Medicine; Sawka MN, Burke LM, et al.", 2007, "American College of Sports Medicine position stand. Exercise and fluid replacement", "Med Sci Sports Exerc 39:377-390", "Posicionamiento oficial · ACSM", "17277604", "10.1249/mss.0b013e31802ca597"),
+    "gbd2018": _ref("GBD 2016 Alcohol Collaborators", 2018, "Alcohol use and burden for 195 countries and territories, 1990-2016: a systematic analysis for the Global Burden of Disease Study 2016", "Lancet 392:1015-1035", "Análisis sistemático · 694 fuentes de consumo y 592 estudios de riesgo", "30146330", "10.1016/S0140-6736(18)31310-2"),
+    "anderson2023": _ref("Anderson BO, Berdzuli N, Ilbawi A, et al.", 2023, "Health and cancer risks associated with low levels of alcohol consumption", "Lancet Public Health 8:e6-e7", "Declaración de la Organización Mundial de la Salud (Europa)", "36603913", "10.1016/S2468-2667(22)00317-6"),
+    "rimm2018": _ref("Rimm EB, Appel LJ, Chiuve SE, et al.", 2018, "Seafood long-chain n-3 polyunsaturated fatty acids and cardiovascular disease: a science advisory from the American Heart Association", "Circulation 138:e35-e47", "Aviso científico oficial · American Heart Association", "29773586", "10.1161/CIR.0000000000000574"),
+    "mansonO3": _ref("Manson JE, Cook NR, Lee IM, et al. (VITAL)", 2019, "Marine n-3 fatty acids and prevention of cardiovascular disease and cancer", "N Engl J Med 380:23-32", "Ensayo aleatorizado · n = 25.871 · 5,3 años", "30415637", "10.1056/NEJMoa1811403"),
+    "abdelhamid2020": _ref("Abdelhamid AS, Brown TJ, Brainard JS, et al.", 2020, "Omega-3 fatty acids for the primary and secondary prevention of cardiovascular disease", "Cochrane Database Syst Rev 3:CD003177", "Revisión Cochrane · 86 ensayos aleatorizados · n = 162.796", "32114706", "10.1002/14651858.CD003177.pub5"),
+    "gencer2021": _ref("Gencer B, Djousse L, Al-Ramady OT, et al.", 2021, "Effect of long-term marine omega-3 fatty acids supplementation on the risk of atrial fibrillation in randomized controlled trials of cardiovascular outcomes: a systematic review and meta-analysis", "Circulation 144:1981-1990", "Meta-análisis · 7 ensayos aleatorizados · n = 81.210", "34612056", "10.1161/CIRCULATIONAHA.121.055654"),
+    # --- Suplementos
+    "kreider2017": _ref("Kreider RB, Kalman DS, Antonio J, et al.", 2017, "International Society of Sports Nutrition position stand: safety and efficacy of creatine supplementation in exercise, sport, and medicine", "J Int Soc Sports Nutr 14:18", "Posicionamiento oficial · ISSN", "28615996", "10.1186/s12970-017-0173-z"),
+    "delpino2022": _ref("Delpino FM, Figueiredo LM, Forbes SC, Candow DG, Santos HO", 2022, "Influence of age, sex, and type of exercise on the efficacy of creatine supplementation on lean body mass: a systematic review and meta-analysis of randomized clinical trials", "Nutrition 103-104:111791", "Meta-análisis · 35 ensayos aleatorizados · n = 1.192", "35986981", "10.1016/j.nut.2022.111791"),
+    "antonio2021": _ref("Antonio J, Candow DG, Forbes SC, et al.", 2021, "Common questions and misconceptions about creatine supplementation: what does the scientific evidence really show?", "J Int Soc Sports Nutr 18:13", "Revisión de un panel internacional de expertos", "33557850", "10.1186/s12970-021-00412-w"),
+    "lak2025": _ref("Lak M, Forbes SC, Ashtary-Larky D, et al.", 2025, "Does creatine cause hair loss? A 12-week randomized controlled trial", "J Int Soc Sports Nutr 22:2495229", "Ensayo aleatorizado con placebo · n = 38 completaron · 12 semanas", "40265319", "10.1080/15502783.2025.2495229"),
+    "guest2021": _ref("Guest NS, VanDusseldorp TA, Nelson MT, et al.", 2021, "International Society of Sports Nutrition position stand: caffeine and exercise performance", "J Int Soc Sports Nutr 18:1", "Posicionamiento oficial · ISSN", "33388079", "10.1186/s12970-020-00383-4"),
+    "efsaCaffeine": _ref("EFSA Panel on Dietetic Products, Nutrition and Allergies", 2015, "Scientific Opinion on the safety of caffeine", "EFSA Journal 13(5):4102", "Opinión científica oficial · Autoridad Europea de Seguridad Alimentaria", None, "10.2903/j.efsa.2015.4102"),
+    "gardiner2023": _ref("Gardiner C, Weakley J, Burke LM, et al.", 2023, "The effect of caffeine on subsequent sleep: a systematic review and meta-analysis", "Sleep Med Rev 69:101764", "Meta-análisis · 24 estudios", "36870101", "10.1016/j.smrv.2023.101764"),
+    "uspstf2022": _ref("US Preventive Services Task Force; Mangione CM, Barry MJ, et al.", 2022, "Vitamin, mineral, and multivitamin supplementation to prevent cardiovascular disease and cancer: US Preventive Services Task Force recommendation statement", "JAMA 327:2326-2333", "Recomendación oficial · USPSTF", "35727271", "10.1001/jama.2022.8970"),
+    "maughan2018": _ref("Maughan RJ, Burke LM, Dvorak J, et al.", 2018, "IOC consensus statement: dietary supplements and the high-performance athlete", "Br J Sports Med 52:439-455", "Declaración de consenso · Comité Olímpico Internacional", "29540367", "10.1136/bjsports-2018-099027"),
+    "demay2024": _ref("Demay MB, Pittas AG, Bikle DD, et al.", 2024, "Vitamin D for the prevention of disease: an Endocrine Society clinical practice guideline", "J Clin Endocrinol Metab 109:1907-1947", "Guía de práctica clínica · Endocrine Society (método GRADE)", "38828931", "10.1210/clinem/dgae290"),
+    "mansonD": _ref("Manson JE, Cook NR, Lee IM, et al. (VITAL)", 2019, "Vitamin D supplements and prevention of cancer and cardiovascular disease", "N Engl J Med 380:33-44", "Ensayo aleatorizado · n = 25.871 · 5,3 años", "30415629", "10.1056/NEJMoa1809944"),
+    "efsaMg": _ref("EFSA Panel on Dietetic Products, Nutrition and Allergies", 2015, "Scientific Opinion on Dietary Reference Values for magnesium", "EFSA Journal 13(7):4186", "Opinión científica oficial · Autoridad Europea de Seguridad Alimentaria", None, "10.2903/j.efsa.2015.4186"),
+    "efsaUL": _ref("European Food Safety Authority (Scientific Committee on Food / NDA Panel)", 2006, "Tolerable Upper Intake Levels for Vitamins and Minerals", "EFSA", "Documento oficial de límites máximos seguros", None, None, "https://www.efsa.europa.eu/sites/default/files/efsa_rep/blobserver_assets/ndatolerableuil.pdf"),
+    "mah2021": _ref("Mah J, Pitre T", 2021, "Oral magnesium supplementation for insomnia in older adults: a systematic review & meta-analysis", "BMC Complement Med Ther 21:125", "Meta-análisis · 3 ensayos · n = 151 · calidad de la evidencia baja o muy baja", "33865376", "10.1186/s12906-021-03297-z"),
+    "wolfe2017": _ref("Wolfe RR", 2017, "Branched-chain amino acids and muscle protein synthesis in humans: myth or reality?", "J Int Soc Sports Nutr 14:30", "Revisión", "28852372", "10.1186/s12970-017-0184-9"),
+    "plotkin2021": _ref("Plotkin DL, Delcastillo K, Van Every DW, et al.", 2021, "Isolated leucine and branched-chain amino acid supplementation for enhancing muscular strength and hypertrophy: a narrative review", "Int J Sport Nutr Exerc Metab 31:292-301", "Revisión narrativa", "33741748", "10.1123/ijsnem.2020-0356"),
+    "trexler2015": _ref("Trexler ET, Smith-Ryan AE, Stout JR, et al.", 2015, "International Society of Sports Nutrition position stand: beta-alanine", "J Int Soc Sports Nutr 12:30", "Posicionamiento oficial · ISSN", "26175657", "10.1186/s12970-015-0090-y"),
+    "vasireddiBPC": _ref("Vasireddi N, Hahamyan H, Salata MJ, et al.", 2025, "Emerging use of BPC-157 in orthopaedic sports medicine: a systematic review", "HSS J 21:485-495", "Revisión sistemática · 36 estudios (35 preclínicos, 1 en humanos)", "40756949", "10.1177/15563316251355551"),
+    "fdaPeptides": _ref("U.S. Food and Drug Administration", 2026, "Certain bulk drug substances for use in compounding that may present significant safety risks (actualizada 22/04/2026)", "FDA", "Documento regulatorio oficial", None, None, "https://www.fda.gov/drugs/human-drug-compounding/certain-bulk-drug-substances-use-compounding-may-present-significant-safety-risks"),
+    "usadaBPC": _ref("U.S. Anti-Doping Agency (USADA)", None, "BPC-157: experimental peptide creates risk for athletes", "USADA", "Agencia antidopaje oficial", None, None, "https://www.usada.org/spirit-of-sport/bpc-157-peptide-prohibited/"),
+    "wada": _ref("World Anti-Doping Agency (WADA/AMA)", 2026, "Prohibited List (S0 sustancias no aprobadas; S2 hormonas peptídicas)", "WADA", "Lista oficial de sustancias prohibidas", None, None, "https://www.wada-ama.org/en/prohibited-list"),
+    "fdaSarms": _ref("U.S. Food and Drug Administration", None, "Certain bodybuilding products put consumers at risk for heart attack, stroke, serious liver damage and more", "FDA", "Advertencia oficial al consumidor", None, None, "https://www.fda.gov/drugs/fraudulent-products/certain-bodybuilding-products-put-consumers-risk-heart-attack-stroke-serious-liver-damage-and-more"),
+    "vasireddiSARM": _ref("Vasireddi N, Hahamyan HA, Gould HP, et al.", 2025, "Athlete selective androgen receptor modulators abuse: a systematic review", "Am J Sports Med 53:999-1009", "Revisión sistemática · 72 artículos", "39755947", "10.1177/03635465241252435"),
+    "leciejewska2024": _ref("Leciejewska N, Jędrejko K, Gómez-Renaud VM, et al.", 2024, "Selective androgen receptor modulator use and related adverse events including drug-induced liver injury: analysis of suspected cases", "Eur J Clin Pharmacol 80:185-202", "Revisión de casos clínicos", "38059982", "10.1007/s00228-023-03592-3"),
+    # --- Entrenamiento
+    "schoenfeldVol2017": _ref("Schoenfeld BJ, Ogborn D, Krieger JW", 2017, "Dose-response relationship between weekly resistance training volume and increases in muscle mass: a systematic review and meta-analysis", "J Sports Sci 35:1073-1082", "Meta-análisis · 15 estudios", "27433992", "10.1080/02640414.2016.1210197"),
+    "pelland2026": _ref("Pelland JC, Remmert JF, Robinson ZP, Hinson SR, Zourdos MC", 2026, "The resistance training dose response: meta-regressions exploring the effects of weekly volume and frequency on muscle hypertrophy and strength gains", "Sports Med 56:481-505", "Meta-regresión · 67 estudios · n = 2.058", "41343037", "10.1007/s40279-025-02344-w"),
+    "schoenfeldFreq2019": _ref("Schoenfeld BJ, Grgic J, Krieger J", 2019, "How many times per week should a muscle be trained to maximize muscle hypertrophy? A systematic review and meta-analysis of studies examining the effects of resistance training frequency", "J Sports Sci 37:1286-1295", "Meta-análisis · 25 estudios", "30558493", "10.1080/02640414.2018.1555906"),
+    "schoenfeldLoad2017": _ref("Schoenfeld BJ, Grgic J, Ogborn D, Krieger JW", 2017, "Strength and hypertrophy adaptations between low- vs. high-load resistance training: a systematic review and meta-analysis", "J Strength Cond Res 31:3508-3523", "Meta-análisis · 21 estudios", "28834797", "10.1519/JSC.0000000000002200"),
+    "lopez2021": _ref("Lopez P, Radaelli R, Taaffe DR, et al.", 2021, "Resistance training load effects on muscle hypertrophy and strength gain: systematic review and network meta-analysis", "Med Sci Sports Exerc 53:1206-1216", "Meta-análisis en red · 28 estudios · n = 747", "33433148", "10.1249/MSS.0000000000002585"),
+    "refalo2023": _ref("Refalo MC, Helms ER, Trexler ET, Hamilton DL, Fyfe JJ", 2023, "Influence of resistance training proximity-to-failure on skeletal muscle hypertrophy: a systematic review with meta-analysis", "Sports Med 53:649-665", "Meta-análisis · 15 estudios", "36334240", "10.1007/s40279-022-01784-y"),
+    "singer2024": _ref("Singer A, Wolf M, Generoso L, et al.", 2024, "Give it a rest: a systematic review with Bayesian meta-analysis on the effect of inter-set rest interval duration on muscle hypertrophy", "Front Sports Act Living 6:1429789", "Meta-análisis bayesiano · 9 estudios", "39205815", "10.3389/fspor.2024.1429789"),
+    "pallares2021": _ref("Pallarés JG, Hernández-Belmonte A, Martínez-Cava A, et al.", 2021, "Effects of range of motion on resistance training adaptations: a systematic review and meta-analysis", "Scand J Med Sci Sports 31:1866-1881", "Meta-análisis · 16 estudios", "34170576", "10.1111/sms.14006"),
+    "acsm2009": _ref("American College of Sports Medicine", 2009, "American College of Sports Medicine position stand. Progression models in resistance training for healthy adults", "Med Sci Sports Exerc 41:687-708", "Posicionamiento oficial · ACSM", "19204579", "10.1249/MSS.0b013e3181915670"),
+    "schumann2022": _ref("Schumann M, Feuerbacher JF, Sünkeler M, et al.", 2022, "Compatibility of concurrent aerobic and strength training for skeletal muscle size and function: an updated systematic review and meta-analysis", "Sports Med 52:601-612", "Meta-análisis · 43 estudios", "34757594", "10.1007/s40279-021-01587-7"),
+    "who2020": _ref("Bull FC, Al-Ansari SS, Biddle S, et al.", 2020, "World Health Organization 2020 guidelines on physical activity and sedentary behaviour", "Br J Sports Med 54:1451-1462", "Guía oficial · Organización Mundial de la Salud", "33239350", "10.1136/bjsports-2020-102955"),
+    "momma2022": _ref("Momma H, Kawakami R, Honda T, et al.", 2022, "Muscle-strengthening activities are associated with lower risk and mortality in major non-communicable diseases: a systematic review and meta-analysis of cohort studies", "Br J Sports Med 56:755-763", "Meta-análisis · 16 estudios de cohortes", "35228201", "10.1136/bjsports-2021-105061"),
+    # --- Descanso y hábitos
+    "watson2015": _ref("Watson NF, Badr MS, Belenky G, et al.", 2015, "Recommended amount of sleep for a healthy adult: a joint consensus statement of the American Academy of Sleep Medicine and Sleep Research Society", "Sleep 38:843-844", "Declaración de consenso · AASM + Sleep Research Society", "26039963", "10.5665/sleep.4716"),
+    "craven2022": _ref("Craven J, McCartney D, Desbrow B, et al.", 2022, "Effects of acute sleep loss on physical performance: a systematic and meta-analytical review", "Sports Med 52:2669-2690", "Meta-análisis · 69 publicaciones", "35708888", "10.1007/s40279-022-01706-y"),
+    "paluch2022": _ref("Paluch AE, Bajpai S, Bassett DR, et al.", 2022, "Daily steps and all-cause mortality: a meta-analysis of 15 international cohorts", "Lancet Public Health 7:e219-e228", "Meta-análisis · 15 cohortes · n = 47.471", "35247352", "10.1016/S2468-2667(21)00302-9"),
+    "banach2023": _ref("Banach M, Lewek J, Surma S, et al.", 2023, "The association between daily step count and all-cause and cardiovascular mortality: a meta-analysis", "Eur J Prev Cardiol 30:1975-1985", "Meta-análisis · 17 cohortes · n = 226.889", "37555441", "10.1093/eurjpc/zwad229"),
+    "ekelund2016": _ref("Ekelund U, Steene-Johannessen J, Brown WJ, et al.", 2016, "Does physical activity attenuate, or even eliminate, the detrimental association of sitting time with mortality? A harmonised meta-analysis of data from more than 1 million men and women", "Lancet 388:1302-1310", "Meta-análisis · >1 millón de personas", "27475271", "10.1016/S0140-6736(16)30370-1"),
+    "gordon2018": _ref("Gordon BR, McDowell CP, Hallgren M, et al.", 2018, "Association of efficacy of resistance exercise training with depressive symptoms: meta-analysis and meta-regression analysis of randomized clinical trials", "JAMA Psychiatry 75:566-576", "Meta-análisis · 33 ensayos aleatorizados · n = 1.877", "29800984", "10.1001/jamapsychiatry.2018.0572"),
+    "noetel2024": _ref("Noetel M, Sanders T, Gallardo-Gómez D, et al.", 2024, "Effect of exercise for depression: systematic review and network meta-analysis of randomised controlled trials", "BMJ 384:e075847", "Meta-análisis en red · 218 ensayos · n = 14.170", "38355154", "10.1136/bmj-2023-075847"),
+    "roberts2015": _ref("Roberts LA, Raastad T, Markworth JF, et al.", 2015, "Post-exercise cold water immersion attenuates acute anabolic signalling and long-term adaptations in muscle to strength training", "J Physiol 593:4285-4301", "Ensayo aleatorizado · n = 21 · 12 semanas", "26174323", "10.1113/JP270570"),
+    "fyfe2019": _ref("Fyfe JJ, Broatch JR, Trewin AJ, et al.", 2019, "Cold water immersion attenuates anabolic signaling and skeletal muscle fiber hypertrophy, but not strength gain, following whole-body resistance training", "J Appl Physiol 127:1403-1418", "Ensayo controlado · n = 16 · 7 semanas", "31513450", "10.1152/japplphysiol.00127.2019"),
+    # --- Cuerpo
+    "wackerhage2019": _ref("Wackerhage H, Schoenfeld BJ, Hamilton DL, et al.", 2019, "Stimuli and sensors that initiate skeletal muscle hypertrophy following resistance exercise", "J Appl Physiol 126:30-43", "Revisión", "30335577", "10.1152/japplphysiol.00685.2018"),
+    "hubal2005": _ref("Hubal MJ, Gordish-Dressman H, Thompson PD, et al.", 2005, "Variability in muscle size and strength gain after unilateral resistance training", "Med Sci Sports Exerc 37:964-972", "Estudio multicéntrico · n = 585 · 12 semanas", "15947721", None),
+    "webborn2015": _ref("Webborn N, Williams A, McNamee M, et al.", 2015, "Direct-to-consumer genetic testing for predicting sports performance and talent identification: consensus statement", "Br J Sports Med 49:1486-1491", "Declaración de consenso", "26582191", "10.1136/bjsports-2015-095343"),
+}
+
+CIENCIA_PILARES = [
+    {"id": "nutricion", "icon": "🍽️", "label": "Nutrición"},
+    {"id": "entreno", "icon": "🏋️", "label": "Entreno"},
+    {"id": "descanso", "icon": "😴", "label": "Descanso"},
+    {"id": "suplementos", "icon": "💊", "label": "Suplementos"},
+    {"id": "salud", "icon": "❤️", "label": "Salud"},
+    {"id": "cuerpo", "icon": "🧬", "label": "Cuerpo"},
+    {"id": "mitos", "icon": "❌", "label": "Mitos"},
+]
+
+def _ficha(id, pilar, icon, title, verdict, resumen, hacer=(), fondo=(), cuidado=(), refs=(), tags=""):
+    return {"id": id, "pilar": pilar, "icon": icon, "title": title, "verdict": verdict, "resumen": resumen,
+            "hacer": list(hacer), "fondo": list(fondo), "cuidado": list(cuidado), "refs": list(refs), "tags": tags}
+
+CIENCIA_FICHAS = [
+    # ======================= NUTRICIÓN
+    _ficha("proteina", "nutricion", "🥩", "Proteína diaria", "si",
+        "Comer suficiente proteína mientras entrenas fuerza es lo que más ayuda a ganar músculo desde la dieta. A partir de ~1,6 g por kg de peso al día, comer más ya no añade músculo de forma medible.",
+        ["Apunta a 1,6–2,2 g por kg de peso al día. En 1,6 el beneficio se estanca de media; 2,2 cubre a quienes necesitan más.",
+         "Elige proteínas con todos los aminoácidos esenciales: carne, pescado, huevo, lácteos, soja, o combina legumbres con cereales.",
+         "La proteína en polvo es comida práctica, no magia: solo sirve para llegar al total del día."],
+        ["Morton 2018 (49 ensayos, 1.863 personas): añadir proteína al entreno aumentó la masa libre de grasa en +0,30 kg de media y el 1RM en +2,49 kg. Por encima de 1,62 g/kg/día no hubo más ganancia de masa libre de grasa.",
+         "El efecto fue mayor en personas ya entrenadas y menor cuanto mayor es la edad.",
+         "La ISSN sitúa la ingesta suficiente para la mayoría de personas que entrenan en 1,4–2,0 g/kg/día."],
+        ["Si tienes una enfermedad renal, la cantidad de proteína la debe fijar tu médico."],
+        ["morton2018", "jager2017", "devries2018"], "proteina gramos kilo whey batido carne huevo"),
+    _ficha("proteina_reparto", "nutricion", "🕒", "Reparto de la proteína y «ventana anabólica»", "si",
+        "Lo que decide es el total del día. Repartirla en varias comidas es buena práctica, pero no hace falta tomarla justo al salir del gimnasio.",
+        ["Reparte el total en al menos 3–4 tomas de ~0,4 g/kg cada una.",
+         "Incluye proteína en alguna comida antes o después de entrenar, en un margen de pocas horas, sin obsesionarte con los minutos."],
+        ["Schoenfeld 2013 (23 estudios de hipertrofia): al tener en cuenta la proteína total, tomarla «alrededor del entreno» no dio ventaja. La cantidad total fue el mejor predictor del resultado.",
+         "Tomar más de 20–25 g por comida no se «desperdicia» entera: parte se oxida, pero parte se usa para construir tejido (Schoenfeld y Aragon 2018).",
+         "La ISSN indica que el efecto anabólico del entreno dura al menos 24 horas."],
+        [], ["schoenfeld2013", "schoenfeldAragon2018", "jager2017"], "timing ventana anabolica batido post entreno comidas"),
+    _ficha("superavit", "nutricion", "📈", "Superávit calórico y ritmo de ganancia", "si",
+        "Para ganar músculo de forma eficiente hay que comer algo más de lo que gastas. Basta con un superávit moderado: subir de peso más rápido añade sobre todo grasa.",
+        ["Busca un superávit moderado, del orden del 10–20 % sobre tu mantenimiento.",
+         "Ritmo orientativo: 0,25–0,5 % de tu peso por semana si eres principiante o intermedio; más lento si eres avanzado.",
+         "Juzga el ritmo con la tendencia de peso (como hace esta app), nunca con el peso de un día."],
+        ["ISSN 2017: las dietas para ganar masa magra se basan en un superávit sostenido. El tamaño del superávit y el nivel de entrenamiento influyen en qué se gana.",
+         "Ensayo de Helms 2023 en levantadores entrenados: ganar peso más rápido se asoció sobre todo a más grasa (pliegues cutáneos), sin más grosor muscular ni más fuerza en sentadilla."],
+        ["No hay grandes ensayos que fijen el ritmo ideal exacto: el 0,25–0,5 % semanal viene de una revisión narrativa y el ensayo de Helms es pequeño (17 personas). Úsalo como guía, no como ley."],
+        ["aragon2017", "iraki2019", "helms2023"], "bulk volumen calorias kcal superavit ritmo peso semana"),
+    _ficha("carbos_grasas", "nutricion", "🍚", "Carbohidratos y grasas", "si",
+        "Con la proteína y las calorías cubiertas, el reparto entre carbohidratos y grasas importa poco para la composición corporal. Los carbohidratos ayudan a rendir en el entreno.",
+        ["Grasas: 20–35 % de las calorías; no bajes de forma crónica del 20 %.",
+         "Carbohidratos: el resto de las calorías. Como orientación, 3–5 g/kg/día con actividad ligera y 5–7 g/kg/día con ~1 h diaria de ejercicio moderado.",
+         "Usa como base alimentos poco procesados: cereales integrales, fruta, legumbres, aceite de oliva y frutos secos."],
+        ["ISSN 2017: dietas muy distintas, de bajas en grasa a bajas en carbohidratos, pueden ser igual de eficaces para la composición corporal si la proteína y las calorías se igualan.",
+         "Posicionamiento ACSM / Academy of Nutrition and Dietetics / Dietitians of Canada (2016): las necesidades de carbohidratos se ajustan a la carga de entrenamiento."],
+        [], ["thomas2016", "aragon2017"], "carbohidratos hidratos grasas macros keto dieta"),
+    _ficha("hidratacion", "nutricion", "💧", "Hidratación", "si",
+        "La EFSA fija una ingesta adecuada de agua total de 2,5 L/día en hombres y 2,0 L/día en mujeres, contando la que viene de la comida. Con ejercicio y calor hace falta más.",
+        ["Bebe de forma regular y repón lo que sudas al entrenar.",
+         "Truco del ACSM: pésate antes y después de entrenar. Cada kilo perdido es aproximadamente un litro de sudor que reponer.",
+         "Evita perder más del 2 % de tu peso por sudor durante el ejercicio: a partir de ahí el rendimiento empeora."],
+        ["Las cifras de la EFSA son de agua total: incluyen el agua de los alimentos, no solo lo que bebes.",
+         "La sudoración varía mucho entre personas, por eso el ACSM recomienda planes individualizados."],
+        ["En esfuerzos muy largos, beber muchísima agua sin sales puede bajar el sodio en sangre (hiponatremia)."],
+        ["efsaWater", "sawka2007"], "agua beber litros sudor deshidratacion electrolitos"),
+    _ficha("omega3", "nutricion", "🐟", "Omega 3: pescado sí, cápsulas no", "no",
+        "Comer pescado 1–2 veces por semana está respaldado para la salud cardiovascular. Las cápsulas de omega 3 en personas sanas no han reducido infartos, ictus ni mortalidad en grandes ensayos, y no hay evidencia sólida de que ayuden a ganar músculo.",
+        ["Incluye 1–2 raciones de pescado por semana.",
+         "No tomes cápsulas por tu cuenta «por salud» o «para el músculo». Si tienes una indicación médica, decide con tu médico."],
+        ["Ensayo VITAL (25.871 personas, 5,3 años): 1 g/día de omega 3 no redujo los eventos cardiovasculares mayores ni el cáncer.",
+         "Revisión Cochrane 2020 (86 ensayos, 162.796 personas): poco o ningún efecto sobre la mortalidad total (certeza alta). Posible reducción ligera de eventos coronarios (certeza baja).",
+         "Meta-análisis de 2021 (81.210 personas): los suplementos se asociaron a un 25 % más de riesgo de fibrilación auricular, mayor con dosis por encima de 1 g/día."],
+        ["Los suplementos se asocian a más riesgo de fibrilación auricular, sobre todo por encima de 1 g/día."],
+        ["rimm2018", "mansonO3", "abdelhamid2020", "gencer2021"], "omega 3 aceite pescado epa dha capsulas"),
+    # ======================= SUPLEMENTOS
+    _ficha("creatina", "suplementos", "⚡", "Creatina monohidrato", "si",
+        "Es el suplemento con más respaldo para ganar fuerza y masa muscular junto con el entreno de fuerza, y es seguro a las dosis habituales en personas sanas.",
+        ["Toma 3–5 g al día de creatina monohidrato, todos los días, también los de descanso.",
+         "La fase de carga no es necesaria.",
+         "Elige monohidrato: otras formas más caras no han demostrado ser superiores."],
+        ["Meta-análisis de Delpino 2022 (35 ensayos, 1.192 personas): con entreno de fuerza, la creatina añadió +1,10 kg de masa magra frente a placebo. En hombres +1,46 kg; en mujeres +0,29 kg (no significativo).",
+         "ISSN 2017: dosis de hasta 30 g/día durante 5 años han sido seguras y bien toleradas en personas sanas.",
+         "Al empezar puede subir algo el agua corporal; la creatina no aumenta la grasa (panel de expertos, 2021)."],
+        ["Si tienes una enfermedad renal, o tomas medicación que afecte al riñón, consúltalo antes con tu médico.",
+         "Si te hacen una analítica, avisa de que la tomas: puede subir la creatinina en sangre sin que haya daño renal."],
+        ["kreider2017", "delpino2022", "antonio2021", "lak2025"], "creatina monohidrato fuerza carga"),
+    _ficha("cafeina", "suplementos", "☕", "Cafeína", "si",
+        "Mejora de forma consistente el rendimiento (fuerza, resistencia muscular, potencia) a dosis de 3–6 mg/kg. Su mayor coste es que empeora el sueño si se toma tarde.",
+        ["Empieza por la dosis baja (~3 mg/kg) unos 60 min antes de entrenar.",
+         "Límites de seguridad de la EFSA para adultos sanos: hasta 200 mg en una toma y 400 mg al día.",
+         "Café: al menos ~9 h antes de dormir. Un pre-entreno típico (~220 mg): al menos ~13 h antes.",
+         "Cuenta toda la cafeína del día: café, té, refrescos de cola, bebidas energéticas y pre-entrenos."],
+        ["ISSN 2021: dosis muy altas (~9 mg/kg) causan muchos efectos secundarios y no hacen falta.",
+         "Meta-análisis de Gardiner 2023 (24 estudios): la cafeína redujo el sueño total en 45 min y el sueño profundo."],
+        ["Embarazo: máximo 200 mg/día (EFSA).",
+         "Si tienes ansiedad, problemas cardíacos o hipertensión, consulta antes con tu médico."],
+        ["guest2021", "efsaCaffeine", "gardiner2023"], "cafeina cafe pre entreno preworkout energia"),
+    _ficha("multivitaminico", "suplementos", "💊", "Multivitamínicos", "no",
+        "En adultos sanos no hay evidencia suficiente de que prevengan la enfermedad cardiovascular ni el cáncer, ni de que mejoren el músculo.",
+        ["Prioriza una dieta variada: fruta, verdura, legumbres, cereales integrales y proteína.",
+         "Si sospechas un déficit (por un análisis, una dieta vegana…), que lo valore un médico y trate ese nutriente concreto."],
+        ["USPSTF 2022: evidencia insuficiente para recomendar multivitamínicos. Recomienda NO tomar betacaroteno ni vitamina E para prevenir enfermedad cardiovascular o cáncer.",
+         "Consenso del COI 2018: antes de decidir tomar suplementos debe hacerse una valoración nutricional completa."],
+        ["Betacaroteno: los daños superan a los beneficios (USPSTF)."],
+        ["uspstf2022", "maughan2018"], "multivitaminico vitaminas minerales"),
+    _ficha("vitamina_d", "suplementos", "☀️", "Vitamina D", "no",
+        "En adultos sanos menores de 75 años, la guía de la Endocrine Society (2024) desaconseja tomar más de la cantidad diaria recomendada y hacerse análisis de vitamina D de rutina.",
+        ["No tomes megadosis por tu cuenta.",
+         "Si tu médico te diagnostica un déficit o tienes una indicación concreta, sigue su pauta."],
+        ["Ensayo VITAL (25.871 personas, 5,3 años): 2.000 UI/día no redujeron el cáncer ni los eventos cardiovasculares.",
+         "La guía sí la sugiere en grupos concretos: 1–18 años, mayores de 75, embarazo y prediabetes de alto riesgo."],
+        [], ["demay2024", "mansonD"], "vitamina d sol analitica"),
+    _ficha("magnesio", "suplementos", "🧂", "Magnesio", "no",
+        "Sin déficit no hay evidencia de calidad de que el magnesio mejore el músculo, el rendimiento o el sueño. Cúbrelo con la comida.",
+        ["Ingesta adecuada según la EFSA: 350 mg/día en hombres y 300 mg/día en mujeres, a partir de frutos secos, legumbres, cereales integrales y verduras de hoja.",
+         "No lo suplementes sin indicación médica."],
+        ["Meta-análisis de Mah 2021: en personas mayores con insomnio solo hay 3 ensayos pequeños (151 personas) y la calidad de la evidencia es baja o muy baja."],
+        ["El magnesio de suplementos por encima de 250 mg/día (límite máximo de la EFSA) puede causar diarrea."],
+        ["efsaMg", "mah2021", "efsaUL"], "magnesio sueño calambres"),
+    _ficha("bcaa", "suplementos", "🧪", "BCAA y aminoácidos sueltos", "no",
+        "Si ya llegas a tu proteína diaria, los BCAA no añaden músculo. Para construirlo hacen falta todos los aminoácidos esenciales, y la proteína completa ya los trae.",
+        ["Gasta ese dinero en comida rica en proteína o en proteína en polvo completa."],
+        ["Wolfe 2017: no hay estudios en humanos que muestren que los BCAA orales por sí solos aumenten la síntesis de proteína muscular. En los dos estudios con BCAA intravenosos, la síntesis bajó.",
+         "La revisión de Plotkin 2021 analiza los estudios acumulados sobre BCAA y leucina aislados, que no respaldan su uso para ganar fuerza o músculo cuando la proteína diaria es suficiente."],
+        [], ["wolfe2017", "plotkin2021", "morton2018"], "bcaa leucina eaa aminoacidos"),
+    _ficha("otros_rendimiento", "suplementos", "🏃", "Beta-alanina, nitrato y bicarbonato", "info",
+        "El COI reconoce buena evidencia de rendimiento solo para unos pocos suplementos: cafeína, creatina, tampones (beta-alanina, bicarbonato) y nitrato. Estos tres últimos sirven para esfuerzos intensos o de resistencia, no para ganar músculo.",
+        ["Para ganar masa muscular no son necesarios.",
+         "Si practicas un deporte con esfuerzos intensos de 1–4 minutos, consúltalo con un dietista-nutricionista deportivo."],
+        ["Beta-alanina (ISSN 2015): 4–6 g/día durante al menos 2–4 semanas mejora esfuerzos de 1–4 min. Su efecto sobre la fuerza aún necesita más estudio. Efecto secundario: hormigueo (parestesia)."],
+        [], ["maughan2018", "trexler2015"], "beta alanina nitrato remolacha bicarbonato citrulina"),
+    _ficha("calidad_suplementos", "suplementos", "🏷️", "Contaminación de suplementos", "riesgo",
+        "Los suplementos no pasan los controles de un medicamento. Algunos contienen sustancias no declaradas, incluso sustancias dopantes.",
+        ["Elige productos con certificación independiente de análisis por lotes.",
+         "Desconfía de productos que prometen efectos «como esteroides» o que se venden «solo para investigación»."],
+        ["Consenso del COI 2018: tomar sustancias prohibidas sin saberlo a través de suplementos es un riesgo conocido; la protección de la salud debe ser lo primero."],
+        [], ["maughan2018"], "contaminacion sello certificado dopaje marca"),
+    _ficha("peptidos", "suplementos", "💉", "Péptidos (BPC-157, TB-500, secretagogos de GH…)", "riesgo",
+        "No están aprobados para uso humano. Casi toda la evidencia es en animales, no hay datos clínicos de seguridad y están prohibidos en el deporte. No se recomiendan.",
+        ["No los uses: no existe ninguna dosis «segura» establecida.",
+         "Si te los ofrecen para una lesión o para crecer, consúltalo con un médico deportivo."],
+        ["Revisión sistemática de 2025 sobre BPC-157: de 36 estudios, 35 son preclínicos (animales o laboratorio) y solo 1 en humanos (12 pacientes, retrospectivo). No se encontraron datos clínicos de seguridad.",
+         "La FDA ha señalado riesgos en varios péptidos: posible inmunogenicidad (BPC-157), eventos adversos graves (CJC-1295, GHRP-2) y riesgo de insuficiencia cardíaca (ibutamoren / MK-677).",
+         "La Agencia Mundial Antidopaje prohíbe el BPC-157 en todo momento (sección S0, sustancias no aprobadas)."],
+        ["Son productos del mercado gris: la dosis, la pureza y la contaminación son desconocidas."],
+        ["vasireddiBPC", "fdaPeptides", "usadaBPC", "wada"], "peptidos bpc157 tb500 ipamorelin cjc mk677 ibutamoren gh hormona crecimiento"),
+    _ficha("sarms", "suplementos", "☠️", "SARMs y productos «tipo esteroide»", "riesgo",
+        "Ningún SARM está aprobado para uso humano. Se asocian a daño hepático, problemas cardiovasculares, rotura de tendones y supresión de la testosterona. La FDA advierte contra ellos.",
+        ["No los uses.",
+         "Si ya los has usado, díselo a tu médico sin miedo: es información clínica importante."],
+        ["Revisión sistemática de 2025 (72 artículos): se asocian a hepatotoxicidad, cardiotoxicidad, daño en tendones y supresión de la testosterona; muchos productos comprados online estaban contaminados.",
+         "La FDA advierte del riesgo de infarto, ictus, daño hepático grave, psicosis y disfunción sexual."],
+        ["Se venden como «más seguros que los esteroides». No lo son."],
+        ["fdaSarms", "vasireddiSARM", "leciejewska2024"], "sarms ostarine lgd rad140 esteroides anabolizantes"),
+    # ======================= ENTRENO
+    _ficha("volumen", "entreno", "📊", "Volumen: series por músculo", "si",
+        "Más series semanales por músculo producen más crecimiento, pero cada serie extra aporta menos. Unas 10 o más series semanales por músculo es una buena referencia.",
+        ["Cuenta las series efectivas (sin calentamiento) por músculo y semana; apunta a 10 o más.",
+         "Sube el volumen poco a poco si te recuperas bien; no hace falta saltar a cifras enormes.",
+         "Los ejercicios compuestos cuentan para varios músculos (el press de banca también trabaja el tríceps), pero menos que el trabajo directo."],
+        ["Schoenfeld 2017: cada serie semanal extra se asoció a +0,37 % de ganancia muscular. El grupo de 10+ series obtuvo los mejores resultados.",
+         "Pelland 2026 (67 estudios, 2.058 personas): más volumen da más músculo y fuerza, con rendimientos decrecientes (más marcados en la fuerza). Contar las series indirectas como «media serie» predijo mejor los resultados."],
+        [], ["schoenfeldVol2017", "pelland2026"], "series volumen semana musculo hipertrofia"),
+    _ficha("frecuencia", "entreno", "📅", "Frecuencia: veces por semana", "si",
+        "Con el mismo volumen semanal, entrenar un músculo 1, 2 o 3 veces por semana da un crecimiento parecido. Elige lo que te permita hacer bien todas las series.",
+        ["Reparte el volumen en 2 o más sesiones si así entrenas mejor: series de más calidad y menos fatiga.",
+         "Para ganar fuerza, una frecuencia mayor sí ayuda algo más."],
+        ["Schoenfeld 2019 (25 estudios): sin diferencias en hipertrofia con el volumen igualado. Los autores concluyen que hay evidencia fuerte de que la frecuencia, por sí sola, no la cambia de forma relevante.",
+         "Pelland 2026: la frecuencia tiene un efecto claro en la fuerza y un efecto compatible con despreciable en la hipertrofia."],
+        [], ["schoenfeldFreq2019", "pelland2026"], "frecuencia dias weider fullbody torso pierna split"),
+    _ficha("cargas", "entreno", "🏋️", "Peso y repeticiones", "si",
+        "Puedes ganar músculo con cargas pesadas, medias o ligeras si las series son exigentes. Para la fuerza máxima, las cargas pesadas son mejores.",
+        ["La ACSM recomienda, para hipertrofia, trabajar entre 1 y 12 repeticiones con énfasis en 6–12, en programas de varias series.",
+         "Si quieres más fuerza en un ejercicio, incluye trabajo pesado (8 repeticiones o menos)."],
+        ["Schoenfeld 2017 (21 estudios): hipertrofia similar con cargas de ≤60 % y >60 % del 1RM yendo al fallo; el 1RM mejoró más con cargas altas.",
+         "López 2021 (28 estudios, 747 personas): la hipertrofia no dependió de la carga; la fuerza mejoró más con cargas altas y medias que con ligeras."],
+        [], ["schoenfeldLoad2017", "lopez2021", "acsm2009"], "repeticiones reps carga peso rango ligero pesado"),
+    _ficha("fallo", "entreno", "🎯", "¿Hay que llegar al fallo?", "si",
+        "No es necesario. Llegar al fallo absoluto no ha demostrado más crecimiento que quedarse cerca. Lo que importa es que las series sean exigentes.",
+        ["Termina las series cerca del fallo, sin necesidad de alcanzarlo."],
+        ["Refalo 2023 (15 estudios): en el análisis global, ventaja trivial para el fallo (tamaño del efecto 0,19). Comparando el fallo muscular momentáneo con no llegar al fallo, no hubo diferencia (0,12, no significativo). Probablemente la relación no es lineal."],
+        [], ["refalo2023"], "fallo rir rpe reserva intensidad"),
+    _ficha("descanso_series", "entreno", "⏱️", "Descanso entre series", "si",
+        "Descansar más de 60 s entre series favorece algo más el crecimiento que los descansos muy cortos. Por encima de ~90 s no se ven diferencias claras.",
+        ["Descansa al menos ~90 s, y más si lo necesitas para mantener las repeticiones (sobre todo en ejercicios pesados)."],
+        ["Singer 2024 (9 estudios, meta-análisis bayesiano): pequeño beneficio con descansos de más de 60 s, probablemente porque permiten mover más volumen. Sin diferencias apreciables por encima de 90 s."],
+        [], ["singer2024"], "descanso series minutos rest"),
+    _ficha("rom", "entreno", "↕️", "Rango de movimiento", "si",
+        "El recorrido completo produce más fuerza y más hipertrofia de piernas que los recorridos parciales.",
+        ["Usa el recorrido completo que permitan tu movilidad y tu técnica.",
+         "Recorta el rango solo por dolor o por indicación de un profesional."],
+        ["Pallarés 2021 (16 estudios): el recorrido completo fue superior para la fuerza (tamaño del efecto 0,56) y la hipertrofia del tren inferior (0,88)."],
+        [], ["pallares2021"], "rango recorrido rom parciales estiramiento"),
+    _ficha("progresion", "entreno", "🪜", "Sobrecarga progresiva", "si",
+        "Para seguir mejorando hay que aumentar poco a poco la exigencia: más peso, más repeticiones o más series.",
+        ["Regla de la ACSM: cuando hagas 1–2 repeticiones más de tu objetivo con el peso actual, súbelo un 2–10 %.",
+         "Pon primero los ejercicios multiarticulares y de grupos musculares grandes."],
+        ["Frecuencia orientativa de la ACSM: 2–3 días/semana para principiantes, 3–4 para intermedios y 4–5 para avanzados."],
+        [], ["acsm2009"], "progresion sobrecarga subir peso estancamiento"),
+    _ficha("cardio", "entreno", "🚴", "Cardio y ganancia muscular", "si",
+        "Hacer cardio además de pesas no reduce la hipertrofia ni la fuerza máxima. Solo puede limitar algo la fuerza explosiva si se hace en la misma sesión.",
+        ["Haz el cardio que recomienda la OMS para tu salud (ver la ficha «Actividad física recomendada»).",
+         "Si te importan la potencia o el salto, separa cardio y pesas al menos 3 horas.",
+         "El cardio gasta calorías: la app ajusta tu objetivo según la tendencia de peso."],
+        ["Schumann 2022 (43 estudios): diferencia nula en hipertrofia (−0,01) y en fuerza máxima (−0,06), y reducción pequeña de la fuerza explosiva (−0,28), mayor si se hacía en la misma sesión. No hubo diferencias entre correr y bicicleta."],
+        [], ["schumann2022", "who2020"], "cardio correr bici aerobico interferencia concurrente"),
+    # ======================= DESCANSO
+    _ficha("sueno", "descanso", "😴", "Sueño", "si",
+        "Los adultos deben dormir 7 horas o más de forma regular. Dormir poco empeora el rendimiento en todo tipo de ejercicio.",
+        ["Duerme 7 h o más cada noche, con horarios regulares.",
+         "Si una noche duermes poco, mejor entrenar por la mañana que por la tarde.",
+         "Corta la cafeína pronto (ver la ficha «Cafeína»)."],
+        ["Craven 2022 (69 publicaciones): la falta de sueño redujo el rendimiento una media del 7,6 %, y alrededor de un 0,4 % más por cada hora despierto antes de entrenar. Las tareas por la mañana apenas se vieron afectadas."],
+        ["Si roncas mucho, te levantas cansado a menudo o tienes insomnio persistente, consulta a un médico."],
+        ["watson2015", "craven2022", "gardiner2023"], "dormir sueño horas descanso recuperacion insomnio"),
+    _ficha("estres", "descanso", "🧠", "Estrés, ánimo y entrenamiento", "si",
+        "El entrenamiento de fuerza reduce los síntomas depresivos con un efecto moderado. Es una buena herramienta para tu salud mental.",
+        ["Mantén la constancia en el gimnasio también en épocas de estrés.",
+         "Si tienes síntomas de depresión o ansiedad, el ejercicio complementa la atención profesional, no la sustituye."],
+        ["Gordon 2018 (33 ensayos, 1.877 personas): el entreno de fuerza redujo los síntomas depresivos de forma moderada (Δ = 0,66), independientemente del volumen.",
+         "Noetel 2024 (218 ensayos, 14.170 personas): caminar o correr, el yoga y la fuerza fueron los ejercicios más eficaces contra la depresión, y la fuerza de los mejor tolerados. La certeza de la evidencia es baja o muy baja."],
+        [], ["gordon2018", "noetel2024"], "estres ansiedad depresion animo salud mental cortisol"),
+    _ficha("frio", "descanso", "🧊", "Baños de hielo después de entrenar", "no",
+        "Meterse en agua fría justo después de las pesas, de forma habitual, reduce la ganancia muscular. No se recomienda si tu objetivo es la hipertrofia.",
+        ["Evita la inmersión en agua fría justo después de entrenar fuerza."],
+        ["Roberts 2015 (21 hombres, 12 semanas): el grupo con agua fría ganó menos fuerza y masa muscular que el de recuperación activa.",
+         "Fyfe 2019 (16 hombres, 7 semanas): el agua fría redujo el crecimiento de las fibras tipo II, aunque la fuerza mejoró igual."],
+        ["Son ensayos pequeños, pero coinciden entre sí y con el mecanismo observado."],
+        ["roberts2015", "fyfe2019"], "hielo frio crioterapia recuperacion baño"),
+    # ======================= SALUD
+    _ficha("actividad", "salud", "🌍", "Actividad física recomendada (OMS)", "si",
+        "La OMS recomienda a los adultos 150–300 min/semana de actividad aeróbica moderada (o 75–150 min de vigorosa), entrenar fuerza de forma regular y reducir el tiempo sentado.",
+        ["Entrena fuerza al menos 2 días por semana.",
+         "Añade cardio moderado: caminar rápido, bici, nadar…",
+         "Algo es mejor que nada, y más es mejor."],
+        ["Momma 2022 (16 cohortes): entrenar fuerza se asoció a un 10–17 % menos de mortalidad, enfermedad cardiovascular, cáncer y diabetes. El máximo beneficio observado fue con ~30–60 min/semana; con más volumen, la relación no está clara."],
+        ["Los estudios de mortalidad son observacionales: muestran asociación, no prueban causa."],
+        ["who2020", "momma2022"], "oms actividad fisica salud minutos semana"),
+    _ficha("pasos", "salud", "👟", "Pasos diarios", "si",
+        "Más pasos al día se asocian a menor mortalidad. El beneficio se estabiliza hacia 8.000–10.000 pasos en menores de 60 años y 6.000–8.000 en mayores de 60.",
+        ["Si estás por debajo, sube poco a poco (por ejemplo, +1.000 pasos/día).",
+         "En volumen, vigila que tus pasos no bajen: moverte menos reduce lo que gastas (la app te avisa)."],
+        ["Paluch 2022 (15 cohortes, 47.471 personas): comparado con ~3.500 pasos/día, ~10.900 pasos se asociaron a un 53 % menos de mortalidad.",
+         "Banach 2023 (17 cohortes, 226.889 personas): cada 1.000 pasos/día más se asoció a un 15 % menos de mortalidad por cualquier causa."],
+        ["Son estudios observacionales: asociación, no causa demostrada."],
+        ["paluch2022", "banach2023"], "pasos caminar neat andar"),
+    _ficha("sedentarismo", "salud", "🪑", "Estar sentado muchas horas", "si",
+        "Pasar muchas horas sentado se asocia a mayor mortalidad. Unos 60–75 min diarios de actividad moderada parecen eliminar ese riesgo extra.",
+        ["Si trabajas sentado, añade actividad diaria (caminar, bici) y levántate a menudo.",
+         "Limita la televisión: con 3 h/día o más, el riesgo aumentó en casi todos los grupos de actividad."],
+        ["Ekelund 2016 (más de 1 millón de personas): quienes se sentaban más de 8 h/día pero eran muy activos no tuvieron más riesgo. Con mucha televisión, la actividad atenuó el riesgo pero no lo eliminó."],
+        ["Son estudios observacionales: asociación, no causa demostrada."],
+        ["ekelund2016", "who2020"], "sedentario sentado oficina television"),
+    _ficha("alcohol", "salud", "🍺", "Alcohol", "riesgo",
+        "Según el estudio Global Burden of Disease, el consumo de alcohol que minimiza el daño a la salud es cero. La OMS afirma que no hay un nivel de consumo seguro para la salud.",
+        ["Cuanto menos, mejor. Si bebes, que sea poco y de forma ocasional."],
+        ["GBD 2016 (Lancet 2018): el alcohol fue el primer factor de riesgo de muerte en el mundo entre los 15 y 49 años."],
+        [], ["gbd2018", "anderson2023"], "alcohol cerveza vino beber"),
+    # ======================= CUERPO
+    _ficha("como_crece", "cuerpo", "💪", "Cómo crece el músculo", "info",
+        "El músculo crece cuando, durante semanas, fabrica más proteína de la que degrada. La señal principal que lo activa es la tensión mecánica del entrenamiento con cargas.",
+        ["Entreno (el estímulo) + proteína y calorías (los materiales) + descanso (la recuperación) = crecimiento."],
+        ["Wackerhage 2019: el aumento de la síntesis de proteína muscular a través de mTORC1 es el mecanismo clave. Las señales mecánicas son las principales candidatas a estímulo; el daño muscular probablemente no es imprescindible.",
+         "El entreno de fuerza y la proteína estimulan la síntesis muscular de forma sinérgica (ISSN 2017)."],
+        [], ["wackerhage2019", "jager2017"], "hipertrofia sintesis proteica mtor tension mecanica biologia"),
+    _ficha("genetica", "cuerpo", "🧬", "Genética y respuesta al entrenamiento", "info",
+        "Cada persona responde de forma muy distinta al mismo entrenamiento. Los test genéticos comerciales no sirven para predecirlo ni para diseñar tu entreno.",
+        ["Compárate contigo mismo: registra y progresa, como haces en esta app.",
+         "No pagues test genéticos «deportivos» para decidir tu rutina o tu dieta."],
+        ["Hubal 2005 (585 personas, 12 semanas con el mismo programa): el bíceps cambió entre −2 % y +59 % de tamaño, y la fuerza 1RM entre 0 % y +250 %.",
+         "Declaración de consenso de 2015: los test genéticos no tienen papel en identificar talento ni en individualizar el entrenamiento."],
+        [], ["hubal2005", "webborn2015"], "genetica genes test adn respondedores potencial"),
+    # ======================= MITOS
+    _ficha("m_ventana", "mitos", "⏰", "«Hay que tomar el batido nada más acabar»", "mito",
+        "Falso. Lo importante es la proteína total del día. Tomarla «alrededor del entreno» no dio ventaja cuando se igualó la cantidad total.",
+        [], [], [], ["schoenfeld2013"], "ventana anabolica batido"),
+    _ficha("m_30g", "mitos", "🍗", "«El cuerpo solo aprovecha 30 g de proteína por comida»", "mito",
+        "Falso. Con más proteína aumenta la oxidación, pero parte del exceso sí se usa para construir tejido. Aun así, repartirla en 3–4 tomas es buena práctica.",
+        [], [], [], ["schoenfeldAragon2018"], "absorcion 30 gramos comida"),
+    _ficha("m_rinon", "mitos", "🫘", "«Mucha proteína daña los riñones»", "mito",
+        "En personas sanas, falso. En 28 ensayos (1.358 personas), las dietas altas en proteína no empeoraron la función renal. Si ya tienes enfermedad renal, es distinto: decide con tu médico.",
+        [], [], [], ["devries2018"], "riñon rinon proteina"),
+    _ficha("m_creatina", "mitos", "🧴", "«La creatina causa calvicie, daña el riñón o es un esteroide»", "mito",
+        "Falso. No es un esteroide y es segura en personas sanas. Un ensayo de 12 semanas no encontró cambios en la DHT ni en ningún parámetro del cabello frente a placebo.",
+        [], [], [], ["lak2025", "antonio2021", "kreider2017"], "creatina calvicie pelo dht riñon"),
+    _ficha("m_ligero", "mitos", "🪶", "«Con pesos ligeros no se gana músculo»", "mito",
+        "Falso. Si las series son exigentes, las cargas ligeras, medias y pesadas producen una hipertrofia similar. Para la fuerza máxima sí conviene pesado.",
+        [], [], [], ["schoenfeldLoad2017", "lopez2021"], "ligero pesado repeticiones"),
+    _ficha("m_cardio", "mitos", "🏃", "«El cardio se come tus ganancias»", "mito",
+        "Falso para la hipertrofia y la fuerza máxima (43 estudios). Solo puede reducir un poco la fuerza explosiva si se hace en la misma sesión.",
+        [], [], [], ["schumann2022"], "cardio ganancias"),
+    _ficha("m_fallo", "mitos", "🔥", "«Si no llegas al fallo, no creces»", "mito",
+        "Falso. Llegar al fallo muscular no fue superior a quedarse cerca de él.",
+        [], [], [], ["refalo2023"], "fallo"),
+    _ficha("m_agua", "mitos", "🚰", "«Hay que beber 2 litros de agua además de la comida»", "mito",
+        "Las cifras oficiales (EFSA: 2,0 L mujeres / 2,5 L hombres) son de agua total e incluyen el agua de los alimentos. Lo que sí importa es reponer lo que sudas al entrenar.",
+        [], [], [], ["efsaWater", "sawka2007"], "agua litros vasos"),
+    _ficha("m_multi", "mitos", "💊", "«Un multivitamínico compensa una mala dieta»", "mito",
+        "No hay evidencia suficiente de que los multivitamínicos prevengan enfermedades en adultos sanos, y algunos suplementos aislados (betacaroteno) hacen más daño que bien.",
+        [], [], [], ["uspstf2022"], "multivitaminico dieta"),
+]
+
+def ciencia_json():
+    """Contenido de la pestaña Ciencia serializado para inyectarlo en el HTML."""
+    import json
+    missing = [(f["id"], r) for f in CIENCIA_FICHAS for r in f["refs"] if r not in CIENCIA_REFS]
+    if missing:
+        raise ValueError(f"Fichas de Ciencia con referencias inexistentes: {missing}")
+    data = {"revisado": CIENCIA_REVISADO, "pilares": CIENCIA_PILARES, "fichas": CIENCIA_FICHAS, "refs": CIENCIA_REFS}
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
 def get_injected_html():
     """Inyecta las variables de configuración de Python dentro del HTML estático."""
     html = APP_HTML_TEMPLATE
+    html = html.replace("__CIENCIA_JSON__", ciencia_json())
     html = html.replace("__API_KEY_B64__", GEMINI_API_KEY_B64)
     html = html.replace("__MODEL_SUMMARY__", GEMINI_MODEL_SUMMARY)
     html = html.replace("__MODEL_FOOD__", GEMINI_MODEL_FOOD)
