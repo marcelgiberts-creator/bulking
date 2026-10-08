@@ -1,5 +1,5 @@
 /* Bulking OS · service worker (generado por bulking_app.py, no editar a mano) */
-const CACHE = 'bulking-00aa8732abd0';
+const CACHE = 'bulking-d7da725d158d';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 const NEVER = /firebasedatabase\.app|generativelanguage\.googleapis\.com|openfoodfacts\.org/;
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });

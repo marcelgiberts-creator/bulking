@@ -9,7 +9,26 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Bulking">
-<link rel="manifest" href="manifest.webmanifest">
+<script>
+/* Manifiesto de la PWA. En iPhone/iPad (y Safari en general) la app añadida a la
+   pantalla de inicio tiene un almacenamiento PROPIO, separado del navegador: si
+   se abriera en "./" crearía un usuario nuevo y saldría vacía. Por eso ahí el
+   manifiesto lleva tu ?uid= en start_url y la app instalada abre tus datos.
+   Chrome/Edge/Android comparten almacenamiento y usan el archivo estático. */
+window.PWA_MANIFEST = {"name": "Bulking OS", "short_name": "Bulking", "lang": "es", "description": "Nutrición, entreno, sueño y ciencia para ganar músculo.", "start_url": "./", "scope": "./", "display": "standalone", "orientation": "portrait", "background_color": "#090a0c", "theme_color": "#090a0c", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]};
+window.pwaSetManifest = function(uid){
+  var l = document.querySelector('link[rel="manifest"]');
+  if(!l){ l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l); }
+  try {
+    if(!uid || ('onbeforeinstallprompt' in window) || !/^https?:$/.test(location.protocol)) return;
+    var abs = function(p){ return new URL(p, location.href).href; }, m = JSON.parse(JSON.stringify(window.PWA_MANIFEST));
+    m.start_url = abs('./?uid=' + encodeURIComponent(uid)); m.scope = abs('./');
+    m.icons = m.icons.map(function(i){ i.src = abs(i.src); return i; });
+    l.href = 'data:application/manifest+json;charset=utf-8,' + encodeURIComponent(JSON.stringify(m));
+  } catch(e){}
+};
+(function(){ var u = null; try { u = new URLSearchParams(location.search).get('uid') || localStorage.getItem('syncUid'); } catch(e){} window.pwaSetManifest(u); })();
+</script>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <script>
@@ -1060,25 +1079,77 @@
   .dq-bar i { display: block; height: 100%; border-radius: 99px; transition: width .8s var(--ease-out); }
   .dq-bar i.ok { background: var(--green); } .dq-bar i.mid { background: var(--warn); } .dq-bar i.lo { background: var(--red); }
 
-  /* Mapa corporal */
-  .bm-wrap { margin: 4px 0 var(--s-4); }
-  .bm { width: 100%; max-width: 420px; height: auto; display: block; margin: 0 auto; }
-  .bm-body { fill: var(--surface-2); stroke: var(--line-2); stroke-width: 1; }
-  .bm-m { cursor: pointer; transition: opacity var(--dur) var(--ease); }
-  .bm-m > *:not(title) { transition: fill var(--dur) var(--ease), stroke var(--dur) var(--ease); stroke: var(--bg-color); stroke-width: .8; }
-  .bm-m.m0 > *:not(title), .bm-m.m0 path, .bm-m.m0 ellipse, .bm-m.m0 rect { fill: var(--surface-3); }
-  .bm-m.mlo * { fill: rgba(var(--info-rgb), var(--o)); }
-  .bm-m.mok * { fill: rgba(var(--green-rgb), var(--o)); }
-  .bm-m.mhi * { fill: rgba(var(--accent-rgb), var(--o)); }
-  .bm-m.m0 * { fill: var(--surface-3); }
-  .bm-m.sel * { stroke: var(--text); stroke-width: 1.4; }
-  .bm-tx { fill: var(--text-dim); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-family: var(--font-ui); }
+  /* Mapa corporal: figura anatómica con escaneo de entrada, brillo por zona y foco al tocar */
+  .bm-wrap { margin: 4px 0 var(--s-4); position: relative; }
+  .bm-wrap::before { content: ''; position: absolute; inset: -6px 0 auto; height: 78%; pointer-events: none; background: radial-gradient(60% 55% at 50% 45%, rgba(var(--accent-rgb), .07), transparent 70%); }
+  .bm { width: 100%; max-width: 440px; height: auto; display: block; margin: 0 auto; overflow: visible; position: relative; -webkit-tap-highlight-color: transparent; }
+  .bm-skin-a { stop-color: rgba(var(--ink-rgb), .11); } .bm-skin-b { stop-color: rgba(var(--ink-rgb), .04); }
+  .bm-sil { fill: url(#bm-skin); }
+  .bm-rim { fill: none; stroke: rgba(var(--ink-rgb), .3); stroke-width: .9; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 0; animation: bmDraw 1.5s var(--ease-out) backwards; }
+  .bm-fib { stroke: #000; stroke-opacity: .2; stroke-width: .5; fill: none; }
+  .bm .u { fill: var(--surface-2); }
+  .bm-x { animation: bmIn .8s var(--ease-out) .5s backwards; }
+  .bm-x .b { fill: rgba(var(--ink-rgb), .07); }
+  .bm-x path, .bm-m path { stroke: none; }
+  .bm-m { cursor: pointer; outline: none; --mc: var(--ink-rgb); transition: opacity .35s var(--ease); animation: bmIn .55s var(--ease-out) backwards; animation-delay: calc(.15s + var(--y) * 1.25s); }
+  .bm-m .b { fill: rgba(var(--mc), calc(var(--o) * .16)); transition: fill .35s var(--ease); }
+  .bm-m.mlo { --mc: var(--info-rgb); } .bm-m.mok { --mc: var(--green-rgb); } .bm-m.mhi { --mc: var(--accent-rgb); }
+  .bm-m.mlo .b, .bm-m.mok .b, .bm-m.mhi .b { fill: rgba(var(--mc), var(--o)); }
+  .bm-m .b { stroke: rgba(0, 0, 0, .35); stroke-width: .35; }
+  .bm-m.sel .b { stroke: var(--text); stroke-width: .9; }
+  .bm-m.sel .b { animation: bmPulse 1.4s ease-in-out infinite; }
+  .bm.focus .bm-m:not(.sel) { opacity: .28; }
+  .bm.focus .bm-g:not(.sel) { opacity: 0; }
+  .bm-glow { opacity: .55; animation: bmGlowIn .9s var(--ease-out) 1.1s backwards, bmBreath 3.6s ease-in-out 2s infinite; }
+  .bm-g { transition: opacity .35s var(--ease); }
+  .bm-g.mlo { fill: rgb(var(--info-rgb)); opacity: .5; } .bm-g.mok { fill: rgb(var(--green-rgb)); } .bm-g.mhi { fill: rgb(var(--accent-rgb)); }
+  .bm-g.sel { opacity: 1; }
+  .bm-scan { opacity: 0; animation: bmScan 1.6s cubic-bezier(.45, .05, .55, .95) .1s; }
+  .bm-floor { opacity: .8; }
+  .bm-ring { fill: none; stroke: rgba(var(--accent-rgb), .55); stroke-width: .8; transform-box: fill-box; transform-origin: center; opacity: 0; animation: bmRing 3.6s var(--ease-out) 1.4s infinite; }
+  .bm-tx { fill: var(--text-dim); font-size: 10px; font-weight: 750; letter-spacing: .16em; text-transform: uppercase; font-family: var(--font-ui); }
+  @keyframes bmDraw { from { stroke-dashoffset: 1; } }
+  @keyframes bmIn { from { opacity: 0; } }
+  @keyframes bmScan { 0% { opacity: 1; transform: translateY(0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(520px); } }
+  @keyframes bmBreath { 50% { opacity: .9; } }
+  @keyframes bmGlowIn { from { opacity: 0; } }
+  @keyframes bmPulse { 50% { opacity: .55; } }
+  @keyframes bmRing { 0% { opacity: .9; transform: scale(.6); } 70%, 100% { opacity: 0; transform: scale(1.5); } }
   .bm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; align-items: center; margin-top: 8px; font-size: var(--fs-xs); color: var(--text-dim); }
   .bm-legend span { display: inline-flex; align-items: center; gap: 6px; }
   .bm-legend span::before { content: ''; width: 9px; height: 9px; border-radius: 3px; }
-  .bm-legend .mlo::before { background: rgba(var(--info-rgb), .8); } .bm-legend .mok::before { background: var(--green); } .bm-legend .mhi::before { background: var(--accent); } .bm-legend .m0::before { background: var(--surface-3); }
-  .bm-info { text-align: center; font-size: var(--fs-sm); color: var(--text-mid); margin-top: 8px; min-height: 1.4em; }
-  .bm-info b { color: var(--text); }
+  .bm-legend .mlo::before { background: rgba(var(--info-rgb), .8); } .bm-legend .mok::before { background: var(--green); } .bm-legend .mhi::before { background: var(--accent); } .bm-legend .m0::before { background: rgba(var(--ink-rgb), .16); }
+  .bm-info { margin-top: 12px; min-height: 132px; }
+  .bm-sum { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .bm-sum span { padding: 7px 12px; border-radius: var(--radius-pill); background: rgba(var(--green-rgb), .1); border: 1px solid rgba(var(--green-rgb), .28); color: var(--text-mid); font-size: var(--fs-xs); }
+  .bm-sum span b { color: var(--green); font-family: var(--font-num); font-size: var(--fs-md); margin-right: 2px; }
+  .bm-sum .lo { background: rgba(var(--info-rgb), .1); border-color: rgba(var(--info-rgb), .28); } .bm-sum .lo b { color: var(--info); }
+  .bm-sum .hi { background: rgba(var(--accent-rgb), .1); border-color: rgba(var(--accent-rgb), .28); } .bm-sum .hi b { color: var(--accent); }
+  .bm-hint { text-align: center; font-size: var(--fs-sm); color: var(--text-dim); margin-top: 10px; }
+  .bm-card { --c: var(--ink-rgb); padding: 14px 16px; border-radius: var(--radius-md); border: 1px solid rgba(var(--c), .3); background: linear-gradient(160deg, rgba(var(--c), .13), rgba(var(--c), .03) 60%); animation: bmCard .45s var(--ease-out); }
+  .bm-card.mlo { --c: var(--info-rgb); } .bm-card.mok { --c: var(--green-rgb); } .bm-card.mhi { --c: var(--accent-rgb); }
+  .bm-card-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .bm-card-h b { font-size: var(--fs-lg); color: var(--text); }
+  .bm-pill { font-size: var(--fs-2xs); font-weight: 750; letter-spacing: .06em; text-transform: uppercase; padding: 4px 9px; border-radius: var(--radius-pill); color: rgb(var(--c)); background: rgba(var(--c), .14); }
+  .bm-card.m0 .bm-pill { color: var(--text-mid); }
+  .bm-num { display: flex; align-items: baseline; gap: 8px; margin: 6px 0 10px; }
+  .bm-num b { font-family: var(--font-num); font-size: 2.3rem; line-height: 1; color: rgb(var(--c)); font-variant-numeric: tabular-nums; }
+  .bm-card.m0 .bm-num b { color: var(--text-mid); }
+  .bm-num small { color: var(--text-dim); font-size: var(--fs-xs); }
+  .bm-gauge { position: relative; height: 8px; border-radius: 99px; background: rgba(var(--ink-rgb), .08); overflow: hidden; }
+  .bm-gauge .z { position: absolute; top: 0; bottom: 0; background: rgba(var(--green-rgb), .25); }
+  .bm-gauge .f { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); border-radius: 99px; background: linear-gradient(90deg, rgba(var(--c), .5), rgb(var(--c))); box-shadow: 0 0 12px rgba(var(--c), .6); animation: bmFill .8s var(--ease-out); }
+  .bm-scale { position: relative; height: 16px; margin-top: 3px; font-size: var(--fs-2xs); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .bm-scale span { position: absolute; transform: translateX(-50%); } .bm-scale span:first-child { transform: none; } .bm-scale span:last-child { transform: translateX(-100%); }
+  .bm-msg { font-size: var(--fs-sm); color: var(--text-mid); margin-top: 4px; }
+  @keyframes bmCard { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+  @keyframes bmFill { from { width: 0; } }
+
+  /* Guías de instalación y vinculación */
+  .pwa-steps { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; font-size: var(--fs-sm); color: var(--text-mid); }
+  .pwa-steps li::marker { color: var(--accent); font-weight: 750; }
+  .pwa-steps b { color: var(--text); }
+  .pwa-ico { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; border-radius: 6px; background: var(--surface-3); color: var(--info); font-size: .85em; vertical-align: -.2em; }
 
   /* Lesiones */
   .inj-tag { background: rgba(var(--warn-rgb), .16); color: var(--warn); }
@@ -1090,7 +1161,7 @@
   @media (hover: hover) and (pointer: fine) {
     .cmp-item:hover { border-color: var(--line-2); background: var(--surface-2); }
     .dq-row:not(:disabled):hover span { color: var(--text); }
-    .bm-m:hover * { stroke: var(--text-mid); }
+    .bm-m:hover .b { stroke: var(--text-mid); stroke-width: .7; }
     .toast-act:hover { background: rgba(var(--accent-rgb), .26); }
     .sleep-q button:hover:not(.on) { border-color: var(--line-3); }
   }
@@ -2825,6 +2896,7 @@ async function safeRemove(key){
 // sin SDK: solo peticiones REST a Firebase.
 const cloudSyncEnabled = !!(FIREBASE_DB_URL && FIREBASE_DB_URL.trim());
 let syncUid = null;
+let syncUidFresh = false; // true = este dispositivo acaba de crear un usuario vacío
 let cloudPushTimer = null;
 let cloudSynced = false;
 
@@ -2833,8 +2905,10 @@ function getOrCreateSyncUid(){
   let uid = url.searchParams.get('uid') || localStorage.getItem('syncUid');
   if(!uid){
     uid = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).replace(/-/g, '');
+    syncUidFresh = true;
   }
   localStorage.setItem('syncUid', uid);
+  if(window.pwaSetManifest) window.pwaSetManifest(uid);
   if(url.searchParams.get('uid') !== uid){
     url.searchParams.set('uid', uid);
     window.history.replaceState({}, '', url.toString());
@@ -2962,8 +3036,50 @@ function renderSyncStatus(){
       <input readonly value="${getSyncLink()}" style="font-size:.72rem;" onclick="this.select()">
       <button class="secondary" onclick="copySyncLink()" style="flex-shrink:0;">Copiar</button>
     </div>
-    <div class="muted-line">Quien tenga este link puede ver y modificar tus datos.</div>`;
+    <div class="muted-line">Quien tenga este link puede ver y modificar tus datos.</div>
+    <button class="secondary" style="width:100%;margin-top:10px;" onclick="openSyncLink()">Vincular con el enlace de otro dispositivo</button>`;
 }
+
+// Vincular: la app instalada en iPhone empieza con un almacenamiento vacío y
+// propio. Pegando el enlace de sincronización (?uid=...) del navegador donde
+// están los datos, este dispositivo pasa a usar ese mismo usuario.
+function parseSyncUid(txt){
+  const s = String(txt || '').trim();
+  const m = s.match(/[?&#]uid=([A-Za-z0-9_-]{8,})/) || s.match(/^([A-Za-z0-9_-]{8,})$/);
+  return m ? m[1] : null;
+}
+window.openSyncLink = (first = false) => {
+  if(!cloudSyncEnabled) return;
+  const canPaste = !!(navigator.clipboard && navigator.clipboard.readText);
+  gModal(`<h4 class="modal-title">${first ? '¿Ya tienes datos en el navegador?' : 'Vincular este dispositivo'}</h4>
+    <div class="xp">${first ? '<p>La app instalada empieza vacía: el móvil le da un almacenamiento propio, separado del navegador. Trae tus datos en dos pasos:</p>' : '<p>Este dispositivo pasará a usar los datos de otro enlace:</p>'}
+      <ol class="pwa-steps"><li>En el navegador donde ves tus datos: <b>Ajustes → Datos → Copiar</b>.</li><li>Vuelve aquí y ${canPaste ? 'toca <b>Pegar</b>' : 'pégalo abajo'}.</li></ol></div>
+    <div style="display:flex;gap:8px;margin-top:12px;"><input id="sync-link-in" placeholder="https://…?uid=…" autocomplete="off" autocapitalize="off" spellcheck="false" style="font-size:.78rem;">${canPaste ? '<button class="secondary" style="flex-shrink:0;" onclick="pasteSyncLink()">Pegar</button>' : ''}</div>
+    <div class="muted-line" style="margin-top:8px;">Lo que haya ahora en este dispositivo se sustituye por los datos del enlace.</div>
+    <button class="primary" style="width:100%;margin-top:12px;" onclick="linkSyncFrom($('sync-link-in').value)">Vincular</button>
+    ${first ? '<button class="secondary" style="width:100%;margin-top:8px;" onclick="G.closeModal()">Empezar de cero</button>' : ''}`);
+};
+window.pasteSyncLink = async () => {
+  try { const t = await navigator.clipboard.readText(); $('sync-link-in').value = t; if(parseSyncUid(t)) await linkSyncFrom(t); else showToast('Lo copiado no parece un enlace de Bulking.', true); }
+  catch(e){ showToast('No pude leer el portapapeles: pégalo a mano en la casilla.', true); }
+};
+window.linkSyncFrom = async txt => {
+  const uid = parseSyncUid(txt);
+  if(!uid){ showToast('No encuentro el código (?uid=…) en ese enlace.', true); return; }
+  if(uid === syncUid){ G.closeModal(); showToast('Este dispositivo ya usa ese enlace.'); return; }
+  let remote = null;
+  try { const r = await fetch(`${FIREBASE_DB_URL}/users/${uid}/data.json`); if(r.ok) remote = await r.json(); } catch(e){}
+  if(!remote || typeof remote !== 'object'){ showToast('Ese enlace no tiene datos en la nube (o no hay conexión).', true); return; }
+  // Cortar subidas pendientes al usuario actual y sustituir el almacenamiento local
+  clearTimeout(cloudPushTimer); cloudSynced = false;
+  const keep = {};
+  for(let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i); if(k === 'ui:prefs' || SECRET_KEY_RE.test(k)) keep[k] = localStorage.getItem(k); }
+  localStorage.clear();
+  Object.entries(keep).forEach(([k, v]) => localStorage.setItem(k, v));
+  localStorage.setItem('syncUid', uid);
+  showToast('Vinculado · cargando tus datos…');
+  setTimeout(() => location.replace(location.pathname + '?uid=' + encodeURIComponent(uid)), 400);
+};
 
 window.copySyncLink = () => {
   navigator.clipboard.writeText(getSyncLink()).then(()=>showToast('Link copiado')).catch(()=>showToast('No se pudo copiar', true));
@@ -7021,7 +7137,7 @@ const EXPLAIN = {
   maint: { t: 'Mantenimiento', d: () => { const M = getEngineState().maintenance; return [`Fórmula: <b>${fmtN(M.prior)} kcal</b>. Observado con tus datos: <b>${M.obs ? fmtN(M.obs) + ' kcal' : 'aún sin datos suficientes'}</b>. Estimación combinada: <b>${fmtN(M.posterior)} ±${fmtN(M.posteriorSd)}</b>.`, 'Cuantos más días completos y pesajes registres, más pesa lo observado frente a la fórmula.']; } },
   diet: { t: 'Calidad de la dieta', ficha: 'proteina', d: () => ['Puntuación de 0 a 100 de los últimos 7 días con registro: proteína suficiente, repartida en al menos 3 tomas, grasa entre el 20 y el 35 %, fibra (si hay datos), azúcares y alcohol. Cada componente enlaza con su evidencia.'] },
   sleep: { t: 'Sueño', ficha: 'sueno', d: () => ['Duración = de la hora de acostarte a la de levantarte. Objetivo: 7 h o más (consenso AASM/SRS).', 'Deuda = horas por debajo de 7 h acumuladas en 7 días. Regularidad = cuánto varía tu horario de un día a otro: un horario constante se asocia a menor mortalidad.'] },
-  bodymap: { t: 'Mapa corporal', ficha: 'volumen', d: () => ['Series efectivas por semana de cada músculo (principal = 1 serie, secundario = 0,5). Verde: 10–20 series/semana; azul: menos; ámbar: más de 20.'] },
+  bodymap: { t: 'Mapa corporal', ficha: 'volumen', d: () => ['Series efectivas por semana de cada músculo (principal = 1 serie, secundario = 0,5). Verde: 10–20 series/semana; azul: menos; ámbar: más de 20; gris: sin series.', 'Toca un músculo (en el frente o la espalda) para ver sus series y cuánto le falta para la zona. Los músculos en gris claro sin color son anatomía de referencia que no se cuenta.'] },
 };
 function openExplain(key){
   const x = EXPLAIN[key]; if(!x) return;
@@ -7077,14 +7193,38 @@ window.setHaptics = on => { setUiPref('haptics', !!on); if(on) haptic('ok'); };
 function renderAppearance(){
   const P = uiPrefs(), sel = $('ui-theme'); if(sel) sel.value = P.theme;
   const h = $('ui-haptics'); if(h) h.checked = !!P.haptics;
-  const ib = $('pwa-install'); if(ib) ib.hidden = !__installEvt;
-  const st = $('pwa-status'); if(st) st.textContent = matchMedia('(display-mode: standalone)').matches ? 'App instalada · funciona sin conexión' : ('serviceWorker' in navigator && location.protocol.startsWith('http') ? 'Puedes instalarla desde el menú del navegador («Añadir a pantalla de inicio»).' : 'La instalación solo está disponible en la web publicada.');
+  const inst = isStandalone(), web = location.protocol.startsWith('http');
+  const ib = $('pwa-install'); if(ib) ib.hidden = inst || !web;
+  const st = $('pwa-status'); if(st) st.textContent = inst ? 'App instalada · funciona sin conexión' : (web ? 'Añádela a la pantalla de inicio: pantalla completa, sin conexión y con tus datos.' : 'La instalación solo está disponible en la web publicada.');
 }
 
 // ---- PWA: service worker, instalación y sincronización al recuperar conexión
-let __installEvt = null;
+var __installEvt = null; // var: renderAppearance puede llamarse antes de esta línea
+const isStandalone = () => !!((window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true);
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); __installEvt = e; renderAppearance(); });
-window.installApp = async () => { if(!__installEvt) return; __installEvt.prompt(); try { await __installEvt.userChoice; } catch(e){} __installEvt = null; renderAppearance(); };
+window.addEventListener('appinstalled', () => { __installEvt = null; renderAppearance(); showToast('App instalada · ábrela desde tu pantalla de inicio'); });
+// iPhone no tiene aviso de instalación nativo (y Chrome a veces no lo ofrece):
+// sin evento, el botón abre una guía con los pasos de cada plataforma.
+window.installApp = async () => {
+  haptic('tap');
+  if(__installEvt){
+    const ev = __installEvt; __installEvt = null;
+    try { await ev.prompt(); const r = await ev.userChoice; if(r && r.outcome === 'accepted') showToast('Instalando Bulking…'); } catch(e){ openInstallGuide(); }
+    renderAppearance(); return;
+  }
+  openInstallGuide();
+};
+function openInstallGuide(){
+  const ua = navigator.userAgent, ios = /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const inApp = /FBAN|FBAV|Instagram|WhatsApp|Line\/|GSA\/|TikTok/i.test(ua), safari = ios && !/CriOS|FxiOS|EdgiOS/.test(ua);
+  const steps = inApp ? ['Estás en el navegador de otra app. Toca <b>⋯</b> y elige <b>Abrir en el navegador</b> (Safari o Chrome).', 'Allí vuelve a <b>Ajustes → Instalar</b>.']
+    : ios ? [`Toca <b>Compartir</b> <span class="pwa-ico">⬆︎</span> ${safari ? 'en la barra de abajo' : 'junto a la barra de direcciones'}.`, 'Desliza y elige <b>Añadir a pantalla de inicio</b>.', 'Deja activado <b>Abrir como app web</b> y toca <b>Añadir</b>.']
+    : /Android/i.test(ua) ? ['Toca el menú <b>⋮</b> (arriba a la derecha).', 'Elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.', 'Confirma con <b>Instalar</b>.']
+    : ['En Chrome o Edge: icono de instalar a la derecha de la barra de direcciones.', 'O menú <b>⋮</b> → <b>Instalar Bulking</b> (en Edge: Aplicaciones → Instalar).'];
+  gModal(`<h4 class="modal-title">Instalar Bulking</h4><ol class="pwa-steps">${steps.map(x => `<li>${x}</li>`).join('')}</ol>
+    <div class="muted-line" style="margin-top:12px;">${ios ? 'El icono se crea ya enlazado a tus datos. ' : ''}Si una app instalada antes se abre vacía, entra en ella y ve a <b>Ajustes → Datos → Vincular</b>.</div>
+    <button class="secondary" style="width:100%;margin-top:14px;" onclick="G.closeModal()">Entendido</button>`);
+}
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW', e));
   window.addEventListener('offline', () => { document.body.classList.add('is-offline'); showToast('Sin conexión: puedes seguir registrando, se sincronizará al volver.', false, { kind: 'info' }); });
@@ -7383,47 +7523,130 @@ async function renderDietQuality(){
 // =========================================================================
 // 🧍 MAPA CORPORAL (D10) — series efectivas/semana por músculo
 // =========================================================================
-// Formas estilizadas del lado izquierdo de una figura de 120×250; se reflejan.
+// Figura anatómica de 200×440 (frente y espalda). Cada forma se dibuja solo
+// para la mitad izquierda y se refleja en x = 100. Entradas: [músculo, path,
+// ángulo de las fibras]; músculo null = anatomía de contexto (no cuenta series).
+const BM_HALF = 'M100,8 C89,8 81,17 81,31 C81,42 84,50 89,56 C89,62 88,68 87,73 C78,77 66,79 56,83 C46,86 39,93 37,104 C35,114 36,124 38,132 C35,142 34,152 35,162 C33,170 29,178 28,190 C27,200 29,210 31,220 C30,228 28,238 29,248 C30,256 34,260 38,258 C41,252 42,240 43,230 C43,226 42,220 42,216 C44,204 46,190 47,176 C48,168 50,160 51,152 C52,142 54,134 56,126 C56,124 57,122 57,121 C59,135 60,148 62,158 C64,166 66,174 66,182 C66,190 63,198 61,206 C59,214 57,224 57,236 C56,256 58,280 63,300 C64,306 64,312 64,318 C62,332 61,344 63,356 C65,372 68,390 70,402 C70,410 66,418 66,422 C68,428 82,428 90,426 C92,420 90,412 89,404 C88,390 88,375 89,360 C90,348 89,336 88,326 C87,320 88,314 89,308 C92,290 95,262 97,236 C98,228 99,222 100,218';
 const BM_FRONT = [
-  ['hombros', '<ellipse cx="37" cy="50" rx="9" ry="8"/>'],
-  ['pecho', '<path d="M59 45 L45 47 Q38 55 42 65 Q51 71 59 67 Z"/>'],
-  ['biceps', '<ellipse cx="31" cy="73" rx="6" ry="12.5"/>'],
-  ['antebrazos', '<ellipse cx="26" cy="101" rx="5.2" ry="14" transform="rotate(8 26 101)"/>'],
-  ['abdominales', '<rect x="50" y="71" width="9" height="40" rx="4"/><path d="M48 73 Q42 86 45 106 L48 108 Z"/>'],
-  ['abductores', '<ellipse cx="41" cy="121" rx="5" ry="9"/>'],
-  ['cuadriceps', '<path d="M57 124 Q45 124 42 142 Q41 166 47 186 L56 186 Q59 160 57 124 Z"/>'],
-  ['aductores', '<path d="M58.5 126 L60 126 L60 154 Q56 152 55 140 Z"/>'],
-  ['gemelos', '<ellipse cx="46.5" cy="210" rx="5" ry="16"/>'],
-  ['cuello', '<rect x="55" y="31" width="5" height="9" rx="2"/>'],
+  [null, 'M80,300 C76,302 75,310 77,316 C80,320 86,319 87,313 C88,306 85,300 80,300 Z', null],
+  ['cuello', 'M88,50 C91,58 94,66 97,77 L93,78 C90,68 87,60 86,53 Z', 70],
+  ['trapecio', 'M89,58 C88,66 86,72 84,76 C76,78 68,80 58,83 C68,77 80,70 89,58 Z', 155],
+  ['pecho', 'M97,83 C88,82 76,83 66,86 C61,92 57,99 54,106 C66,100 82,97 98,98 Z', 165],
+  ['pecho', 'M98,99 C82,98 66,101 54,107 C52,112 52,117 53,121 C58,124 64,128 72,130 C82,132 92,130 98,126 Z', 10],
+  ['hombros', 'M62,83 C50,84 40,91 37,103 C35,114 36,125 39,134 C41,138 44,139 46,136 C48,126 50,116 54,106 C57,98 61,92 64,87 Z', 80],
+  [null, 'M62,128 C66,128 70,130 72,133 C69,135 65,135 62,134 Z M62,138 C66,138 70,140 72,143 C69,145 65,145 62,144 Z M63,148 C67,148 70,150 72,153 C69,155 66,155 63,154 Z', 20],
+  ['abdominales', 'M72,134 C78,137 83,141 84,147 C83,160 83,176 85,190 C86,198 89,206 92,212 C84,206 74,200 64,196 C66,186 67,176 66,168 C65,158 66,146 72,134 Z', 120],
+  ['abdominales', 'M99,133 L99,148 C93,149 88,149 84,148 C83,142 84,137 86,134 C90,132 95,132 99,133 Z', 90],
+  ['abdominales', 'M99,151 L99,168 C93,169 88,169 84,168 C83,162 83,156 84,151 C89,151 94,151 99,151 Z', 90],
+  ['abdominales', 'M99,171 L99,188 C93,189 88,189 85,188 C84,182 84,176 84,171 C89,171 94,171 99,171 Z', 90],
+  ['abdominales', 'M99,191 L99,214 C96,214 93,211 91,207 C88,202 86,197 85,191 C90,191 95,191 99,191 Z', 90],
+  ['biceps', 'M51,121 C45,127 40,137 39,147 C39,156 41,162 45,166 C49,164 51,158 52,150 C53,140 53,130 51,121 Z', 95],
+  ['biceps', 'M39,152 C37,158 37,164 38,168 L44,167 C41,163 39,158 39,152 Z', 95],
+  ['triceps', 'M38,133 C35,143 35,153 36,161 C37,158 38,153 38,147 C38,141 38,137 38,133 Z', 95],
+  ['dorsales', 'M57,123 C59,134 61,146 62,157 C63,162 64,166 65,170 C64,158 63,147 63,138 C61,132 59,127 57,123 Z', 100],
+  ['antebrazos', 'M40,166 C33,172 29,180 28,190 C28,200 29,208 32,216 L36,216 C36,204 37,192 40,182 C42,176 43,171 42,167 Z', 100],
+  ['antebrazos', 'M44,167 C41,176 38,190 37,202 C37,208 37,213 37,217 L42,217 C43,206 45,190 47,176 C47,171 46,168 44,167 Z', 95],
+  ['abductores', 'M61,206 C58,214 57,224 57,236 C57,244 58,250 59,256 C62,246 64,234 66,222 C66,214 65,208 63,204 Z', 95],
+  ['cuadriceps', 'M66,222 C62,234 59,254 60,276 C61,290 64,300 68,308 C70,304 72,302 74,300 C70,290 68,278 67,264 C66,248 67,234 70,220 Z', 95],
+  ['cuadriceps', 'M72,214 C68,228 67,248 68,268 C69,282 71,292 74,300 C78,292 80,280 81,266 C82,248 80,228 76,214 Z', 90],
+  ['cuadriceps', 'M82,272 C80,282 78,292 77,300 C79,306 83,310 87,308 C90,302 90,292 88,282 C86,276 84,272 82,272 Z', 80],
+  [null, 'M66,206 C74,224 80,246 85,268 C87,280 88,292 88,304 L85,306 C84,292 82,278 79,266 C75,246 69,224 63,208 Z', 72],
+  ['aductores', 'M80,214 C88,216 94,220 98,226 C97,240 95,256 92,270 C90,262 88,252 85,244 C82,234 80,224 78,214 Z', 110],
+  [null, 'M68,322 C66,336 66,352 68,368 C70,382 72,394 74,402 L77,402 C76,388 75,372 75,356 C75,342 74,330 72,322 Z', 92],
+  ['gemelos', 'M86,318 C90,328 91,342 90,356 C89,366 87,372 85,376 C83,368 82,356 82,344 C82,334 83,326 86,318 Z', 88],
+  ['gemelos', 'M64,322 C62,334 62,346 64,358 L67,358 C66,346 66,334 67,322 Z', 90],
 ];
 const BM_BACK = [
-  ['trapecio', '<path d="M60 30 L44 46 L52 50 L60 66 Z"/>'],
-  ['hombros', '<ellipse cx="37" cy="50" rx="9" ry="8"/>'],
-  ['espalda_alta', '<ellipse cx="49" cy="58" rx="7" ry="7"/>'],
-  ['dorsales', '<path d="M58 66 Q45 63 40 72 Q43 94 56 102 Z"/>'],
-  ['triceps', '<ellipse cx="31" cy="73" rx="6" ry="12.5"/>'],
-  ['antebrazos', '<ellipse cx="26" cy="101" rx="5.2" ry="14" transform="rotate(8 26 101)"/>'],
-  ['lumbares', '<rect x="51" y="100" width="9" height="16" rx="3"/>'],
-  ['gluteos', '<ellipse cx="50" cy="127" rx="10.5" ry="10.5"/>'],
-  ['isquios', '<path d="M58 140 Q46 140 44 152 Q44 172 48 186 L57 186 Q60 162 58 140 Z"/>'],
-  ['gemelos', '<ellipse cx="48" cy="207" rx="6" ry="15"/>'],
+  ['trapecio', 'M100,46 C96,56 92,66 88,72 C80,76 68,80 58,84 C64,90 72,94 80,98 C88,112 94,138 100,168 Z', 30],
+  ['hombros', 'M58,85 C48,87 40,93 37,104 C35,114 36,124 39,132 C42,128 46,120 52,112 C58,106 66,102 74,100 C70,92 64,87 58,85 Z', 100],
+  ['espalda_alta', 'M80,100 C72,102 64,106 60,112 C60,120 64,128 70,132 C76,130 82,124 84,116 C84,108 82,103 80,100 Z', 20],
+  ['espalda_alta', 'M60,118 C56,124 55,130 56,134 C62,136 68,136 72,134 C66,130 62,124 60,118 Z', 30],
+  ['dorsales', 'M58,126 C61,138 63,150 64,160 C66,170 68,180 68,190 C76,193 84,195 90,196 C95,190 98,182 99,174 C94,158 88,142 82,132 C76,136 66,136 58,126 Z', 125],
+  ['lumbares', 'M99,150 L99,208 C95,210 91,206 89,200 C88,186 89,170 92,152 C94,150 97,150 99,150 Z', 90],
+  ['triceps', 'M52,126 C54,136 53,148 50,158 L46,162 C45,150 45,138 47,128 Z', 92],
+  ['triceps', 'M39,130 C35,140 35,150 37,160 C42,162 45,162 46,160 C45,150 45,138 47,128 C45,128 42,128 40,130 Z', 95],
+  ['antebrazos', 'M40,166 C33,172 29,180 28,190 C28,200 29,208 32,216 L37,216 C37,204 38,192 41,182 C43,176 44,171 43,167 Z', 100],
+  ['antebrazos', 'M45,167 C42,176 39,190 38,202 C38,208 38,213 38,217 L42,217 C43,206 45,190 47,176 C47,171 46,168 45,167 Z', 95],
+  ['abductores', 'M64,198 C62,206 61,212 62,218 C70,208 82,203 92,201 C86,196 74,194 64,198 Z', 160],
+  ['gluteos', 'M99,204 C99,220 99,234 97,246 C88,250 76,250 66,244 C62,236 61,226 63,216 C70,208 82,202 99,204 Z', 140],
+  [null, 'M59,240 C58,262 60,284 64,304 L67,304 C64,284 62,262 62,242 Z', 92],
+  ['aductores', 'M96,236 C96,244 95,250 94,256 C90,256 87,258 85,262 C86,252 90,244 96,236 Z', 110],
+  ['isquios', 'M96,250 C95,262 92,280 90,296 C88,302 86,306 84,308 C82,296 82,282 83,268 C84,258 88,252 96,250 Z', 92],
+  ['isquios', 'M66,250 C64,262 64,280 68,296 C70,302 72,306 74,308 C78,296 80,282 81,268 C81,258 78,252 66,250 Z', 88],
+  ['gemelos', 'M84,316 C90,324 92,336 91,350 C90,360 87,368 84,372 C82,362 81,348 81,336 C81,326 82,320 84,316 Z', 88],
+  ['gemelos', 'M70,316 C64,324 62,336 63,348 C64,358 67,366 72,370 C76,360 78,348 78,336 C78,326 75,320 70,316 Z', 92],
+  ['gemelos', 'M66,360 C66,372 68,386 72,398 L87,398 C88,386 89,374 89,362 C86,370 82,376 78,378 C74,376 70,370 66,360 Z', 90],
 ];
-const BM_BODY = '<circle cx="60" cy="17" r="11"/><rect x="54" y="26" width="12" height="10" rx="3"/><path d="M60 36 L36 41 Q26 44 25 56 L19 112 Q18 120 23 121 L30 118 L36 74 L40 116 Q38 124 41 130 L42 190 L44 236 Q45 244 51 244 L57 243 L59 190 L60 140 L61 190 L63 243 L69 244 Q75 244 76 236 L78 190 L79 130 Q82 124 80 116 L84 74 L90 118 L97 121 Q102 120 101 112 L95 56 Q94 44 84 41 Z"/>';
+const BM_W = 200, BM_H = 440;
+function bmOutline(half){
+  const n = half.match(/-?\d+(?:\.\d+)?/g).map(Number), pts = [[n[0], n[1]]], segs = [];
+  for(let i = 2; i + 5 < n.length; i += 6){ segs.push(n.slice(i, i + 6)); pts.push([n[i + 4], n[i + 5]]); }
+  let d = half;
+  for(let i = segs.length - 1; i >= 0; i--){ const s = segs[i], p = pts[i]; d += ` C${BM_W - s[2]},${s[3]} ${BM_W - s[0]},${s[1]} ${BM_W - p[0]},${p[1]}`; }
+  return d + ' Z';
+}
+const BM_OUTLINE = bmOutline(BM_HALF);
+const bmTop = d => Math.min(...(d.match(/-?\d+(?:\.\d+)?/g) || [0]).filter((_, i) => i % 2).map(Number));
+const bmAng = a => (Math.round(a / 15) * 15) % 180;
+function bmDefs(){
+  const angs = [...new Set([...BM_FRONT, ...BM_BACK].filter(m => m[2] !== null).map(m => bmAng(m[2])))];
+  return `<defs>
+    <radialGradient id="bm-shade" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".42"/></radialGradient>
+    <linearGradient id="bm-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="bm-skin-a"/><stop offset="1" class="bm-skin-b"/></linearGradient>
+    <linearGradient id="bm-scan" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(var(--accent-rgb))" stop-opacity="0"/><stop offset=".86" stop-color="rgb(var(--accent-rgb))" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity=".9"/></linearGradient>
+    <radialGradient id="bm-floor"><stop offset="0" stop-color="rgb(var(--accent-rgb))" stop-opacity=".45"/><stop offset="1" stop-color="rgb(var(--accent-rgb))" stop-opacity="0"/></radialGradient>
+    <filter id="bm-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter>
+    <clipPath id="bm-clip"><path d="${BM_OUTLINE}"/></clipPath>
+    ${angs.map(a => `<pattern id="bm-f${a}" width="2.6" height="2.6" patternUnits="userSpaceOnUse" patternTransform="rotate(${a})"><path d="M0 .4H2.6" class="bm-fib"/></pattern>`).join('')}
+  </defs>`;
+}
 function gBodyMapHTML(ms, weeksF){
   const v = k => (ms[k] || 0) / weeksF, cls = x => x <= 0 ? 'm0' : x < GY.WEEKLY_SETS.low ? 'mlo' : x <= GY.WEEKLY_SETS.high ? 'mok' : 'mhi';
-  const fig = (list, ox, title) => `<g transform="translate(${ox} 0)"><g class="bm-body">${BM_BODY}</g>${list.map(([k, shape]) => {
+  const mir = s => `${s}<g transform="matrix(-1 0 0 1 ${BM_W} 0)">${s}</g>`;
+  const layer = (d, a) => `<path d="${d}" class="u"/><path d="${d}" class="b"/><path d="${d}" fill="url(#bm-shade)"/>${a === null ? '' : `<path d="${d}" fill="url(#bm-f${bmAng(a)})"/>`}`;
+  const fig = (list, ox, title) => {
+    const groups = {}; list.forEach(([k, d, a]) => { if(k) (groups[k] = groups[k] || []).push([d, a]); });
+    const decor = list.filter(m => !m[0]).map(([, d, a]) => layer(d, a)).join('');
+    const glow = Object.entries(groups).filter(([k]) => v(k) > 0).map(([k, sh]) => `<g class="bm-g ${cls(v(k))}" data-m="${k}">${mir(sh.map(([d]) => `<path d="${d}"/>`).join(''))}</g>`).join('');
+    const mus = Object.entries(groups).map(([k, sh]) => {
       const x = v(k), lab = `${gMusLabel(k)}: ${String(Math.round(x * 10) / 10).replace('.', ',')} series/semana`;
-      return `<g class="bm-m ${cls(x)}" style="--o:${x <= 0 ? 0.0 : Math.min(1, 0.45 + x / 30)}" data-m="${k}" onclick="gBodyMapPick('${k}')" role="img" aria-label="${lab}"><title>${lab}</title>${shape}<g transform="matrix(-1 0 0 1 120 0)">${shape}</g></g>`; }).join('')}
-      <text x="60" y="258" text-anchor="middle" class="bm-tx">${title}</text></g>`;
+      return `<g class="bm-m ${cls(x)}" style="--o:${x <= 0 ? 1 : Math.min(1, 0.5 + x / 30).toFixed(2)};--y:${(Math.min(...sh.map(([d]) => bmTop(d))) / BM_H).toFixed(3)}" data-m="${k}" onclick="gBodyMapPick('${k}', event)" role="button" tabindex="0" aria-label="${lab}"><title>${lab}</title>${mir(sh.map(([d, a]) => layer(d, a)).join(''))}</g>`;
+    }).join('');
+    return `<g transform="translate(${ox} 0)">
+      <ellipse class="bm-floor" cx="100" cy="428" rx="62" ry="9" fill="url(#bm-floor)"/><ellipse class="bm-ring" cx="100" cy="428" rx="46" ry="6.5"/>
+      <path class="bm-sil" d="${BM_OUTLINE}"/>
+      <g class="bm-glow" filter="url(#bm-blur)">${glow}</g>
+      <g class="bm-x">${mir(decor)}</g>${mus}
+      <path class="bm-rim" d="${BM_OUTLINE}" pathLength="1"/>
+      <g clip-path="url(#bm-clip)"><rect class="bm-scan" x="0" y="-70" width="200" height="70" fill="url(#bm-scan)"/></g>
+      <text x="100" y="452" text-anchor="middle" class="bm-tx">${title}</text></g>`;
+  };
   window.__bmData = Object.fromEntries(Object.keys(GY.MUSCLES).map(k => [k, v(k)]));
-  return `<div class="bm-wrap"><svg class="bm" viewBox="0 0 270 264" role="group" aria-label="Mapa corporal de series semanales">${fig(BM_FRONT, 10, 'Frente')}${fig(BM_BACK, 140, 'Espalda')}</svg>
+  const keys = Object.keys(GY.MUSCLES).filter(k => !['cardio', 'full', 'cuello'].includes(k)), cnt = c => keys.filter(k => cls(v(k)) === c).length;
+  return `<div class="bm-wrap"><svg class="bm" viewBox="0 0 410 460" role="group" aria-label="Mapa corporal de series semanales" onclick="if(!event.target.closest('.bm-m'))gBodyMapPick(null)">${bmDefs()}${fig(BM_FRONT, 0, 'Frente')}${fig(BM_BACK, 210, 'Espalda')}</svg>
     <div class="bm-legend"><span class="mlo">&lt;10</span><span class="mok">10–20</span><span class="mhi">&gt;20</span><span class="m0">0</span><button class="link" onclick="openExplain('bodymap')">series/semana · ¿qué es?</button></div>
-    <div class="bm-info" id="bm-info">Toca un músculo para ver sus series.</div></div>`;
+    <div class="bm-info" id="bm-info" aria-live="polite"><div class="bm-sum"><span><b>${cnt('mok')}</b>/${keys.length} en zona</span><span class="lo"><b>${cnt('mlo') + cnt('m0')}</b> por debajo</span><span class="hi"><b>${cnt('mhi')}</b> por encima</span></div><div class="bm-hint">Toca un músculo para ver su detalle</div></div></div>`;
 }
-window.gBodyMapPick = k => {
-  const x = (window.__bmData || {})[k] || 0, el = $('bm-info'); haptic('tap');
-  document.querySelectorAll('.bm-m').forEach(g => g.classList.toggle('sel', g.dataset.m === k));
-  if(el) el.innerHTML = `<b>${gMusLabel(k)}</b> · ${String(Math.round(x * 10) / 10).replace('.', ',')} series/semana${x < GY.WEEKLY_SETS.low ? ' · por debajo de 10' : x > GY.WEEKLY_SETS.high ? ' · por encima de 20' : x ? ' · en la zona de 10–20' : ''}`;
+window.gBodyMapPick = (k, ev) => {
+  if(ev) ev.stopPropagation();
+  const svg = document.querySelector('.bm'), el = $('bm-info'); if(!svg || !el) return;
+  const cur = svg.dataset.sel; if(k && k === cur) k = null;
+  svg.dataset.sel = k || ''; svg.classList.toggle('focus', !!k);
+  svg.querySelectorAll('.bm-m, .bm-g').forEach(g => g.classList.toggle('sel', g.dataset.m === k));
+  if(!k){ el.innerHTML = el.dataset.sum || el.innerHTML; return; }
+  if(!el.dataset.sum) el.dataset.sum = el.innerHTML;
+  haptic('tap');
+  const x = (window.__bmData || {})[k] || 0, L = GY.WEEKLY_SETS.low, Hh = GY.WEEKLY_SETS.high, max = Math.max(25, Math.ceil(x + 2)), pc = n => `${Math.min(100, n / max * 100)}%`;
+  const tone = x <= 0 ? 'm0' : x < L ? 'mlo' : x <= Hh ? 'mok' : 'mhi', fmt = n => String(Math.round(n * 10) / 10).replace('.', ',');
+  const st = { m0: ['Sin trabajar', 'No ha recibido series en este periodo.'], mlo: ['Por debajo', `Te faltan ~${fmt(L - x)} series/semana para entrar en la zona de 10–20.`], mok: ['En zona', 'Volumen dentro del rango asociado a la mayor hipertrofia.'], mhi: ['Por encima', `Más de ${Hh} series/semana: más volumen no siempre suma; vigila la recuperación.`] }[tone];
+  el.innerHTML = `<div class="bm-card ${tone}"><div class="bm-card-h"><b>${gMusLabel(k)}</b><span class="bm-pill">${st[0]}</span></div>
+    <div class="bm-num"><b data-to="${x}">0</b><small>series/semana</small></div>
+    <div class="bm-gauge"><i class="z" style="left:${pc(L)};width:calc(${pc(Hh)} - ${pc(L)})"></i><i class="f" style="--w:${pc(x)}"></i></div>
+    <div class="bm-scale"><span>0</span><span style="left:${pc(L)}">${L}</span><span style="left:${pc(Hh)}">${Hh}</span><span style="left:100%">${max}</span></div>
+    <div class="bm-msg">${st[1]}</div></div>`;
+  const b = el.querySelector('[data-to]'), t0 = performance.now(), dur = reduceMotion() ? 1 : 650;
+  const step = t => { const p = Math.max(0, Math.min(1, (t - t0) / dur)), e = 1 - Math.pow(1 - p, 3); b.textContent = fmt(x * e); if(p < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
 };
 
 // =========================================================================
@@ -8007,6 +8230,7 @@ window.onload = async () => {
 
   $('manual-text').addEventListener('keydown', e => { if(e.key==='Enter') processText(); });
   applyTheme(); initGestures(); initPWA(); renderAppearance();
+  if(syncUidFresh && cloudSyncEnabled && isStandalone()) setTimeout(() => openSyncLink(true), 700);
   $('input-weight-date').addEventListener('change', renderWeightDayList);
   $('input-measure-date').addEventListener('change', renderBodyMeasureDayList);
   $('input-steps-date').addEventListener('change', loadStepsForDate);
